@@ -2,9 +2,9 @@
 HubSpot service for managing HubSpot API interactions.
 """
 import re
-import html
 from typing import Dict, List, Optional, Any
 import requests
+from utils.formatting_utils import clean_html
 from datetime import datetime
 from dateutil.parser import parse as parse_date
 from tenacity import retry, stop_after_attempt, wait_fixed
@@ -38,14 +38,21 @@ class HubspotService:
         self.tasks_endpoint = f"{self.base_url}/crm/v3/objects/tasks"
         self.emails_search_url = f"{self.base_url}/crm/v3/objects/emails/search"
 
-    @staticmethod
-    def clean_html(raw_html: str) -> str:
-        """Remove HTML tags and decode HTML entities from a given string."""
-        text_only = re.sub('<[^<]+?>', '', raw_html)
-        text_only = html.unescape(text_only)
-        text_only = text_only.replace('\u00a0', ' ')
-        text_only = re.sub(r'\s+', ' ', text_only)
-        return text_only.strip()
+    def __init__(self, api_key: str, base_url: str = "https://api.hubapi.com"):
+        """
+        Initialize HubSpot service with API credentials.
+        
+        Args:
+            api_key: HubSpot API key
+            base_url: Base URL for HubSpot API (default: https://api.hubapi.com)
+        """
+        self.base_url = base_url.rstrip('/')
+        self.headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        self.max_retries = 3
+        self.retry_delay = 1
 
     @staticmethod
     def format_timestamp(ts: str) -> str:
@@ -117,9 +124,9 @@ class HubspotService:
 
         to_email = recipient_email
 
-        text = self.clean_html(text)
-        subject = self.clean_html(subject)
-        campaign = self.clean_html(campaign)
+        text = clean_html(text)
+        subject = clean_html(subject)
+        campaign = clean_html(campaign)
 
         return {
             "from": from_email,
@@ -289,7 +296,7 @@ class HubspotService:
             for note in notes:
                 props = note.get("properties", {})
                 raw_html_string = props.get("hs_note_body", "")
-                cleaned_text = self.clean_html(raw_html_string)
+                cleaned_text = clean_html(raw_html_string)
 
                 note_list.append({
                     "id": note.get("id"),

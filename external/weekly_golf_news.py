@@ -9,7 +9,7 @@ import requests
 import pandas as pd
 import openai
 import json
-from bs4 import BeautifulSoup
+from utils.formatting_utils import extract_text_from_html
 from datetime import datetime
 
 # If you have a .env, load it:
@@ -126,11 +126,7 @@ def fetch_article_text(url: str) -> str:
         resp = requests.get(url, timeout=5, verify=True)
         resp.raise_for_status()
 
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-
-        return soup.get_text(separator="\n", strip=True)
+        return extract_text_from_html(resp.text, preserve_newlines=True)
     except Exception as e:
         logger.error(f"Error fetching article text ({url}): {e}")
         return ""

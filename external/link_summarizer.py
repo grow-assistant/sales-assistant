@@ -1,6 +1,6 @@
 # external/link_summarizer.py
 import requests
-from bs4 import BeautifulSoup
+from utils.formatting_utils import extract_text_from_html
 import openai
 from typing import Dict, List
 from utils.logging_setup import logger
@@ -12,10 +12,7 @@ def fetch_page_text(url: str) -> str:
     try:
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        return soup.get_text(separator="\n").strip()
+        return extract_text_from_html(resp.text, preserve_newlines=True)
     except Exception as e:
         logger.error(f"Error fetching {url}: {e}")
         return ""
