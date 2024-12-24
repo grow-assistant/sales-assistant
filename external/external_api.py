@@ -10,16 +10,12 @@ from tenacity import retry, wait_exponential, stop_after_attempt
 import json
 
 from utils.logging_setup import logger
-
-# Import HubspotService instead of hubspot_integration.hubspot_api
 from config.settings import HUBSPOT_API_KEY
 from services.hubspot_service import HubspotService
+from utils.xai_integration import xai_news_search
 
 # Initialize hubspot service:
 _hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
-
-from utils.logging_setup import logger
-from utils.xai_integration import xai_news_search
 
 ################################################################################
 # CSV-based Season Data
@@ -49,9 +45,16 @@ def load_season_data() -> None:
                 st = row['State'].strip().lower()
                 ST_DATA[st] = row
 
-        logger.info("Successfully loaded season data")
+        logger.info("Successfully loaded golf season data", extra={
+            "city_state_count": len(CITY_ST_DATA),
+            "state_count": len(ST_DATA)
+        })
     except Exception as e:
-        logger.error(f"Error loading season data: {str(e)}")
+        logger.error("Failed to load golf season data", extra={
+            "error": str(e),
+            "city_st_path": str(CITY_ST_CSV),
+            "st_path": str(ST_CSV)
+        })
         raise
 
 # Load data at module import
@@ -120,7 +123,9 @@ def review_previous_interactions(contact_id: str) -> Dict[str, Union[int, str]]:
         # Equivalent to get_contact_properties
         lead_data = _hubspot.get_contact_properties(contact_id)
         if not lead_data:
-            logger.warning(f"No lead data found for contact_id {contact_id}")
+            logger.warning("No lead data found for contact", extra={
+                "contact_id": contact_id
+            })
             return {
                 "emails_opened": 0,
                 "emails_sent": 0,
@@ -167,7 +172,11 @@ def review_previous_interactions(contact_id: str) -> Dict[str, Union[int, str]]:
         }
 
     except Exception as e:
-        logger.error(f"Error reviewing interactions for {contact_id}: {str(e)}")
+        logger.error("Failed to review contact interactions", extra={
+            "error": str(e),
+            "contact_id": contact_id,
+            "error_type": type(e).__name__
+        })
         return {
             "emails_opened": 0,
             "emails_sent": 0,

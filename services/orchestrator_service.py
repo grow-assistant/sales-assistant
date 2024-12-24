@@ -11,10 +11,9 @@ Service for managing orchestration-related operations including:
 """
 
 import openai
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from datetime import datetime
 
-from services.leads_service import LeadsService
 from services.hubspot_service import HubspotService
 from external.external_api import (
     market_research,
@@ -30,11 +29,14 @@ from utils.exceptions import (
 from utils.doc_reader import DocReader
 from config.constants import DEFAULTS
 
+if TYPE_CHECKING:
+    from services.leads_service import LeadsService
+
 
 class OrchestratorService:
     """Service for managing orchestration-related operations."""
 
-    def __init__(self, leads_service: LeadsService, hubspot_service: HubspotService):
+    def __init__(self, leads_service: 'LeadsService', hubspot_service: HubspotService):
         """Initialize the orchestrator service."""
         self.leads_service = leads_service
         self.hubspot_service = hubspot_service
@@ -129,6 +131,10 @@ class OrchestratorService:
                     "data": {},
                     "error": "No email found in lead data"
                 }
+            
+            # Import only when needed to avoid circular imports
+            from services.leads_service import LeadsService
+            
             data = self.leads_service.generate_lead_summary(lead_email)
             return {
                 "status": "success",
@@ -136,6 +142,10 @@ class OrchestratorService:
                 "error": None
             }
         except Exception as e:
+            self.logger.error("Failed to personalize message", extra={
+                "error": str(e),
+                "lead_email": lead_data.get("email")
+            })
             return {
                 "status": "error",
                 "data": {},

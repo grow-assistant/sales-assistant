@@ -5,7 +5,7 @@ Handles lead-related business logic, including data fetching, enrichment,
 and preparation of lead context for AI personalization.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, TYPE_CHECKING
 import json
 from datetime import datetime
 from pathlib import Path
@@ -21,7 +21,9 @@ from hubspot_integration.data_enrichment import check_competitor_on_website
 from utils.logging_setup import logger
 from utils.doc_reader import read_doc
 from external.link_summarizer import summarize_recent_news
-from services.orchestrator_service import OrchestratorService
+
+if TYPE_CHECKING:
+    from services.orchestrator_service import OrchestratorService
 
 
 class LeadContextError(Exception):
@@ -37,7 +39,7 @@ class LeadsService:
     - Lead summary generation
     """
     
-    def __init__(self, orchestrator: OrchestratorService = None):
+    def __init__(self, orchestrator: 'OrchestratorService' = None):
         """Initialize the leads service."""
         self.orchestrator = orchestrator
     
@@ -108,6 +110,9 @@ class LeadsService:
         if company_name:
             # Get market research data from orchestrator
             if self.orchestrator:
+                # Import only when needed to avoid circular imports
+                from services.orchestrator_service import OrchestratorService
+                
                 research_result = self.orchestrator.analyze_competitors(company_name)
                 research_data = research_result.get("data", {})
                 if research_result.get("error"):
