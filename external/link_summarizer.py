@@ -14,7 +14,11 @@ def fetch_page_text(url: str) -> str:
         resp.raise_for_status()
         return extract_text_from_html(resp.text, preserve_newlines=True)
     except Exception as e:
-        logger.error(f"Error fetching {url}: {e}")
+        logger.warning("Failed to fetch webpage content", extra={
+            "error": str(e),
+            "url": url,
+            "status_code": getattr(e, "response", {}).get("status_code", None)
+        })
         return ""
 
 def summarize_text(text: str) -> str:
@@ -37,7 +41,11 @@ def summarize_text(text: str) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
-        logger.error(f"OpenAI API error: {e}")
+        logger.error("Failed to summarize text using OpenAI API", extra={
+            "error": str(e),
+            "model": "gpt-4",
+            "text_length": len(text) if text else 0
+        })
         return "Error summarizing text."
 
 def summarize_recent_news(recent_news_list: List[Dict]) -> Dict[str, str]:
