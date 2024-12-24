@@ -38,22 +38,6 @@ class HubspotService:
         self.tasks_endpoint = f"{self.base_url}/crm/v3/objects/tasks"
         self.emails_search_url = f"{self.base_url}/crm/v3/objects/emails/search"
 
-    def __init__(self, api_key: str, base_url: str = "https://api.hubapi.com"):
-        """
-        Initialize HubSpot service with API credentials.
-        
-        Args:
-            api_key: HubSpot API key
-            base_url: Base URL for HubSpot API (default: https://api.hubapi.com)
-        """
-        self.base_url = base_url.rstrip('/')
-        self.headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        self.max_retries = 3
-        self.retry_delay = 1
-
     @staticmethod
     def format_timestamp(ts: str) -> str:
         """Format ISO8601 timestamp into a more readable format."""
