@@ -16,15 +16,12 @@ from services.hubspot_service import HubspotService
 
 # Initialize HubSpot service
 _hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
-from external.external_api import (
-    market_research,
-    review_previous_interactions,
-    determine_club_season
-)
+from external.external_api import determine_club_season
 from hubspot_integration.data_enrichment import check_competitor_on_website
 from utils.logging_setup import logger
 from utils.doc_reader import read_doc
 from external.link_summarizer import summarize_recent_news
+from services.orchestrator_service import OrchestratorService
 
 
 class LeadContextError(Exception):
@@ -39,6 +36,10 @@ class LeadsService:
     - Lead data enrichment
     - Lead summary generation
     """
+    
+    def __init__(self, orchestrator: OrchestratorService = None):
+        """Initialize the leads service."""
+        self.orchestrator = orchestrator
     
     @staticmethod
     def get_domain_from_email(email: str) -> Optional[str]:
@@ -105,23 +106,30 @@ class LeadsService:
         research_data = {}
         company_name = company_data.get("name", "").strip()
         if company_name:
-            try:
-                research_data = market_research(company_name)
-            except Exception as e:
-                logger.warning(f"Market research failed for '{company_name}': {e}")
-                research_data = {"error": str(e)}
+            # Get market research data from orchestrator
+            if self.orchestrator:
+                research_result = self.orchestrator.analyze_competitors(company_name)
+                research_data = research_result.get("data", {})
+                if research_result.get("error"):
+                    logger.warning(f"Market research failed for '{company_name}': {research_result['error']}")
+                    research_data = {"error": research_result["error"]}
 
-        if "recent_news" in research_data:
-            link_summaries = summarize_recent_news(research_data["recent_news"])
-            for item in research_data["recent_news"]:
-                link = item.get("link", "")
-                item["summary"] = link_summaries.get(link, "No summary available")
+                if "recent_news" in research_data:
+                    link_summaries = summarize_recent_news(research_data["recent_news"])
+                    for item in research_data["recent_news"]:
+                        link = item.get("link", "")
+                        item["summary"] = link_summaries.get(link, "No summary available")
 
-        try:
-            interactions = review_previous_interactions(contact_id)
-        except Exception as e:
-            logger.warning(f"Error reviewing interactions for {contact_id}: {e}")
-            interactions = {"status": "error", "error": str(e)}
+                # Get interaction data from orchestrator
+                interaction_result = self.orchestrator.review_interactions(contact_id)
+                interactions = interaction_result.get("data", {})
+                if interaction_result.get("error"):
+                    logger.warning(f"Error reviewing interactions for {contact_id}: {interaction_result['error']}")
+                    interactions = {"status": "error", "error": interaction_result["error"]}
+            else:
+                logger.warning("No orchestrator service provided, skipping market research and interactions")
+                research_data = {"error": "No orchestrator service available"}
+                interactions = {"status": "error", "error": "No orchestrator service available"}
 
         try:
             season_info = determine_club_season(
@@ -245,7 +253,11 @@ class LeadsService:
             }
 
         company_name = company_data.get("name", "")
-        external_insights = market_research(company_name) if company_name else {"recent_news": []}
+        external_insights = (
+            self.orchestrator.analyze_competitors(company_name).get("data", {})
+            if company_name and self.orchestrator
+            else {"recent_news": []}
+        )
         industry_trends = external_insights.get("recent_news", [])
 
         engaged_assets = engagement_points.get("assets", [])
