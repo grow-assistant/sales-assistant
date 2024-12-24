@@ -1,38 +1,31 @@
 # agents/personalization.py
 
 from typing import Dict, Any
+from datetime import datetime
+from services.leads_service import LeadsService
+from utils.logging_setup import logger
+from utils.doc_reader import read_doc
+from external.external_api import market_research, determine_club_season
 from hubspot_integration.hubspot_api import (
     get_contact_by_email,
     get_contact_properties,
     get_all_notes_for_contact,
     get_associated_company_id,
-    get_company_data,
-    # Update functions assumed to be implemented:
-    # update_hubspot_contact_property,
-    # update_hubspot_company_property
+    get_company_data
 )
-from external.external_api import market_research, determine_club_season
-from utils.logging_setup import logger
-import os
-from utils.doc_reader import read_doc
+
+# Initialize the leads service
+_leads_service = LeadsService()
 
 
 def generate_lead_summary(lead_email: str) -> Dict[str, Any]:
     """
     Gather and summarize lead's info according to the personalization steps.
-    Checks HubSpot fields first to avoid unnecessary recomputation.
-    Also attempts to load the correct outreach template based on job title.
+    
+    This function now delegates to the LeadsService while maintaining
+    the same interface for backward compatibility.
     """
-    contact_id = get_contact_by_email(lead_email)
-    if not contact_id:
-        logger.warning("No contact found for given email.")
-        return {}
-
-    # Fetch contact and related company data
-    props = get_contact_properties(contact_id)
-    notes = get_all_notes_for_contact(contact_id)
-    company_id = get_associated_company_id(contact_id)
-    company_data = get_company_data(company_id) if company_id else {}
+    return _leads_service.generate_lead_summary(lead_email)
 
     # Pull job title (we'll use this to select the template)
     job_title = props.get("jobtitle", "").strip()  # e.g. "Golf Operations Manager"
