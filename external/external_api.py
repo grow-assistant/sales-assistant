@@ -10,15 +10,16 @@ from tenacity import retry, wait_exponential, stop_after_attempt
 import json
 
 from utils.logging_setup import logger
-from hubspot_integration.hubspot_api import (
-    get_contact_by_email,
-    get_contact_properties,
-    get_all_notes_for_contact,
-    get_associated_company_id,
-    get_company_data
-)
+
+# Import HubspotService instead of hubspot_integration.hubspot_api
+from config.settings import HUBSPOT_API_KEY
+from services.hubspot_service import HubspotService
+
+# Initialize hubspot service:
+_hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+
 from utils.logging_setup import logger
-from utils.xai_integration import xai_news_search  # Updated import
+from utils.xai_integration import xai_news_search
 
 ################################################################################
 # CSV-based Season Data
@@ -63,7 +64,7 @@ load_season_data()
 def market_research(company_name: str) -> Dict:
     """
     Example 'market_research' using xai_news_search for a quick summary of recent news.
-    This completely replaces any old snippet with xAI-based content.
+    This replaces any old snippet with xAI-based content.
     """
     if not company_name:
         return {
@@ -74,7 +75,7 @@ def market_research(company_name: str) -> Dict:
 
     query = f"Has {company_name} been in the news lately? Provide a short summary."
     news_response = xai_news_search(query)
-    
+
     if not news_response:
         # If xAI call failed or returned empty
         return {
@@ -83,16 +84,14 @@ def market_research(company_name: str) -> Dict:
             "status": "error"
         }
 
-    # If you want to parse the 'news_response' into structured data, do it here.
-    # For now, we create a minimal 'recent_news' list with the entire response as a snippet.
     return {
         "company_overview": news_response,
         "recent_news": [
             {
                 "title": "Recent News",
                 "snippet": news_response,
-                "link": "",       # If xAI returns links, place them here
-                "date": ""        # If xAI returns a date, parse it here
+                "link": "",
+                "date": ""
             }
         ],
         "status": "success"
@@ -115,10 +114,11 @@ def safe_int(value: Any, default: int = 0) -> int:
 
 def review_previous_interactions(contact_id: str) -> Dict[str, Union[int, str]]:
     """
-    Review previous interactions using HubSpot data.
+    Review previous interactions using the HubSpotService now.
     """
     try:
-        lead_data = get_contact_properties(contact_id)
+        # Equivalent to get_contact_properties
+        lead_data = _hubspot.get_contact_properties(contact_id)
         if not lead_data:
             logger.warning(f"No lead data found for contact_id {contact_id}")
             return {
@@ -131,7 +131,9 @@ def review_previous_interactions(contact_id: str) -> Dict[str, Union[int, str]]:
 
         emails_opened = safe_int(lead_data.get("total_opens_weekly"))
         emails_sent = safe_int(lead_data.get("num_contacted_notes"))
-        notes = get_all_notes_for_contact(contact_id)
+
+        # Equivalent to get_all_notes_for_contact
+        notes = _hubspot.get_all_notes_for_contact(contact_id)
 
         meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
         meetings_held = sum(

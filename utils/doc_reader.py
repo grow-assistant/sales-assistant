@@ -1,9 +1,9 @@
+# utils/doc_reader.py
+
 from pathlib import Path
 from typing import Optional, Dict, List
 from dataclasses import dataclass
-
-import logging
-logger = logging.getLogger(__name__)
+from utils.logging_setup import logger
 
 @dataclass
 class DocumentMetadata:
@@ -33,35 +33,33 @@ class DocReader:
     """
     
     def __init__(self, docs_dir: Optional[str] = None) -> None:
-        """Initialize the DocReader with a docs directory.
+        """
+        Initialize the DocReader with a docs directory.
         
         Args:
             docs_dir: Optional path to the docs directory. If not provided,
-                     defaults to 'docs' in the project root.
+                      defaults to 'docs' in the project root.
         """
         self.project_root: Path = Path(__file__).parent.parent
         self.docs_dir: Path = Path(docs_dir) if docs_dir else self.project_root / 'docs'
         self.supported_extensions: List[str] = ['.txt', '.md']
     
     def get_doc_path(self, doc_name: str) -> Optional[Path]:
-        """Find the document path for the given document name.
+        """
+        Find the document path for the given document name.
         
         Args:
             doc_name: Name of the document to find (with or without extension)
             
         Returns:
             Path object if document exists, None otherwise
-            
-        Example:
-            >>> reader = DocReader()
-            >>> path = reader.get_doc_path('brand/guidelines')
-            >>> print(path)
-            Path('docs/brand/guidelines.txt')
         """
+        # If doc_name already has an extension, check directly
         if any(doc_name.endswith(ext) for ext in self.supported_extensions):
             full_path = self.docs_dir / doc_name
             return full_path if full_path.exists() else None
         
+        # Otherwise, try each supported extension in turn
         for ext in self.supported_extensions:
             full_path = self.docs_dir / f"{doc_name}{ext}"
             if full_path.exists():
@@ -70,17 +68,14 @@ class DocReader:
         return None
     
     def read_file(self, file_path: Path) -> Optional[str]:
-        """Read content from a file with error handling.
+        """
+        Read content from a file with error handling.
         
         Args:
             file_path: Path to the file to read
             
         Returns:
             String content of the file if successful, None if error occurs
-            
-        Raises:
-            OSError: If file cannot be read
-            UnicodeDecodeError: If file encoding is invalid
         """
         try:
             return file_path.read_text(encoding='utf-8')
@@ -89,7 +84,8 @@ class DocReader:
             return None
     
     def read_doc(self, doc_name: str, fallback_content: str = "") -> str:
-        """Read document content with fallback strategy.
+        """
+        Read document content with fallback strategy.
         
         Args:
             doc_name: Name of the document to read
@@ -97,12 +93,6 @@ class DocReader:
             
         Returns:
             Content of the document or fallback content if document cannot be read
-            
-        Example:
-            >>> reader = DocReader()
-            >>> content = reader.read_doc('brand/guidelines', 'Default content')
-            >>> print(content[:50])
-            '# Brand Guidelines...'
         """
         doc_path = self.get_doc_path(doc_name)
         
@@ -112,23 +102,18 @@ class DocReader:
                 logger.info(f"Successfully read document: {doc_path}")
                 return content
         
-        logger.warning(f"Could not read document '{doc_name}', using fallback content")
+        logger.warning(f"Could not read document '{doc_name}'; using fallback content.")
         return fallback_content
     
     def get_all_docs(self, directory: Optional[str] = None) -> Dict[str, str]:
-        """Get all documents in a directory.
+        """
+        Get all documents in a directory.
         
         Args:
             directory: Optional subdirectory to search in
             
         Returns:
             Dictionary mapping relative file paths to their content
-            
-        Example:
-            >>> reader = DocReader()
-            >>> docs = reader.get_all_docs('brand')
-            >>> print(list(docs.keys()))
-            ['brand/guidelines.txt']
         """
         docs: Dict[str, str] = {}
         search_dir = self.docs_dir / (directory or "")
@@ -147,19 +132,14 @@ class DocReader:
         return docs
     
     def summarize_domain_documents(self, docs_dict: Dict[str, str]) -> str:
-        """Create a summary of multiple domain documents.
+        """
+        Create a summary of multiple domain documents.
         
         Args:
             docs_dict: Dictionary mapping document names to their content
             
         Returns:
             String containing summaries of all documents
-            
-        Example:
-            >>> reader = DocReader()
-            >>> docs = {'test.txt': 'Test content'}
-            >>> print(reader.summarize_domain_documents(docs))
-            'Document: test.txt\\nPreview: Test content'
         """
         summaries: List[str] = []
         for doc_name, content in docs_dict.items():
@@ -170,23 +150,28 @@ class DocReader:
         
         return "\n".join(summaries)
 
+#
+#  Top-Level Convenience Function:
+#  --------------------------------
+#  This allows you to do:
+#    from utils.doc_reader import read_doc
+#  in your code, which calls the DocReader internally.
+#
+def read_doc(doc_name: str, fallback_content: str = "") -> str:
+    """A convenience function so we can do `from utils.doc_reader import read_doc`."""
+    return DocReader().read_doc(doc_name, fallback_content)
+
 def summarize_domain_documents(docs_dict: Dict[str, str]) -> str:
-    """Standalone function to summarize domain documents.
-    
-    This is a convenience function that creates a DocReader instance
-    and calls its summarize_domain_documents method.
-    
-    Args:
-        docs_dict: Dictionary mapping document names to their content
-        
-    Returns:
-        String containing summaries of all documents
+    """
+    Standalone function to summarize domain documents.
     """
     reader = DocReader()
     return reader.summarize_domain_documents(docs_dict)
 
 def verify_docs_setup():
-    """Verify the docs setup and print status"""
+    """
+    Verify the docs setup and print status.
+    """
     doc_reader = DocReader()
     
     # Check docs directory

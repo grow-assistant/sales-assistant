@@ -5,3 +5,48 @@
 2024-12-24 20:46:39,384 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
 2024-12-24 20:47:23,644 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
 2024-12-24 20:47:23,975 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
+2024-12-24 15:15:57,089 - utils.logging_setup - INFO - Successfully loaded season data
+2024-12-24 15:17:44,370 - utils.logging_setup - INFO - Successfully loaded season data
+2024-12-24 15:17:44,916 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-24 15:17:52,859 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 15:17:52,896 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 15:17:52,909 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' found in SQL. Using local data.
+2024-12-24 15:17:52,910 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 15:17:52,910 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 15:17:52,911 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-24 15:17:52,912 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=9); updating record.
+2024-12-24 15:17:52,915 - utils.logging_setup - DEBUG - Company found (company_id=7); updating HS fields + season data if needed.
+2024-12-24 15:17:52,917 - utils.logging_setup - DEBUG - Updating existing lead_properties (property_id=9) for lead_id=9.
+2024-12-24 15:17:52,919 - utils.logging_setup - DEBUG - Updating existing company_properties (property_id=7) for company_id=7.
+2024-12-24 15:17:52,921 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-24 15:17:52,922 - utils.logging_setup - DEBUG - Extracted lead data fields:
+2024-12-24 15:17:52,922 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-24 15:17:52,922 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': "You are a helpful assistant that provides a brief overview of a club's location and amenities."}, {'role': 'user', 'content': 'Please provide a concise overview about Short Hills Club in Millburn, NJ, highlighting amenities like no specific amenities. Only provide one short paragraph.'}], 'model': 'grok-beta', 'stream': False, 'temperature': 0.5}
+2024-12-24 15:17:54,915 - utils.logging_setup - DEBUG - xAI response=Short Hills Club, located in Millburn, NJ, offers a serene escape with its lush landscapes and elegant facilities, providing members with an exclusive environment for relaxation and social gatherings.
+2024-12-24 15:17:54,922 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': 'You are a helpful assistant that provides concise summaries of recent club news.'}, {'role': 'user', 'content': "Tell me about any recent news for Short Hills Club. If none exists, respond with 'has not been in the news.'"}], 'model': 'grok-beta', 'stream': False, 'temperature': 0}
+2024-12-24 15:17:55,972 - utils.logging_setup - DEBUG - xAI response=Short Hills Club **has not been in the news.**
+2024-12-24 15:17:55,975 - utils.logging_setup - WARNING - No .md file mapped for profile_type='fallback'. Using fallback body...
+2024-12-24 15:17:55,975 - utils.logging_setup - WARNING - Markdown body is empty. Using default fallback body.
+2024-12-24 15:17:55,975 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': "You are a helpful assistant that provides a brief overview of a club's location and amenities."}, {'role': 'user', 'content': 'Please provide a concise overview about Short Hills Club in Millburn, NJ, highlighting amenities like no specific amenities. Only provide one short paragraph.'}], 'model': 'grok-beta', 'stream': False, 'temperature': 0.5}
+2024-12-24 15:17:57,609 - utils.logging_setup - DEBUG - xAI response=Short Hills Club, located in Millburn, NJ, is a prestigious private club offering a range of amenities including an 18-hole golf course, tennis courts, swimming facilities, and a modern clubhouse with dining options.
+2024-12-24 15:17:57,611 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': 'You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.'}, {'role': 'user', 'content': "Original Subject: Quick Question\nOriginal Body: Hello Friend,\n\nAs you look forward to next season, I'd love to connect on a quick call to discuss how Swoop can streamline operations at Short Hills Club. Let me know if you have a few minutes this week.\n\nBest,\nYour Name\n\nLead Info:\n- First Name: \n- Company: Short Hills Club\n- Role: \n\nAdditional Club Context:\nShort Hills Club, located in Millburn, NJ, is a prestigious private club offering a range of amenities including an 18-hole golf course, tennis courts, swimming facilities, and a modern clubhouse with dining options.\n\nInstructions:\n1. Replace placeholders like [ClubName] with the actual name.\n2. Use the person's real first name if applicable.\n3. Keep the core structure and Swoop info.\n4. Focus on the business value and problem-solving aspects.\n5. Avoid presumptive descriptions of club features or scenery.\n6. Keep references to club specifics brief and relevant to the service.\n7. Return in the format:\n   Subject: <subject>\n   Body: <body>"}], 'model': 'grok-beta', 'stream': False, 'temperature': 0}
+2024-12-24 15:18:01,704 - utils.logging_setup - DEBUG - xAI response=Subject: Streamline Operations at Short Hills Club
+
+Body: Hello,
+
+As you prepare for the upcoming season at Short Hills Club, I'd like to discuss how Swoop can enhance your club's operational efficiency. Our solutions are designed to:
+
+- **Optimize Staff Scheduling:** Ensure your team is where they need to be, when they need to be there, reducing labor costs and improving service.
+- **Improve Member Experience:** Streamline booking processes for golf, dining, and events, making every interaction smoother for your members.
+- **Enhance Financial Management:** Provide real-time insights into your club's financial health, helping with budgeting and forecasting.
+
+Could we schedule a brief call this week to explore how these benefits could specifically apply to Short Hills Club?
+
+Best,
+Your Name
+2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].
+2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Streamline Operations at Short Hills Club
+2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Streamline Operations at Short Hills Club
+2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-24 15:18:03,225 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r5643389791894814519
+2024-12-24 15:18:03,225 - utils.logging_setup - DEBUG - Gmail draft created: r5643389791894814519
