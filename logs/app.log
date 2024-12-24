@@ -1,0 +1,7 @@
+2024-12-24 20:44:53,997 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
+2024-12-24 20:45:54,734 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
+2024-12-24 20:45:55,038 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
+2024-12-24 20:46:39,023 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
+2024-12-24 20:46:39,384 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
+2024-12-24 20:47:23,644 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
+2024-12-24 20:47:23,975 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.

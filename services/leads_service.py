@@ -70,7 +70,7 @@ class LeadsService:
                 json.dump(lead_sheet, f, indent=2, ensure_ascii=False)
             logger.info(f"Lead context saved for testing: {file_path.resolve()}")
         except Exception as e:
-            logger.error(f"Failed to save lead context: {e}")
+            logger.warning(f"Failed to save lead context (non-critical): {e}")
 
     def prepare_lead_context(self, lead_email: str) -> Dict[str, Any]:
         """
@@ -82,15 +82,11 @@ class LeadsService:
         """
         contact_id = _hubspot.get_contact_by_email(lead_email)
         if not contact_id:
-            msg = f"No contact found for email: {lead_email}"
-            logger.error(msg)
-            raise LeadContextError(msg)
+            raise LeadContextError(f"No contact found for email: {lead_email}")
 
         lead_data = _hubspot.get_lead_data_from_hubspot(lead_email)
         if not lead_data:
-            msg = f"No HubSpot lead data found for contact: {contact_id}"
-            logger.error(msg)
-            raise LeadContextError(msg)
+            raise LeadContextError(f"No HubSpot lead data found for contact: {contact_id}")
 
         try:
             lead_emails = _hubspot.get_all_emails_for_contact(contact_id)

@@ -9,6 +9,7 @@ from datetime import datetime
 from dateutil.parser import parse as parse_date
 from tenacity import retry, stop_after_attempt, wait_fixed
 from config.settings import logger
+from utils.exceptions import HubSpotError
 
 
 class HubspotService:
@@ -78,12 +79,18 @@ class HubspotService:
             resp.raise_for_status()
             data = resp.json()
             results = data.get("results", [])
-            lead_ids = [res.get("id") for res in results if res.get("id")]
-            logger.info(f"Retrieved {len(lead_ids)} lead(s) from HubSpot.")
-            return lead_ids
+            leads = [{
+                "id": res.get("id"),
+                "email": res.get("properties", {}).get("email"),
+                "firstname": res.get("properties", {}).get("firstname"),
+                "lastname": res.get("properties", {}).get("lastname"),
+                "company": res.get("properties", {}).get("company"),
+                "jobtitle": res.get("properties", {}).get("jobtitle")
+            } for res in results]
+            logger.info(f"Retrieved {len(leads)} lead(s) from HubSpot.")
+            return leads
         except requests.RequestException as e:
-            logger.error(f"Error fetching leads: {str(e)}")
-            return []
+            raise HubSpotError(f"Error fetching leads: {str(e)}")
 
     def parse_email_body(self, body: str, recipient_email: str) -> dict:
         """Parse the email body into components: campaign, subject, text."""
@@ -178,8 +185,7 @@ class HubspotService:
                     has_more = False
             
             except requests.RequestException as e:
-                logger.error(f"Error fetching emails for contact {contact_id}: {e}")
-                break
+                raise HubSpotError(f"Error fetching emails for contact {contact_id}: {e}")
 
         return all_emails
 
@@ -213,9 +219,8 @@ class HubspotService:
         try:
             response = requests.post(url, headers=self.headers, json=payload, timeout=10)
             response.raise_for_status()
-        except requests.RequestException as e: 
-            logger.error(f"Network error searching for contact by email {email}: {str(e)}")
-            return None
+        except requests.RequestException as e:
+            raise HubSpotError(f"Network error searching for contact by email {email}: {str(e)}")
 
         data = response.json()
         results = data.get("results", [])
@@ -248,8 +253,7 @@ class HubspotService:
             data = response.json()
             return data.get("properties", {})
         except requests.RequestException as e:
-            logger.error(f"Error fetching contact properties: {str(e)}")
-            return {}
+            raise HubSpotError(f"Error fetching contact properties: {str(e)}")
 
     def get_all_notes_for_contact(self, contact_id: str) -> list:
         """

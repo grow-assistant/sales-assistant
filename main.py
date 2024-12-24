@@ -5,7 +5,7 @@ import logging
 import datetime
 
 from utils.logging_setup import logger
-from agents.context_preparer import prepare_lead_context, LeadContextError
+from utils.exceptions import LeadContextError
 from utils.xai_integration import (
     personalize_email_with_xai,
     xai_news_search,
@@ -15,10 +15,14 @@ from utils.xai_integration import (
 from utils.gmail_integration import create_draft, search_inbound_messages_for_email
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
-from config.settings import DEBUG_MODE
+from config.settings import DEBUG_MODE, HUBSPOT_API_KEY
 from scheduling.extended_lead_storage import upsert_full_lead
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
+from services.leads_service import LeadsService
+
+# Initialize services
+leads_service = LeadsService()
 
 ###############################################################################
 # Attempt to gather last inbound snippet from:
@@ -100,7 +104,7 @@ def main():
         else:
             if DEBUG_MODE:
                 logger.debug(f"Lead '{email}' not found in SQL; fetching from external source...")
-            lead_sheet = prepare_lead_context(email)
+            lead_sheet = leads_service.prepare_lead_context(email)
 
         # 3) Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
