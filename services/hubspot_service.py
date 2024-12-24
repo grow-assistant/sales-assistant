@@ -336,7 +336,14 @@ class HubspotService:
         Returns:
             Company data if found, None otherwise
         """
-        url = f"{self.companies_endpoint}/{company_id}"
+        url = (
+            f"{self.companies_endpoint}/{company_id}"
+            f"?properties=domain"
+            f"&properties=name"
+            f"&properties=hs_lastmodifieddate"
+            f"&properties=city"
+            f"&properties=state"
+        )
         try:
             response = requests.get(url, headers=self.headers, timeout=10)
             response.raise_for_status()

@@ -56,15 +56,24 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         lead_hs_createdate = safe_parse_date(lead_created_str)
         lead_hs_lastmodified = safe_parse_date(lead_lastmod_str)
 
-        # 3) Company static data
-        static_company_name = company_data.get("name", "")
-        static_city = company_data.get("city", "")
-        static_state = company_data.get("state", "")
+        # ------------------------------------------------------------------------------------
+        # 3) Company data now pulled from "company_data['properties']" instead of top-level.
+        # ------------------------------------------------------------------------------------
+        # OLD:
+        # static_company_name = company_data.get("name", "")
+        # static_city = company_data.get("city", "")
+        # static_state = company_data.get("state", "")
+
+        # NEW:
+        company_props = company_data.get("properties", {})
+        static_company_name = company_props.get("name", "")
+        static_city = company_props.get("city", "")
+        static_state = company_props.get("state", "")
 
         # 4) Company HubSpot data
-        company_hs_id = company_data.get("hs_object_id", "")
-        company_created_str = company_data.get("createdate", "")
-        company_lastmod_str = company_data.get("hs_lastmodifieddate", "")
+        company_hs_id = company_props.get("hs_object_id", "")
+        company_created_str = company_props.get("createdate", "")
+        company_lastmod_str = company_props.get("hs_lastmodifieddate", "")
 
         company_hs_createdate = safe_parse_date(company_created_str)
         company_hs_lastmodified = safe_parse_date(company_lastmod_str)
@@ -87,9 +96,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         peak_season_end = season_data.get("peak_season_end", "")      # "08-31"
 
         # 7) Other company_properties (dynamic)
-        annualrevenue = company_data.get("annualrevenue", "")
+        annualrevenue = company_props.get("annualrevenue", "")
         company_overview = analysis_data.get("research_data", {}).get("company_overview", "")
-        # Note: peak_season_start / peak_season_end are removed from company_properties now
 
         # ==========================================================
         # 1. Upsert into leads (static fields + HS fields)
@@ -147,6 +155,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 2. Upsert into companies (static fields + HS fields + season data)
         # ==========================================================
         company_id = None
+
+        # Check if we have a name for the company. If empty -> skip
         if not static_company_name.strip():
             logger.debug("No company name found, skipping upsert for companies.")
         else:
@@ -282,7 +292,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
             # competitor_analysis might be stored in either place, but we keep it here
             research_data = analysis_data.get("research_data", {})
-            annualrevenue = company_data.get("annualrevenue", "")
+            annualrevenue = company_props.get("annualrevenue", "")
             company_overview = research_data.get("company_overview", "")
 
             if cp_row:
