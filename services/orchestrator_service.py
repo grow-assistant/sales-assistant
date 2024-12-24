@@ -21,7 +21,12 @@ from external.external_api import (
     review_previous_interactions
 )
 from utils.logging_setup import logger
-from utils.exceptions import LeadContextError, HubSpotError
+from utils.exceptions import (
+    LeadContextError,
+    HubSpotError,
+    ExternalAPIError,
+    OpenAIError
+)
 from utils.doc_reader import DocReader
 from config.constants import DEFAULTS
 
@@ -38,28 +43,104 @@ class OrchestratorService:
 
     def get_lead_data(self, contact_id: str) -> Dict[str, Any]:
         """Get lead data from HubSpot."""
-        return self.hubspot_service.get_lead_data_from_hubspot(contact_id)
+        try:
+            data = self.hubspot_service.get_lead_data_from_hubspot(contact_id)
+            return {
+                "status": "success",
+                "data": data,
+                "error": None
+            }
+        except HubSpotError as e:
+            error_msg = f"HubSpot error fetching lead data for {contact_id}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "data": {},
+                "error": error_msg
+            }
+        except Exception as e:
+            error_msg = f"Unexpected error fetching lead data for {contact_id}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "data": {},
+                "error": error_msg
+            }
 
     def review_interactions(self, contact_id: str) -> Dict[str, Any]:
         """Review previous interactions for a lead."""
         try:
-            return review_previous_interactions(contact_id)
+            data = review_previous_interactions(contact_id)
+            return {
+                "status": "success",
+                "data": data,
+                "error": None
+            }
+        except ExternalAPIError as e:
+            error_msg = f"External API error reviewing interactions for {contact_id}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "data": {},
+                "error": error_msg
+            }
         except Exception as e:
-            raise LeadContextError(f"Error reviewing interactions for {contact_id}: {e}")
+            error_msg = f"Unexpected error reviewing interactions for {contact_id}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "data": {},
+                "error": error_msg
+            }
 
     def analyze_competitors(self, company_name: str) -> Dict[str, Any]:
         """Analyze competitors for a company."""
         try:
-            return market_research(company_name)
+            data = market_research(company_name)
+            return {
+                "status": "success",
+                "data": data,
+                "error": None
+            }
+        except ExternalAPIError as e:
+            error_msg = f"External API error analyzing competitors for {company_name}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "data": {},
+                "error": error_msg
+            }
         except Exception as e:
-            raise LeadContextError(f"Error analyzing competitors for {company_name}: {e}")
+            error_msg = f"Unexpected error analyzing competitors for {company_name}: {str(e)}"
+            self.logger.error(error_msg)
+            return {
+                "status": "error",
+                "data": {},
+                "error": error_msg
+            }
 
     def personalize_message(self, lead_data: Dict[str, Any]) -> Dict[str, Any]:
         """Personalize a message for a lead."""
-        lead_email = lead_data.get("email")
-        if not lead_email:
-            raise LeadContextError("No email found in lead data")
-        return self.leads_service.generate_lead_summary(lead_email)
+        try:
+            lead_email = lead_data.get("email")
+            if not lead_email:
+                return {
+                    "status": "error",
+                    "data": {},
+                    "error": "No email found in lead data"
+                }
+            data = self.leads_service.generate_lead_summary(lead_email)
+            return {
+                "status": "success",
+                "data": data,
+                "error": None
+            }
+        except Exception as e:
+            return {
+                "status": "error",
+                "data": {},
+                "error": str(e)
+            }
 
     def create_context_summary(self, context: Dict[str, Any]) -> str:
         """Create a summary of the gathered information for the Sales Leader."""
@@ -120,8 +201,13 @@ class OrchestratorService:
                     messages=context["messages"],
                     temperature=0
                 )
+            except openai.error.OpenAIError as e:
+                error_msg = f"OpenAI API error in decision loop: {str(e)}"
+                self.logger.error(error_msg)
+                raise OpenAIError(error_msg)
             except Exception as e:
-                self.logger.error(f"Error calling OpenAI API in decision loop: {str(e)}")
+                error_msg = f"Unexpected error in decision loop: {str(e)}"
+                self.logger.error(error_msg)
                 return False
 
             assistant_message = response.choices[0].message

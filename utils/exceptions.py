@@ -25,3 +25,7 @@ class ConfigurationError(SwoopError):
 class ExternalAPIError(SwoopError):
     """Raised when there's an error with external API calls."""
     pass
+
+class OpenAIError(SwoopError):
+    """Raised when there's an error with OpenAI API calls."""
+    pass
