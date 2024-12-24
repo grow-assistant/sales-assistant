@@ -11,15 +11,11 @@ from datetime import datetime
 from pathlib import Path
 
 from config.settings import PROJECT_ROOT, DEBUG_MODE
-from hubspot_integration.hubspot_api import (
-    get_contact_by_email,
-    get_lead_data_from_hubspot,
-    get_associated_company_id,
-    get_company_data,
-    get_all_emails_for_contact,
-    get_contact_properties,
-    get_all_notes_for_contact
-)
+from config.settings import HUBSPOT_API_KEY
+from services.hubspot_service import HubspotService
+
+# Initialize HubSpot service
+_hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
 from external.external_api import (
     market_research,
     review_previous_interactions,
@@ -84,28 +80,28 @@ class LeadsService:
         This maintains the same interface as the original function
         in context_preparer.py for backward compatibility.
         """
-        contact_id = get_contact_by_email(lead_email)
+        contact_id = _hubspot.get_contact_by_email(lead_email)
         if not contact_id:
             msg = f"No contact found for email: {lead_email}"
             logger.error(msg)
             raise LeadContextError(msg)
 
-        lead_data = get_lead_data_from_hubspot(contact_id)
+        lead_data = _hubspot.get_lead_data_from_hubspot(lead_email)
         if not lead_data:
             msg = f"No HubSpot lead data found for contact: {contact_id}"
             logger.error(msg)
             raise LeadContextError(msg)
 
         try:
-            lead_emails = get_all_emails_for_contact(contact_id)
+            lead_emails = _hubspot.get_all_emails_for_contact(contact_id)
         except Exception as e:
             logger.error(f"Error fetching emails for contact {contact_id}: {e}")
             lead_emails = []
 
         lead_data["emails"] = lead_emails
 
-        company_id = get_associated_company_id(contact_id)
-        company_data = get_company_data(company_id) if company_id else {}
+        company_id = _hubspot.get_associated_company_id(contact_id)
+        company_data = _hubspot.get_company_data(company_id) if company_id else {}
 
         domain = self.get_domain_from_email(lead_email)
         competitor = ""
@@ -181,15 +177,15 @@ class LeadsService:
         This maintains the same interface as the original function
         in personalization.py for backward compatibility.
         """
-        contact_id = get_contact_by_email(lead_email)
+        contact_id = _hubspot.get_contact_by_email(lead_email)
         if not contact_id:
             logger.warning("No contact found for given email.")
             return {}
 
-        props = get_contact_properties(contact_id)
-        notes = get_all_notes_for_contact(contact_id)
-        company_id = get_associated_company_id(contact_id)
-        company_data = get_company_data(company_id) if company_id else {}
+        props = _hubspot.get_contact_properties(contact_id)
+        notes = _hubspot.get_all_notes_for_contact(contact_id)
+        company_id = _hubspot.get_associated_company_id(contact_id)
+        company_data = _hubspot.get_company_data(company_id) if company_id else {}
 
         job_title = props.get("jobtitle", "").strip()
         filename_job_title = (
