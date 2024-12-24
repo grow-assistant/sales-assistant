@@ -12,10 +12,19 @@ from config.constants import DEFAULTS
 from agents.functions import call_function
 from utils.doc_reader import DocReader
 from utils.logging_setup import logger
-from config.settings import DEBUG_MODE
+from utils.exceptions import LeadContextError, HubSpotError
+from config.settings import DEBUG_MODE, OPENAI_API_KEY
+from services.orchestrator_service import OrchestratorService
+from services.leads_service import LeadsService
+from services.hubspot_service import HubspotService
 
 load_dotenv()
 openai.api_key = OPENAI_API_KEY
+
+# Initialize services
+_leads_service = LeadsService()
+_hubspot_service = HubspotService()
+_orchestrator_service = OrchestratorService(_leads_service, _hubspot_service)
 
 
 class Context(TypedDict):
@@ -90,10 +99,20 @@ async def run_sales_leader(context: Context) -> OrchestrationResult:
                     continue
 
             logger.info(f"Running step: {func_name}")
-            result_call = call_function(func_name, args, context)
-            if result_call["status"] == "error":
-                logger.error(f"Error in {func_name}: {result_call['content']}")
-                continue
+            if func_name == "get_lead_data_from_hubspot":
+                result = _orchestrator_service.get_lead_data(args["contact_id"])
+            elif func_name == "review_previous_interactions":
+                result = _orchestrator_service.review_interactions(args["contact_id"])
+            elif func_name == "market_research":
+                result = _orchestrator_service.analyze_competitors(args["company_name"])
+            elif func_name == "personalize_message":
+                result = _orchestrator_service.personalize_message(args["lead_data"])
+            else:
+                result_call = call_function(func_name, args, context)
+                if result_call["status"] == "error":
+                    logger.error(f"Error in {func_name}: {result_call['content']}")
+                    continue
+                result = result_call.get("content", {})
 
         # 4) Decision Phase
         logger.info("Preparation complete. Creating context summary and initiating decision phase.")
@@ -114,9 +133,12 @@ async def run_sales_leader(context: Context) -> OrchestrationResult:
         else:
             logger.error("Decision phase failed or timed out.")
 
+    except (LeadContextError, HubSpotError) as e:
+        logger.error(f"Business logic error: {e}")
+        result['error'] = str(e)
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
-        result['error'] = str(e)
+        result['error'] = f"Internal error: {str(e)}"
 
     return result
 

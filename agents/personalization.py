@@ -1,18 +1,7 @@
 # agents/personalization.py
 
 from typing import Dict, Any
-from datetime import datetime
 from services.leads_service import LeadsService
-from utils.logging_setup import logger
-from utils.doc_reader import read_doc
-from external.external_api import market_research, determine_club_season
-from hubspot_integration.hubspot_api import (
-    get_contact_by_email,
-    get_contact_properties,
-    get_all_notes_for_contact,
-    get_associated_company_id,
-    get_company_data
-)
 
 # Initialize the leads service
 _leads_service = LeadsService()
@@ -26,21 +15,6 @@ def generate_lead_summary(lead_email: str) -> Dict[str, Any]:
     the same interface for backward compatibility.
     """
     return _leads_service.generate_lead_summary(lead_email)
-
-    # Pull job title (we'll use this to select the template)
-    job_title = props.get("jobtitle", "").strip()  # e.g. "Golf Operations Manager"
-
-    # Convert the job title to a filename-safe string
-    # e.g., "Golf Operations Manager" -> "golf_operations_manager"
-    filename_job_title = (
-        job_title.lower()
-        .replace("&", "and")
-        .replace("/", "_")
-        .replace(" ", "_")
-        .replace(",", "")
-    )
-
-    template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
 
     # Try to read the template file
     # If we cannot read it, we'll log a warning and use fallback content
@@ -167,45 +141,7 @@ def generate_lead_summary(lead_email: str) -> Dict[str, Any]:
     }
 
 
-def infer_club_type(company_data: Dict[str, Any]) -> str:
-    """
-    Infer the club type from the company's name or other properties.
-    This runs only if the `club_type` property is not already set.
-    """
-    name = company_data.get("name", "").lower()
-    if "country" in name:
-        return "Country Club"
-    elif "resort" in name:
-        return "Resort Course"
-    else:
-        return "Golf Club"
-
-
-def extract_engagement_points(props: Dict[str, Any], notes: Any) -> Dict[str, Any]:
-    """
-    Analyze properties and notes to identify engaged assets and pain points
-    only if needed (i.e., if they're not already stored in HubSpot).
-    """
-    engaged_assets = []
-    pain_points = []
-    engagement_focus = []
-    tone = "Neutral"
-
-    # Example logic for engaged_assets:
-    # If multiple page views:
-    if int(props.get("hs_analytics_num_page_views", 0)) > 5:
-        engaged_assets.append("Pricing Page")
-
-    # Check notes for common pain point keywords:
-    pain_keywords = ["slow beverage service", "staffing issues", "low member engagement", "limited menu options", "high operational costs", "inefficient technology systems", "long wait times on course"]
-
-    note_bodies = [n.get("body", "").lower() for n in notes if n.get("body")]
-    for nb in note_bodies:
-        for kw in pain_keywords:
-            if kw in nb and kw not in pain_points:
-                pain_points.append(kw)
-
-    # Determine tone:
+# These functions have been moved to LeadsService class
     if any("thanks" in nb or "appreciate" in nb for nb in note_bodies):
         tone = "Friendly"
 

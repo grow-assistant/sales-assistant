@@ -1,10 +1,8 @@
 from pathlib import Path
-from typing import Optional, Dict, Union, List
-import logging
+from typing import Optional, Dict, List
 from dataclasses import dataclass
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
+import logging
 logger = logging.getLogger(__name__)
 
 @dataclass
