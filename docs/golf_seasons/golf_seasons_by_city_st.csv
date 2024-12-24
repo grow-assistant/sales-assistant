@@ -1,0 +1,201 @@
+﻿City,State,Start Month,End Month,Year-Round?,Peak Season Start,Peak Season End
+Scottsdale,AZ,N/A,N/A,Yes,October,May
+Orlando,FL,N/A,N/A,Yes,October,April
+Palm Springs,CA,N/A,N/A,Yes,October,May
+Myrtle Beach,SC,March,November,No,March,May
+Phoenix,AZ,N/A,N/A,Yes,October,May
+Tucson,AZ,N/A,N/A,Yes,October,May
+Sedona,AZ,N/A,N/A,Yes,October,May
+Mesa,AZ,N/A,N/A,Yes,October,May
+Chandler,AZ,N/A,N/A,Yes,October,May
+Gilbert,AZ,N/A,N/A,Yes,October,May
+Glendale,AZ,N/A,N/A,Yes,October,May
+Peoria,AZ,N/A,N/A,Yes,October,May
+Fountain Hills,AZ,N/A,N/A,Yes,October,May
+Tempe,AZ,N/A,N/A,Yes,October,May
+Miami,FL,N/A,N/A,Yes,November,March
+Naples,FL,N/A,N/A,Yes,November,April
+Tampa,FL,N/A,N/A,Yes,November,April
+St. Petersburg,FL,N/A,N/A,Yes,November,April
+Jacksonville,FL,N/A,N/A,Yes,October,May
+Boca Raton,FL,N/A,N/A,Yes,November,April
+Palm Beach,FL,N/A,N/A,Yes,November,April
+Sarasota,FL,N/A,N/A,Yes,November,April
+Fort Myers,FL,N/A,N/A,Yes,November,April
+Daytona Beach,FL,N/A,N/A,Yes,November,April
+West Palm Beach,FL,N/A,N/A,Yes,November,April
+Fort Lauderdale,FL,N/A,N/A,Yes,November,April
+Panama City,FL,N/A,N/A,Yes,October,May
+Destin,FL,N/A,N/A,Yes,October,May
+Key West,FL,N/A,N/A,Yes,November,April
+San Diego,CA,N/A,N/A,Yes,October,May
+Carlsbad,CA,N/A,N/A,Yes,October,May
+La Quinta,CA,N/A,N/A,Yes,October,May
+Indian Wells,CA,N/A,N/A,Yes,October,May
+Rancho Mirage,CA,N/A,N/A,Yes,October,May
+Palm Desert,CA,N/A,N/A,Yes,October,May
+Newport Beach,CA,N/A,N/A,Yes,October,May
+Los Angeles,CA,N/A,N/A,Yes,October,May
+Monterey,CA,N/A,N/A,Yes,April,October
+Pebble Beach,CA,N/A,N/A,Yes,April,October
+San Francisco,CA,N/A,N/A,Yes,April,October
+Honolulu,HI,N/A,N/A,Yes,December,April
+Maui (Kahului),HI,N/A,N/A,Yes,December,April
+Kona,HI,N/A,N/A,Yes,December,April
+Kauai (Lihue),HI,N/A,N/A,Yes,December,April
+Hilton Head,SC,March,November,No,March,May
+Kiawah Island,SC,March,November,No,March,May
+Charleston,SC,March,November,No,March,May
+Greenville,SC,April,October,No,May,September
+Pinehurst,NC,April,October,No,May,September
+Wilmington,NC,April,October,No,May,September
+Asheville,NC,April,October,No,May,September
+Charlotte,NC,April,October,No,May,September
+Raleigh,NC,April,October,No,May,September
+Augusta,GA,N/A,N/A,Yes,March,May
+Savannah,GA,N/A,N/A,Yes,March,May
+Sea Island,GA,N/A,N/A,Yes,April,October
+Jekyll Island,GA,N/A,N/A,Yes,April,October
+Atlanta,GA,N/A,N/A,Yes,April,October
+Las Vegas,NV,N/A,N/A,Yes,October,May
+Henderson,NV,N/A,N/A,Yes,October,May
+Mesquite,NV,N/A,N/A,Yes,October,May
+Reno,NV,April,October,No,May,September
+Dallas,TX,N/A,N/A,Yes,October,May
+Fort Worth,TX,N/A,N/A,Yes,October,May
+Austin,TX,N/A,N/A,Yes,October,May
+San Antonio,TX,N/A,N/A,Yes,October,May
+Houston,TX,N/A,N/A,Yes,October,May
+Galveston,TX,N/A,N/A,Yes,October,May
+Corpus Christi,TX,N/A,N/A,Yes,October,May
+El Paso,TX,N/A,N/A,Yes,October,May
+Birmingham,AL,N/A,N/A,Yes,October,May
+Mobile,AL,N/A,N/A,Yes,October,May
+Gulf Shores,AL,N/A,N/A,Yes,October,May
+Biloxi,MS,N/A,N/A,Yes,October,May
+Gulfport,MS,N/A,N/A,Yes,October,May
+Jackson,MS,N/A,N/A,Yes,October,May
+New Orleans,LA,N/A,N/A,Yes,October,May
+Baton Rouge,LA,N/A,N/A,Yes,October,May
+Lafayette,LA,N/A,N/A,Yes,October,May
+Nashville,TN,April,October,No,May,September
+Knoxville,TN,April,October,No,May,September
+Memphis,TN,April,October,No,May,September
+Hot Springs,AR,April,October,No,May,September
+Little Rock,AR,April,October,No,May,September
+Bentonville,AR,April,October,No,May,September
+Branson,MO,April,October,No,May,September
+St. Louis,MO,April,October,No,May,September
+Kansas City,MO,April,October,No,May,September
+Wichita,KS,April,October,No,May,September
+Overland Park,KS,April,October,No,May,September
+Oklahoma City,OK,April,October,No,May,September
+Tulsa,OK,April,October,No,May,September
+Denver,CO,April,October,No,June,August
+Colorado Springs,CO,April,October,No,June,August
+Vail,CO,May,September,No,July,August
+Breckenridge,CO,May,September,No,July,August
+St. George,UT,N/A,N/A,Yes,October,May
+Park City,UT,May,September,No,June,August
+Salt Lake City,UT,April,October,No,May,September
+Santa Fe,NM,April,October,No,May,September
+Albuquerque,NM,April,October,No,May,September
+Las Cruces,NM,April,October,No,May,September
+Coeur d’Alene,ID,May,September,No,June,August
+Boise,ID,April,October,No,June,August
+Missoula,MT,May,September,No,June,August
+Bozeman,MT,May,September,No,June,August
+Whitefish,MT,May,September,No,June,August
+Jackson Hole,WY,May,September,No,July,August
+Cheyenne,WY,May,September,No,June,August
+Sioux Falls,SD,April,October,No,June,August
+Rapid City,SD,May,September,No,June,August
+Fargo,ND,May,September,No,June,August
+Bismarck,ND,May,September,No,June,August
+Minneapolis,MN,May,October,No,June,August
+Brainerd,MN,May,October,No,June,August
+Duluth,MN,May,October,No,June,August
+Kohler,WI,May,October,No,June,August
+Madison,WI,May,October,No,June,August
+Milwaukee,WI,May,October,No,June,August
+Green Bay,WI,May,October,No,June,August
+Traverse City,MI,May,October,No,June,August
+Grand Rapids,MI,May,October,No,June,August
+Detroit,MI,May,October,No,June,August
+Ann Arbor,MI,May,October,No,June,August
+Chicago,IL,April,October,No,May,September
+Rockford,IL,April,October,No,May,September
+Springfield,IL,April,October,No,May,September
+Peoria,IL,April,October,No,May,September
+Indianapolis,IN,April,October,No,May,September
+French Lick,IN,April,October,No,May,September
+Fort Wayne,IN,April,October,No,May,September
+Columbus,OH,April,October,No,May,September
+Cincinnati,OH,April,October,No,May,September
+Cleveland,OH,April,October,No,May,September
+Toledo,OH,April,October,No,May,September
+Philadelphia,PA,April,October,No,May,September
+Pittsburgh,PA,April,October,No,May,September
+Hershey,PA,April,October,No,May,September
+Erie,PA,April,October,No,May,September
+Long Island,NY,April,October,No,May,September
+New York City,NY,April,October,No,May,September
+Rochester,NY,April,October,No,May,September
+Albany,NY,April,October,No,May,September
+Buffalo,NY,April,October,No,May,September
+Boston,MA,April,October,No,May,September
+Cape Cod,MA,April,October,No,May,September
+Worcester,MA,April,October,No,May,September
+Hartford,CT,April,October,No,May,September
+Greenwich,CT,April,October,No,May,September
+New Haven,CT,April,October,No,May,September
+Newport,RI,April,October,No,May,September
+Providence,RI,April,October,No,May,September
+Atlantic City,NJ,April,October,No,May,September
+Bedminster,NJ,April,October,No,May,September
+Princeton,NJ,April,October,No,May,September
+Wilmington,DE,April,October,No,May,September
+Rehoboth Beach,DE,April,October,No,May,September
+Baltimore,MD,April,October,No,May,September
+Ocean City,MD,April,October,No,May,September
+Virginia Beach,VA,March,November,No,April,October
+Williamsburg,VA,March,November,No,April,October
+Richmond,VA,March,November,No,April,October
+White Sulphur Springs,WV,April,October,No,May,September
+Charleston,WV,April,October,No,May,September
+Louisville,KY,April,October,No,May,September
+Lexington,KY,April,October,No,May,September
+Washington,DC,April,October,No,May,September
+Burlington,VT,May,October,No,June,August
+Stowe,VT,May,October,No,June,August
+Hanover,NH,May,October,No,June,August
+Portsmouth,NH,May,October,No,June,August
+Portland,ME,May,October,No,June,August
+Bar Harbor,ME,May,October,No,June,August
+Anchorage,AK,June,August,No,July,July
+Fairbanks,AK,June,August,No,July,July
+Seattle,WA,April,October,No,May,September
+Spokane,WA,April,October,No,May,September
+Bellingham,WA,April,October,No,May,September
+Bandon,OR,N/A,N/A,Yes,April,October
+Portland,OR,April,October,No,May,September
+Bend,OR,April,October,No,June,August
+Santa Barbara,CA,N/A,N/A,Yes,April,October
+Fresno,CA,April,October,No,May,September
+Sacramento,CA,April,October,No,May,September
+Sonoma,CA,April,October,No,May,September
+Napa,CA,April,October,No,May,September
+Lake Tahoe (CA/NV),CA/NV,May,October,No,June,August
+Lake Havasu City,AZ,N/A,N/A,Yes,October,May
+Flagstaff,AZ,May,October,No,June,August
+Lanai,HI,N/A,N/A,Yes,December,April
+Molokai,HI,N/A,N/A,Yes,December,April
+San Juan,PR,N/A,N/A,Yes,December,April
+St. Thomas,VI,N/A,N/A,Yes,December,April
+Tamuning,GU,N/A,N/A,Yes,December,April
+Coronado,CA,N/A,N/A,Yes,April,October
+Sun Valley,ID,May,October,No,June,August
+Bluffton,SC,March,November,No,March,May
+Marco Island,FL,N/A,N/A,Yes,November,April
+Martha’s Vineyard,MA,April,October,No,May,September
+Gaylord,MI,May,October,No,June,August

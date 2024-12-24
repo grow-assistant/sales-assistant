@@ -1,0 +1,11 @@
+# Directories to ignore (optional)
+other_files/
+test_data/
+
+# Ignore dotenv or other environment files
+.env
+
+# Ignore any private key or credential files
+credentials.json
+token.json
+
