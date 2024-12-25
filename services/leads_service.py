@@ -32,70 +32,87 @@ class LeadsService:
     NOTE: The actual data gathering is now centralized in DataGathererService.
     """
     
-    def __init__(self):
-        self._hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+    def __init__(self, data_gatherer_service=None):
+        """Initialize LeadsService with optional DataGathererService."""
+        if data_gatherer_service is None:
+            from services.data_gatherer_service import DataGathererService
+            data_gatherer_service = DataGathererService()
+        self._data_gatherer = data_gatherer_service
 
     def generate_lead_summary(self, lead_email: str) -> Dict[str, Any]:
         """
         Generate a short summary for personalization (subject/body).
-        This does NOT fetch all lead data; for full data, use DataGathererService.
+        Uses DataGathererService to fetch required data.
         """
-        contact_id = self._hubspot.get_contact_by_email(lead_email)
-        if not contact_id:
-            logger.warning("No contact found for given email in generate_lead_summary().")
-            return {}
-
-        props = self._hubspot.get_contact_properties(contact_id)
-        notes = self._hubspot.get_all_notes_for_contact(contact_id)
-        company_id = self._hubspot.get_associated_company_id(contact_id)
-        company_data = self._hubspot.get_company_data(company_id) if company_id else {}
-
-        job_title = (props.get("jobtitle", "") or "").strip()
-        filename_job_title = (
-            job_title.lower()
-            .replace("&", "and")
-            .replace("/", "_")
-            .replace(" ", "_")
-            .replace(",", "")
-        )
-
-        # Example: fetch template if it exists
-        template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
         try:
-            template_content = read_doc(template_path)
-            subject = template_content.get("subject", "Default Subject")
-            body = template_content.get("body", "Default Body")
-        except Exception as e:
-            logger.warning(
-                f"Could not read document '{template_path}', using fallback content. "
-                f"Reason: {str(e)}"
+            # Get all lead data from DataGathererService
+            lead_sheet = self._data_gatherer.gather_lead_data(lead_email)
+            if not lead_sheet:
+                logger.warning("No lead data found for given email in generate_lead_summary().")
+                return {}
+
+            lead_data = lead_sheet.get("lead_data", {})
+            company_data = lead_data.get("company_data", {})
+            analysis = lead_sheet.get("analysis", {})
+
+            # Extract job title for template selection
+            job_title = (lead_data.get("jobtitle", "") or "").strip()
+            filename_job_title = (
+                job_title.lower()
+                .replace("&", "and")
+                .replace("/", "_")
+                .replace(" ", "_")
+                .replace(",", "")
             )
-            subject = "Fallback Subject"
-            body = "Fallback Body..."
 
-        # Basic company/season data as an example
-        city = company_data.get("city", "")
-        state = company_data.get("state", "")
-        season_data = determine_club_season(city, state)
+            # Fetch template if it exists
+            template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
+            try:
+                template_content = read_doc(template_path)
+                subject = template_content.get("subject", "Default Subject")
+                body = template_content.get("body", "Default Body")
+            except Exception as e:
+                logger.warning(
+                    f"Could not read document '{template_path}', using fallback content. "
+                    f"Reason: {str(e)}"
+                )
+                subject = "Fallback Subject"
+                body = "Fallback Body..."
 
-        # Try a quick market research call if needed
-        company_name = company_data.get("name", "")
-        external_insights = market_research(company_name) if company_name else {"recent_news": []}
-        industry_trends = external_insights.get("recent_news", [])
+            # Get season data from analysis
+            season_data = analysis.get("season_data", {})
+            research_data = analysis.get("research_data", {})
+            industry_trends = research_data.get("recent_news", [])
 
-        top_trend_title = (
-            industry_trends[0]["title"]
-            if (industry_trends and "title" in industry_trends[0])
-            else "N/A"
-        )
+            top_trend_title = (
+                industry_trends[0]["title"]
+                if (industry_trends and "title" in industry_trends[0])
+                else "N/A"
+            )
 
-        # Basic summary example
-        lead_care_about = [f"- Potential interest in: {top_trend_title}"]
-        club_context = [
-            f"- Club Name: {company_name or 'N/A'}",
-            f"- Location: {city}, {state}",
-            f"- Peak Season: {season_data.get('peak_season_start', 'Unknown')} to {season_data.get('peak_season_end', 'Unknown')}"
-        ]
+            # Build summary using gathered data
+            lead_care_about = [f"- Potential interest in: {top_trend_title}"]
+            club_context = [
+                f"- Club Name: {company_data.get('name', 'N/A')}",
+                f"- Location: {company_data.get('city', '')}, {company_data.get('state', '')}",
+                f"- Peak Season: {season_data.get('peak_season_start', 'Unknown')} to {season_data.get('peak_season_end', 'Unknown')}"
+            ]
+
+            return {
+                "subject": subject,
+                "body": body,
+                "lead_care_about": lead_care_about,
+                "club_context": club_context
+            }
+
+        except Exception as e:
+            logger.error(f"Error generating lead summary: {str(e)}")
+            return {
+                "subject": "Default Subject",
+                "body": "Default Body",
+                "lead_care_about": [],
+                "club_context": []
+            }
 
         return {
             "lead_summary": lead_care_about,
