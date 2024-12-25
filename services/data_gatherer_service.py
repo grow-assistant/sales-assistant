@@ -1,20 +1,25 @@
 # services/data_gatherer_service.py
 
 import json
+import csv
 import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Union
 from pathlib import Path
 
 import asyncio
 from services.async_hubspot_service import AsyncHubspotService
-from external.external_api import (
-    market_research,
-    review_previous_interactions,
-    determine_club_season
-)
-from hubspot_integration.data_enrichment import check_competitor_on_website
+from utils.xai_integration import xai_news_search
+from utils.web_fetch import fetch_website_html
+from external.external_api import review_previous_interactions
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
+
+# CSV-based Season Data
+CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
+ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_st.csv'
+
+CITY_ST_DATA: Dict = {}
+ST_DATA: Dict = {}
 
 
 class DataGathererService:
@@ -29,6 +34,8 @@ class DataGathererService:
 
     def __init__(self):
         self._hubspot = AsyncHubspotService(api_key=HUBSPOT_API_KEY)
+        # Load season data at initialization
+        self.load_season_data()
 
     async def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
         """Gather all HubSpot data asynchronously."""
@@ -71,15 +78,15 @@ class DataGathererService:
 
         competitor = ""
         if parsed_company_data.get("website"):
-            competitor = check_competitor_on_website(parsed_company_data["website"]) or ""
+            competitor = self.check_competitor_on_website(parsed_company_data["website"]) or ""
 
         # 5) External calls: Interactions, market research, season info
         company_name = parsed_company_data.get("name", "").strip()
-        research_data = market_research(company_name) if company_name else {}
+        research_data = self.market_research(company_name) if company_name else {}
         interactions = review_previous_interactions(contact_id)
         city = parsed_company_data.get("city", "")
         state = parsed_company_data.get("state", "")
-        season_info = determine_club_season(city, state)
+        season_info = self.determine_club_season(city, state)
 
         # 6) Build final lead_sheet for consistent usage across the app
         lead_sheet = {
@@ -118,6 +125,112 @@ class DataGathererService:
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
+    def check_competitor_on_website(self, domain: str) -> str:
+        """
+        Check if Jonas Club Software is mentioned on the website.
+        
+        Args:
+            domain (str): The domain to check (without http/https)
+            
+        Returns:
+            str: "Jonas" if competitor is found, empty string otherwise
+        """
+        if not domain:
+            logger.warning("No domain provided for competitor check")
+            return ""
+
+        # Build URL carefully
+        url = domain.strip().lower()
+        if not url.startswith("http"):
+            url = f"https://{url}"
+
+        html = fetch_website_html(url)
+        if not html:
+            logger.warning(
+                "Could not fetch HTML for domain",
+                extra={
+                    "domain": domain,
+                    "error": "Possible Cloudflare block"
+                }
+            )
+            return ""
+
+        # If we have HTML, proceed with competitor checks
+        competitor_mentions = [
+            "jonas club software",
+            "jonas software",
+            "jonasclub",
+            "jonas club"
+        ]
+
+        for mention in competitor_mentions:
+            if mention in html.lower():
+                logger.info(
+                    "Found competitor mention on website",
+                    extra={
+                        "domain": domain,
+                        "mention": mention
+                    }
+                )
+                return "Jonas"
+
+        return ""
+
+    def market_research(self, company_name: str) -> Dict[str, Any]:
+        """
+        Perform market research for a company using xAI news search.
+        
+        Args:
+            company_name: Name of the company to research
+            
+        Returns:
+            Dictionary containing company overview and recent news
+        """
+        if not company_name:
+            logger.warning("No company name provided for market research")
+            return {
+                "company_overview": "",
+                "recent_news": [],
+                "status": "error"
+            }
+
+        query = f"Has {company_name} been in the news lately? Provide a short summary."
+        news_response = xai_news_search(query)
+
+        if not news_response:
+            logger.warning(
+                "Failed to fetch news for company",
+                extra={
+                    "company": company_name,
+                    "status": "error"
+                }
+            )
+            return {
+                "company_overview": f"Could not fetch recent events for {company_name}",
+                "recent_news": [],
+                "status": "error"
+            }
+
+        logger.info(
+            "Market research completed successfully",
+            extra={
+                "company": company_name,
+                "has_news": bool(news_response)
+            }
+        )
+        return {
+            "company_overview": news_response,
+            "recent_news": [
+                {
+                    "title": "Recent News",
+                    "snippet": news_response,
+                    "link": "",
+                    "date": ""
+                }
+            ],
+            "status": "success"
+        }
+
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
         Save the lead_sheet dictionary to 'test_data/lead_contexts' as a JSON file.
@@ -157,3 +270,96 @@ class DataGathererService:
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         safe_email = lead_email.replace("@", "_").replace(".", "_")
         return f"lead_context_{safe_email}_{timestamp}.json"
+
+    def load_season_data(self) -> None:
+        """Load golf season data from CSV files into CITY_ST_DATA, ST_DATA dictionaries."""
+        global CITY_ST_DATA, ST_DATA
+        try:
+            with CITY_ST_CSV.open('r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    city = row['City'].strip().lower()
+                    st = row['State'].strip().lower()
+                    CITY_ST_DATA[(city, st)] = row
+
+            with ST_CSV.open('r', encoding='utf-8-sig') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    st = row['State'].strip().lower()
+                    ST_DATA[st] = row
+
+            logger.info("Successfully loaded golf season data", extra={
+                "city_state_count": len(CITY_ST_DATA),
+                "state_count": len(ST_DATA)
+            })
+        except Exception as e:
+            logger.error("Failed to load golf season data", extra={
+                "error": str(e),
+                "city_st_path": str(CITY_ST_CSV),
+                "st_path": str(ST_CSV)
+            })
+            raise
+
+    def determine_club_season(self, city: str, state: str) -> dict:
+        """
+        Return the peak season data for the given city/state based on CSV lookups.
+        """
+        city_key = (city.lower(), state.lower())
+        row = CITY_ST_DATA.get(city_key)
+
+        if not row:
+            row = ST_DATA.get(state.lower())
+
+        if not row:
+            # Default if not found
+            return {
+                "year_round": "Unknown",
+                "start_month": "N/A",
+                "end_month": "N/A",
+                "peak_season_start": "05-01",
+                "peak_season_end": "08-31"
+            }
+
+
+        year_round = row["Year-Round?"].strip()
+        start_month_str = row["Start Month"].strip()
+        end_month_str = row["End Month"].strip()
+        peak_season_start_str = row["Peak Season Start"].strip()
+        peak_season_end_str = row["Peak Season End"].strip()
+
+        if not peak_season_start_str or peak_season_start_str == "N/A":
+            peak_season_start_str = "May"
+        if not peak_season_end_str or peak_season_end_str == "N/A":
+            peak_season_end_str = "August"
+
+        return {
+            "year_round": year_round,
+            "start_month": start_month_str,
+            "end_month": end_month_str,
+            "peak_season_start": self._month_to_first_day(peak_season_start_str),
+            "peak_season_end": self._month_to_last_day(peak_season_end_str)
+        }
+
+    def _month_to_first_day(self, month_name: str) -> str:
+        """Convert month name to first day of month in MM-DD format."""
+        month_map = {
+            "January": ("01", "31"), "February": ("02", "28"), "March": ("03", "31"),
+            "April": ("04", "30"), "May": ("05", "31"), "June": ("06", "30"),
+            "July": ("07", "31"), "August": ("08", "31"), "September": ("09", "30"),
+            "October": ("10", "31"), "November": ("11", "30"), "December": ("12", "31")
+        }
+        if month_name in month_map:
+            return f"{month_map[month_name][0]}-01"
+        return "05-01"
+
+    def _month_to_last_day(self, month_name: str) -> str:
+        """Convert month name to last day of month in MM-DD format."""
+        month_map = {
+            "January": ("01", "31"), "February": ("02", "28"), "March": ("03", "31"),
+            "April": ("04", "30"), "May": ("05", "31"), "June": ("06", "30"),
+            "July": ("07", "31"), "August": ("08", "31"), "September": ("09", "30"),
+            "October": ("10", "31"), "November": ("11", "30"), "December": ("12", "31")
+        }
+        if month_name in month_map:
+            return f"{month_map[month_name][0]}-{month_map[month_name][1]}"
+        return "08-31"

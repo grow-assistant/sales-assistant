@@ -1,0 +1,29 @@
+Data Gathering Tasks to Centralize:
+
+1. Market Research
+- [x] Move market_research() from external_api.py to DataGathererService
+- [x] Update references to use DataGathererService.market_research()
+
+2. Competitor Analysis
+- [x] Move check_competitor_on_website() from data_enrichment.py to DataGathererService
+- [x] Update references to use DataGathererService.check_competitor()
+
+3. Season Data Management
+- [x] Move load_season_data() and determine_club_season() from external_api.py to DataGathererService
+- [x] Create unified season data interface in DataGathererService
+
+4. HubSpot Data Operations
+- [x] Move remaining HubSpot operations from hubspot_service.py to DataGathererService
+- [ ] Ensure all HubSpot data gathering uses async patterns
+
+5. Interaction History
+- [ ] Move review_previous_interactions() from external_api.py to DataGathererService
+- [ ] Consolidate with existing interaction data gathering
+
+6. Error Handling & Logging
+- [ ] Implement consistent error handling across all data gathering methods
+- [ ] Add structured logging with masked sensitive data
+
+7. Testing & Documentation
+- [ ] Add unit tests for new DataGathererService methods
+- [ ] Document all data gathering interfaces

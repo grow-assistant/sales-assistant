@@ -12,8 +12,6 @@ import json
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY
 from services.hubspot_service import HubspotService
-from utils.xai_integration import xai_news_search
-
 # Initialize hubspot service:
 _hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
 
@@ -59,46 +57,6 @@ def load_season_data() -> None:
 
 # Load data at module import
 load_season_data()
-
-################################################################################
-# Market Research Method Using xAI News Search
-################################################################################
-
-def market_research(company_name: str) -> Dict:
-    """
-    Example 'market_research' using xai_news_search for a quick summary of recent news.
-    This replaces any old snippet with xAI-based content.
-    """
-    if not company_name:
-        return {
-            "company_overview": "",
-            "recent_news": [],
-            "status": "error"
-        }
-
-    query = f"Has {company_name} been in the news lately? Provide a short summary."
-    news_response = xai_news_search(query)
-
-    if not news_response:
-        # If xAI call failed or returned empty
-        return {
-            "company_overview": f"Could not fetch recent events for {company_name}",
-            "recent_news": [],
-            "status": "error"
-        }
-
-    return {
-        "company_overview": news_response,
-        "recent_news": [
-            {
-                "title": "Recent News",
-                "snippet": news_response,
-                "link": "",
-                "date": ""
-            }
-        ],
-        "status": "success"
-    }
 
 ################################################################################
 # Interaction & Season Methods
