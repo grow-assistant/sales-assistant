@@ -117,8 +117,8 @@ def main():
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_data.get("company_data", {})
 
-        first_name = lead_data.get("firstname", "")
-        last_name = lead_data.get("lastname", "")
+        first_name = lead_data.get("properties", {}).get("firstname", "")
+        last_name = lead_data.get("properties", {}).get("lastname", "")
         club_name = company_data.get("name", "").strip()
         city = company_data.get("city", "").strip()
         state = company_data.get("state", "").strip()
@@ -134,7 +134,7 @@ def main():
             location_str = "an unknown location"
 
         placeholders = {
-            "FirstName": first_name or "Friend",
+            "FirstName": first_name,
             "LastName": last_name,
             "ClubName": club_name or "Your Club",
             "DeadlineDate": "Oct 15th",
