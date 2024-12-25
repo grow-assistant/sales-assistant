@@ -3,9 +3,9 @@
 import json
 import csv
 import datetime
-from dateutil.parser import parse as parse_date
-from typing import Dict, Any, Union
+from typing import Dict, Any, Union, List
 from pathlib import Path
+from dateutil.parser import parse as parse_date
 
 import asyncio
 from services.async_hubspot_service import AsyncHubspotService
@@ -515,6 +515,7 @@ class DataGathererService:
         if month_name in month_map:
             return f"{month_map[month_name][0]}-{month_map[month_name][1]}"
         return "08-31"
+<<<<<<< HEAD
 
     async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
         """
@@ -631,3 +632,111 @@ class DataGathererService:
             return int(float(str(value)))
         except (TypeError, ValueError):
             return default
+||||||| f876012
+=======
+
+    def _safe_int(self, value: Any, default: int = 0) -> int:
+        """
+        Convert a value to int safely, defaulting if conversion fails.
+        
+        Args:
+            value: Value to convert to integer
+            default: Default value if conversion fails
+            
+        Returns:
+            int: Converted value or default
+        """
+        if value is None:
+            return default
+        try:
+            return int(float(str(value)))
+        except (TypeError, ValueError):
+            return default
+
+    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
+        """
+        Review previous interactions asynchronously using the HubSpot service.
+        
+        Args:
+            contact_id (str): The HubSpot contact ID to review
+            
+        Returns:
+            Dict containing interaction metrics and status:
+            {
+                "emails_opened": int,
+                "emails_sent": int,
+                "meetings_held": int,
+                "last_response": str,
+                "status": str
+            }
+        """
+        try:
+            # Get contact properties from HubSpot asynchronously
+            lead_data = await self._hubspot.get_contact_properties(contact_id)
+            if not lead_data: 
+                logger.warning("No lead data found for contact", extra={
+                    "contact_id": contact_id
+                })
+                return {
+                    "emails_opened": 0,
+                    "emails_sent": 0,
+                    "meetings_held": 0,
+                    "last_response": "No data available",
+                    "status": "no_data"
+                }
+
+            # Parse interaction metrics
+            emails_opened = self._safe_int(lead_data.get("total_opens_weekly"))
+            emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
+
+            # Get all notes asynchronously
+            notes = await self._hubspot.get_all_notes_for_contact(contact_id)
+
+            # Count meetings from notes
+            meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
+            meetings_held = sum(
+                1 for note in notes
+                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords)
+            )
+
+            # Calculate last response time
+            last_reply = lead_data.get("hs_sales_email_last_replied")
+            if last_reply:
+                try:
+                    reply_date = parse_date(last_reply.replace('Z', '+00:00'))
+                    if reply_date.tzinfo is None:
+                        reply_date = reply_date.replace(tzinfo=datetime.timezone.utc)
+                    now_utc = datetime.datetime.now(datetime.timezone.utc)
+                    days_ago = (now_utc - reply_date).days
+                    last_response = f"Responded {days_ago} days ago"
+                except ValueError:
+                    last_response = "Responded recently"
+            else:
+                if emails_opened > 0:
+                    last_response = "Opened emails but no direct reply"
+                else:
+                    last_response = "No recent response"
+
+            return {
+                "emails_opened": emails_opened,
+                "emails_sent": emails_sent,
+                "meetings_held": meetings_held,
+                "last_response": last_response,
+                "status": "success"
+            }
+
+        except Exception as e:
+            logger.error("Failed to review contact interactions", extra={
+                "error": str(e),
+                "contact_id": contact_id,
+                "error_type": type(e).__name__
+            })
+            return {
+                "emails_opened": 0,
+                "emails_sent": 0,
+                "meetings_held": 0,
+                "last_response": "Error retrieving data",
+                "status": "error",
+                "error": str(e)
+            }
+>>>>>>> origin/main

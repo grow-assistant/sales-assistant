@@ -62,7 +62,7 @@ load_season_data()
 # Interaction & Season Methods
 ################################################################################
 
-# Moved to DataGathererService
+# Removed safe_int and review_previous_interactions - moved to DataGathererService
 
 def analyze_competitors() -> dict:
     """

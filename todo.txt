@@ -14,10 +14,10 @@ Data Gathering Tasks to Centralize:
 
 4. HubSpot Data Operations
 - [x] Move remaining HubSpot operations from hubspot_service.py to DataGathererService
-- [ ] Ensure all HubSpot data gathering uses async patterns
+- [x] Ensure all HubSpot data gathering uses async patterns
 
 5. Interaction History
-- [ ] Move review_previous_interactions() from external_api.py to DataGathererService
+- [x] Move review_previous_interactions() from external_api.py to DataGathererService
 - [ ] Consolidate with existing interaction data gathering
 
 6. Error Handling & Logging
