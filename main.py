@@ -21,8 +21,8 @@ from services.leads_service import LeadsService
 from services.data_gatherer_service import DataGathererService
 
 # Initialize services
-leads_service = LeadsService()
 data_gatherer = DataGathererService()
+leads_service = LeadsService(data_gatherer)
 
 ###############################################################################
 # Attempt to gather last inbound snippet from:
@@ -90,21 +90,28 @@ def main():
         logger.info("Starting main workflow...")
 
     try:
-        # 1) Prompt for lead email
-        email = input("Please enter a lead's email address: ").strip()
+        # 1) Get lead email from command line or prompt
+        if len(sys.argv) > 1:
+            email = sys.argv[1].strip()
+        else:
+            email = input("Please enter a lead's email address: ").strip()
+            
         if not email:
             logger.error("No email entered; exiting.")
             return
 
         # 2) Attempt to fetch from SQL
-        lead_sheet = build_lead_sheet_from_sql(email)
-        if lead_sheet:
+        try:
+            lead_sheet = build_lead_sheet_from_sql(email)
+            if lead_sheet:
+                if DEBUG_MODE:
+                    logger.debug(f"Lead '{email}' found in SQL. Using local data.")
+            else:
+                raise Exception("No data found in SQL")
+        except Exception as e:
+            # If SQL fails or returns no data, gather data from external sources
             if DEBUG_MODE:
-                logger.debug(f"Lead '{email}' found in SQL. Using local data.")
-        else:
-            # If not found in SQL, gather data from external sources
-            if DEBUG_MODE:
-                logger.debug(f"Lead '{email}' not found in SQL; fetching from external source...")
+                logger.debug(f"SQL lookup failed or returned no data for '{email}'; fetching from external source... Error: {e}")
             lead_sheet = data_gatherer.gather_lead_data(email)
 
         # 3) Verify lead_sheet success
@@ -112,8 +119,12 @@ def main():
             logger.error("Failed to prepare or retrieve lead context. Exiting.")
             return
 
-        # 4) Upsert into SQL
-        upsert_full_lead(lead_sheet)
+        # 4) Try to upsert into SQL (optional)
+        try:
+            upsert_full_lead(lead_sheet)
+        except Exception as e:
+            if DEBUG_MODE:
+                logger.debug(f"Failed to upsert lead data to SQL (continuing anyway): {e}")
 
         # 5) Extract data for building the email
         lead_data = lead_sheet.get("lead_data", {})
