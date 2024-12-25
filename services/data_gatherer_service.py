@@ -101,7 +101,18 @@ class DataGathererService:
         # 7) Save the lead_sheet to disk so we can review the final context
         self._save_lead_context(lead_sheet, lead_email)
 
-        logger.info(f"Data gathered successfully for {lead_email} (contact_id={contact_id}).")
+        # Mask sensitive data in logs
+        masked_email = f"{lead_email.split('@')[0][:3]}...@{lead_email.split('@')[1]}"
+        logger.info(
+            "Data gathered successfully",
+            extra={
+                "masked_email": masked_email,
+                "contact_found": bool(contact_id),
+                "company_found": bool(company_id),
+                "has_research": bool(research_data),
+                "has_season_info": bool(season_info)
+            }
+        )
         return lead_sheet
 
     # ------------------------------------------------------------------------
@@ -121,7 +132,14 @@ class DataGathererService:
 
             logger.info(f"Lead context saved at: {file_path.resolve()}")
         except Exception as e:
-            logger.warning(f"Failed to save lead context (non-critical): {e}")
+            logger.warning(
+                "Failed to save lead context (non-critical)",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "context_dir": str(context_dir)
+                }
+            )
 
     def _create_context_directory(self) -> Path:
         """

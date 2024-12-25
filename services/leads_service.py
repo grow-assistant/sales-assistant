@@ -45,7 +45,12 @@ class LeadsService:
         # Get comprehensive lead data from DataGathererService
         lead_sheet = self.data_gatherer.gather_lead_data(lead_email)
         if not lead_sheet: 
-            logger.warning("No lead data found for given email in generate_lead_summary().")
+            logger.warning(
+                "No lead data found for lead summary generation",
+                extra={
+                    "email_domain": lead_email.split('@')[1] if '@' in lead_email else 'unknown'
+                }
+            )
             return {}
 
         # Extract relevant data
@@ -72,8 +77,12 @@ class LeadsService:
             body = template_content.get("body", "Default Body")
         except Exception as e:
             logger.warning(
-                f"Could not read document '{template_path}', using fallback content. "
-                f"Reason: {str(e)}"
+                "Template read failed, using fallback content",
+                extra={
+                    "template": template_path,
+                    "error_type": type(e).__name__,
+                    "error": str(e)
+                }
             )
             subject = "Fallback Subject"
             body = "Fallback Body..."
