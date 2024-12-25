@@ -4,7 +4,10 @@ Custom exceptions for the Swoop Golf application.
 
 class SwoopError(Exception):
     """Base exception class for Swoop Golf application."""
-    pass
+    def __init__(self, message: str, details: dict = None):
+        self.message = message
+        self.details = details or {}
+        super().__init__(self.message)
 
 class LeadContextError(SwoopError):
     """Raised when there's an error preparing lead context."""
