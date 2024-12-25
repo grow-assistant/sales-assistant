@@ -96,24 +96,22 @@ def main():
             logger.error("No email entered; exiting.")
             return
 
-        # 2) Attempt to fetch from SQL
-        lead_sheet = build_lead_sheet_from_sql(email)
-        if lead_sheet:
-            if DEBUG_MODE:
-                logger.debug(f"Lead '{email}' found in SQL. Using local data.")
-        else:
-            # If not found in SQL, gather data from external sources
-            if DEBUG_MODE:
-                logger.debug(f"Lead '{email}' not found in SQL; fetching from external source...")
-            lead_sheet = data_gatherer.gather_lead_data(email)
+        # Gather data from external sources using async implementation
+        if DEBUG_MODE:
+            logger.debug(f"Fetching lead data for '{email}' using async implementation...")
+        lead_sheet = data_gatherer.gather_lead_data(email)
 
-        # 3) Verify lead_sheet success
+        # Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
             logger.error("Failed to prepare or retrieve lead context. Exiting.")
             return
 
-        # 4) Upsert into SQL
-        upsert_full_lead(lead_sheet)
+        # Log lead data for verification
+        if DEBUG_MODE:
+            logger.debug("Lead data retrieved:", extra={
+                "first_name": lead_sheet.get("lead_data", {}).get("firstname", ""),
+                "club_name": lead_sheet.get("lead_data", {}).get("company_data", {}).get("name", "")
+            })
 
         # 5) Extract data for building the email
         lead_data = lead_sheet.get("lead_data", {})
