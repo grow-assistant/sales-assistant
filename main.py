@@ -100,31 +100,40 @@ def main():
             logger.error("No email entered; exiting.")
             return
 
-        # 2) Attempt to fetch from SQL
+        # 2) Attempt to fetch from SQL first, then external sources if needed
         try:
             lead_sheet = build_lead_sheet_from_sql(email)
-            if lead_sheet:
-                if DEBUG_MODE:
-                    logger.debug(f"Lead '{email}' found in SQL. Using local data.")
-            else:
-                raise Exception("No data found in SQL")
+            if lead_sheet and DEBUG_MODE:
+                logger.debug(f"Lead '{email}' found in SQL. Using local data.")
         except Exception as e:
-            # If SQL fails or returns no data, gather data from external sources
             if DEBUG_MODE:
-                logger.debug(f"SQL lookup failed or returned no data for '{email}'; fetching from external source... Error: {e}")
+                logger.debug(f"SQL lookup failed for '{email}': {e}")
+            lead_sheet = None
+
+        # If not in SQL or SQL failed, gather from external sources using async implementation
+        if not lead_sheet:
+            if DEBUG_MODE:
+                logger.debug(f"Fetching lead data for '{email}' using async implementation...")
             lead_sheet = data_gatherer.gather_lead_data(email)
 
-        # 3) Verify lead_sheet success
+        # Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
             logger.error("Failed to prepare or retrieve lead context. Exiting.")
             return
 
-        # 4) Try to upsert into SQL (optional)
+        # Try to upsert into SQL (optional)
         try:
             upsert_full_lead(lead_sheet)
         except Exception as e:
             if DEBUG_MODE:
                 logger.debug(f"Failed to upsert lead data to SQL (continuing anyway): {e}")
+
+        # Log lead data for verification
+        if DEBUG_MODE:
+            logger.debug("Lead data retrieved:", extra={
+                "first_name": lead_sheet.get("lead_data", {}).get("firstname", ""),
+                "club_name": lead_sheet.get("lead_data", {}).get("company_data", {}).get("name", "")
+            })
 
         # 5) Extract data for building the email
         lead_data = lead_sheet.get("lead_data", {})

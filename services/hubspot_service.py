@@ -291,8 +291,13 @@ class HubspotService:
             note_list.sort(key=lambda x: x["createdate"], reverse=True)
             return note_list
         except requests.RequestException as e:
-            logger.error(f"Error fetching notes: {str(e)}")
-            return []
+            error_details = {
+                "error_type": "RequestException",
+                "contact_id": contact_id,
+                "status_code": getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+            }
+            logger.error("Error fetching notes from HubSpot", extra=error_details)
+            raise HubSpotError("Failed to fetch contact notes", details=error_details)
 
     def get_associated_company_id(self, contact_id: str) -> Optional[str]:
         """
@@ -314,8 +319,13 @@ class HubspotService:
                 return results[0].get("id")
             return None
         except requests.RequestException as e:
-            logger.error(f"Error fetching associated company: {str(e)}")
-            return None
+            error_details = {
+                "error_type": "RequestException",
+                "contact_id": contact_id,
+                "status_code": getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+            }
+            logger.error("Error fetching associated company from HubSpot", extra=error_details)
+            raise HubSpotError("Failed to fetch associated company", details=error_details)
 
     def get_company_data(self, company_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -342,10 +352,15 @@ class HubspotService:
             response.raise_for_status()
             return response.json()
         except requests.RequestException as e:
-            logger.error(f"Error fetching company data: {str(e)}")
-            return None
+            error_details = {
+                "error_type": "RequestException",
+                "company_id": company_id,
+                "status_code": getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+            }
+            logger.error("Error fetching company data from HubSpot", extra=error_details)
+            raise HubSpotError("Failed to fetch company data", details=error_details)
 
-    def get_lead_data_from_hubspot(self, email: str) -> Optional[Dict[str, Any]]:
+    def get_lead_data_from_hubspot(self, email: str) -> Dict[str, Any]:
         """
         Get comprehensive lead data including contact and company information.
         
@@ -353,18 +368,35 @@ class HubspotService:
             email: Lead's email address
             
         Returns:
-            Dictionary containing lead data if found, None otherwise
+            Dictionary containing lead data
+            
+        Raises:
+            HubSpotError: If any HubSpot API operation fails
         """
-        contact_id = self.get_contact_by_email(email)
-        if not contact_id:
-            return None
+        try:
+            contact_id = self.get_contact_by_email(email)
+            if not contact_id:
+                error_details = {"email": email}
+                logger.error("No contact found in HubSpot", extra=error_details)
+                raise HubSpotError("Contact not found", details=error_details)
 
-        contact_properties = self.get_contact_properties(contact_id)
-        company_id = self.get_associated_company_id(contact_id)
-        company_data = self.get_company_data(company_id) if company_id else None
+            contact_properties = self.get_contact_properties(contact_id)
+            company_id = self.get_associated_company_id(contact_id)
+            company_data = self.get_company_data(company_id) if company_id else {}
 
-        return {
-            "contact_id": contact_id,
-            "contact": contact_properties,
-            "company": company_data
-        }
+            return {
+                "contact_id": contact_id,
+                "contact": contact_properties,
+                "company": company_data
+            }
+        except HubSpotError:
+            # Re-raise HubSpotError without wrapping
+            raise
+        except Exception as e:
+            error_details = {
+                "error_type": type(e).__name__,
+                "email": email,
+                "error_message": str(e)
+            }
+            logger.error("Unexpected error fetching lead data from HubSpot", extra=error_details)
+            raise HubSpotError("Failed to fetch lead data", details=error_details)

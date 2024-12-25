@@ -5,7 +5,8 @@ import datetime
 from typing import Dict, Any
 from pathlib import Path
 
-from services.hubspot_service import HubspotService
+import asyncio
+from services.async_hubspot_service import AsyncHubspotService
 from external.external_api import (
     market_research,
     review_previous_interactions,
@@ -27,34 +28,38 @@ class DataGathererService:
     """
 
     def __init__(self):
-        self._hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+        self._hubspot = AsyncHubspotService(api_key=HUBSPOT_API_KEY)
+
+    async def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
+        """Gather all HubSpot data asynchronously."""
+        return await self._hubspot.gather_lead_data(lead_email)
 
     def gather_lead_data(self, lead_email: str) -> Dict[str, Any]:
-        # 1) Retrieve the contact from HubSpot
-        contact_id = self._hubspot.get_contact_by_email(lead_email)
-        if not contact_id:
-            raise ValueError(f"No contact found for email: {lead_email}")
-
-        # 2) Fetch HubSpot lead data (contact + associated company)
-        lead_data = self._hubspot.get_lead_data_from_hubspot(lead_email)
-        if not lead_data:
-            raise ValueError(f"No HubSpot lead data found for contact_id={contact_id}")
-
-        # 3) Get all inbound/outbound emails for this contact
-        lead_emails = self._hubspot.get_all_emails_for_contact(contact_id)
-        lead_data["emails"] = lead_emails
-
-        # 4) Company data & competitor check
-        company_id = self._hubspot.get_associated_company_id(contact_id)
-        company_data_raw = self._hubspot.get_company_data(company_id) if company_id else {}
+        """
+        Main entry point for gathering lead data.
+        Coordinates async HubSpot calls with other synchronous operations.
+        """
+        # 1) Gather all HubSpot data asynchronously
+        hubspot_data = asyncio.run(self._gather_hubspot_data(lead_email))
+        
+        contact_id = hubspot_data["id"]
+        lead_data = {
+            "id": contact_id,
+            "properties": hubspot_data["properties"],
+            "emails": hubspot_data["emails"]
+        }
+        
+        company_data_raw = hubspot_data.get("company_data", {})
 
         # --- NEW: Flatten the company JSON for easy access in main.py
         parsed_company_data = {}
+        company_id = None
         if company_data_raw:
             # Convert HubSpot's structure (id + properties dict) to a simpler format
+            company_id = company_data_raw.get("id", "")
             props = company_data_raw.get("properties", {})
             parsed_company_data = {
-                "hs_object_id": company_data_raw.get("id", ""),
+                "hs_object_id": company_id,
                 "name": props.get("name", ""),
                 "city": props.get("city", ""),
                 "state": props.get("state", ""),
