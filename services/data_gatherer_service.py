@@ -7,8 +7,8 @@ from pathlib import Path
 
 import asyncio
 from services.async_hubspot_service import AsyncHubspotService
+from utils.xai_integration import xai_news_search
 from external.external_api import (
-    market_research,
     review_previous_interactions,
     determine_club_season
 )
@@ -75,7 +75,7 @@ class DataGathererService:
 
         # 5) External calls: Interactions, market research, season info
         company_name = parsed_company_data.get("name", "").strip()
-        research_data = market_research(company_name) if company_name else {}
+        research_data = self.market_research(company_name) if company_name else {}
         interactions = review_previous_interactions(contact_id)
         city = parsed_company_data.get("city", "")
         state = parsed_company_data.get("state", "")
@@ -118,6 +118,61 @@ class DataGathererService:
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
+    def market_research(self, company_name: str) -> Dict[str, Any]:
+        """
+        Perform market research for a company using xAI news search.
+        
+        Args:
+            company_name: Name of the company to research
+            
+        Returns:
+            Dictionary containing company overview and recent news
+        """
+        if not company_name:
+            logger.warning("No company name provided for market research")
+            return {
+                "company_overview": "",
+                "recent_news": [],
+                "status": "error"
+            }
+
+        query = f"Has {company_name} been in the news lately? Provide a short summary."
+        news_response = xai_news_search(query)
+
+        if not news_response:
+            logger.warning(
+                "Failed to fetch news for company",
+                extra={
+                    "company": company_name,
+                    "status": "error"
+                }
+            )
+            return {
+                "company_overview": f"Could not fetch recent events for {company_name}",
+                "recent_news": [],
+                "status": "error"
+            }
+
+        logger.info(
+            "Market research completed successfully",
+            extra={
+                "company": company_name,
+                "has_news": bool(news_response)
+            }
+        )
+        return {
+            "company_overview": news_response,
+            "recent_news": [
+                {
+                    "title": "Recent News",
+                    "snippet": news_response,
+                    "link": "",
+                    "date": ""
+                }
+            ],
+            "status": "success"
+        }
+
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
         Save the lead_sheet dictionary to 'test_data/lead_contexts' as a JSON file.
