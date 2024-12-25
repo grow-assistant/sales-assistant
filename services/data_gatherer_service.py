@@ -33,21 +33,25 @@ class DataGathererService:
     """
 
     def __init__(self):
+        """Initialize the DataGathererService with HubSpot client and season data."""
         self._hubspot = AsyncHubspotService(api_key=HUBSPOT_API_KEY)
         # Load season data at initialization
         self.load_season_data()
+        # Create event loop for async operations
+        self._loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self._loop)
 
     async def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
         """Gather all HubSpot data asynchronously."""
         return await self._hubspot.gather_lead_data(lead_email)
 
-    def gather_lead_data(self, lead_email: str) -> Dict[str, Any]:
+    async def gather_lead_data(self, lead_email: str) -> Dict[str, Any]:
         """
         Main entry point for gathering lead data.
-        Coordinates async HubSpot calls with other synchronous operations.
+        Coordinates all async operations in parallel.
         """
         # 1) Gather all HubSpot data asynchronously
-        hubspot_data = asyncio.run(self._gather_hubspot_data(lead_email))
+        hubspot_data = await self._gather_hubspot_data(lead_email)
         
         contact_id = hubspot_data["id"]
         lead_data = {
@@ -76,16 +80,24 @@ class DataGathererService:
 
         lead_data["company_data"] = parsed_company_data
 
-        competitor = ""
-        if parsed_company_data.get("website"):
-            competitor = self.check_competitor_on_website(parsed_company_data["website"]) or ""
-
-        # 5) External calls: Interactions, market research, season info
+        # Gather all external data in parallel using asyncio.gather
         company_name = parsed_company_data.get("name", "").strip()
-        research_data = self.market_research(company_name) if company_name else {}
-        interactions = review_previous_interactions(contact_id)
+        website = parsed_company_data.get("website", "")
         city = parsed_company_data.get("city", "")
         state = parsed_company_data.get("state", "")
+
+        # Run async tasks in parallel
+        competitor_task = self.check_competitor_on_website(website) if website else ""
+        research_task = self.market_research(company_name) if company_name else {}
+        interactions_task = review_previous_interactions(contact_id)
+
+        competitor, research_data, interactions = await asyncio.gather(
+            competitor_task,
+            research_task,
+            interactions_task
+        )
+
+        # Get season info (already optimized with CSV caching)
         season_info = self.determine_club_season(city, state)
 
         # 6) Build final lead_sheet for consistent usage across the app
@@ -125,9 +137,9 @@ class DataGathererService:
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
-    def check_competitor_on_website(self, domain: str) -> str:
+    async def check_competitor_on_website(self, domain: str) -> str:
         """
-        Check if Jonas Club Software is mentioned on the website.
+        Check if Jonas Club Software is mentioned on the website asynchronously.
         
         Args:
             domain (str): The domain to check (without http/https)
@@ -144,7 +156,7 @@ class DataGathererService:
         if not url.startswith("http"):
             url = f"https://{url}"
 
-        html = fetch_website_html(url)
+        html = await fetch_website_html(url)
         if not html:
             logger.warning(
                 "Could not fetch HTML for domain",
@@ -176,9 +188,9 @@ class DataGathererService:
 
         return ""
 
-    def market_research(self, company_name: str) -> Dict[str, Any]:
+    async def market_research(self, company_name: str) -> Dict[str, Any]:
         """
-        Perform market research for a company using xAI news search.
+        Perform market research for a company using xAI news search asynchronously.
         
         Args:
             company_name: Name of the company to research
@@ -195,7 +207,7 @@ class DataGathererService:
             }
 
         query = f"Has {company_name} been in the news lately? Provide a short summary."
-        news_response = xai_news_search(query)
+        news_response = await xai_news_search(query)
 
         if not news_response:
             logger.warning(
