@@ -8,11 +8,11 @@ from pathlib import Path
 import asyncio
 from services.async_hubspot_service import AsyncHubspotService
 from utils.xai_integration import xai_news_search
+from utils.web_fetch import fetch_website_html
 from external.external_api import (
     review_previous_interactions,
     determine_club_season
 )
-from hubspot_integration.data_enrichment import check_competitor_on_website
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
 
@@ -71,7 +71,7 @@ class DataGathererService:
 
         competitor = ""
         if parsed_company_data.get("website"):
-            competitor = check_competitor_on_website(parsed_company_data["website"]) or ""
+            competitor = self.check_competitor_on_website(parsed_company_data["website"]) or ""
 
         # 5) External calls: Interactions, market research, season info
         company_name = parsed_company_data.get("name", "").strip()
@@ -118,6 +118,57 @@ class DataGathererService:
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
+    def check_competitor_on_website(self, domain: str) -> str:
+        """
+        Check if Jonas Club Software is mentioned on the website.
+        
+        Args:
+            domain (str): The domain to check (without http/https)
+            
+        Returns:
+            str: "Jonas" if competitor is found, empty string otherwise
+        """
+        if not domain:
+            logger.warning("No domain provided for competitor check")
+            return ""
+
+        # Build URL carefully
+        url = domain.strip().lower()
+        if not url.startswith("http"):
+            url = f"https://{url}"
+
+        html = fetch_website_html(url)
+        if not html:
+            logger.warning(
+                "Could not fetch HTML for domain",
+                extra={
+                    "domain": domain,
+                    "error": "Possible Cloudflare block"
+                }
+            )
+            return ""
+
+        # If we have HTML, proceed with competitor checks
+        competitor_mentions = [
+            "jonas club software",
+            "jonas software",
+            "jonasclub",
+            "jonas club"
+        ]
+
+        for mention in competitor_mentions:
+            if mention in html.lower():
+                logger.info(
+                    "Found competitor mention on website",
+                    extra={
+                        "domain": domain,
+                        "mention": mention
+                    }
+                )
+                return "Jonas"
+
+        return ""
+
     def market_research(self, company_name: str) -> Dict[str, Any]:
         """
         Perform market research for a company using xAI news search.

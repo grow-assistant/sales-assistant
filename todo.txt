@@ -5,8 +5,8 @@ Data Gathering Tasks to Centralize:
 - [x] Update references to use DataGathererService.market_research()
 
 2. Competitor Analysis
-- [ ] Move check_competitor_on_website() from data_enrichment.py to DataGathererService
-- [ ] Update references to use DataGathererService.check_competitor()
+- [x] Move check_competitor_on_website() from data_enrichment.py to DataGathererService
+- [x] Update references to use DataGathererService.check_competitor()
 
 3. Season Data Management
 - [ ] Move load_season_data() and determine_club_season() from external_api.py to DataGathererService
