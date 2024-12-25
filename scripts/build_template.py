@@ -4,6 +4,7 @@ import os
 import random
 from utils.doc_reader import DocReader
 from utils.logging_setup import logger
+from utils.season_snippet import get_season_variation_key, pick_season_snippet
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -69,53 +70,6 @@ def pick_subject_line_based_on_lead(
 ###############################################################################
 # 3) SEASON VARIATION LOGIC (OPTIONAL)
 ###############################################################################
-def get_season_variation_key(current_month, start_peak_month, end_peak_month):
-    """
-    0–2 months away from start => "approaching"
-    within start-end => "in_season"
-    if less than 1 month left => "winding_down"
-    else => "off_season"
-    """
-    if start_peak_month <= current_month <= end_peak_month:
-        if (end_peak_month - current_month) < 1:
-            return "winding_down"
-        else:
-            return "in_season"
-
-    months_away = start_peak_month - current_month
-    if months_away < 0:
-        months_away += 12
-
-    if 1 <= months_away <= 2:
-        return "approaching"
-    else:
-        return "off_season"
-
-
-def pick_season_snippet(season_key):
-    snippet_options = {
-        "approaching": [
-            "As you prepare for the upcoming season,",
-            "With the season just around the corner,"
-        ],
-        "in_season": [
-            "I hope the season is going well for you,",
-            "With the season in full swing,"
-        ],
-        "winding_down": [
-            "As the season winds down,",
-            "As your peak season comes to a close,"
-        ],
-        "off_season": [
-            "While planning for the next season,",
-            "As you look ahead to next season,"
-        ]
-    }
-    if season_key not in snippet_options:
-        return ""
-    return random.choice(snippet_options[season_key])
-
-
 def apply_season_variation(email_text: str, snippet: str) -> str:
     """
     Replaces {SEASON_VARIATION} in an email text with the chosen snippet.
