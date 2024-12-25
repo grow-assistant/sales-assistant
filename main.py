@@ -20,9 +20,9 @@ from scheduling.sql_lookup import build_lead_sheet_from_sql
 from services.leads_service import LeadsService
 from services.data_gatherer_service import DataGathererService
 
-# Initialize services
-leads_service = LeadsService()
+# Initialize services with proper dependencies
 data_gatherer = DataGathererService()
+leads_service = LeadsService(data_gatherer)
 
 ###############################################################################
 # Attempt to gather last inbound snippet from:
