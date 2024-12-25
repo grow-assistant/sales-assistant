@@ -8,35 +8,28 @@ from utils.logging_setup import logger
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
 ###############################################################################
-# Each key (e.g., "general_manager", "fnb_manager") corresponds to a lead role.
-# Updated to include the new subject lines provided.
-###############################################################################
-
 CONDITION_SUBJECTS = {
     "general_manager": [
-        "Question for [FirstName]",
-        "Quick Question",
-        "Can I help with [specific goal/pain point]?",
         "Quick Question for [FirstName]",
-        "Quick Question, [FirstName]",
-        "Need Assistance with [specific challenge]?"
+        "New Ways to Elevate [ClubName]'s Operations",
+        "Boost [ClubName]'s Efficiency with Swoop",
+        "Need Assistance with [Task]? – [FirstName]"
     ],
     "fnb_manager": [
-        "Question for [FirstName]",
-        "Quick Question",
-        "Can I help with [specific goal/pain point]?",
-        "Quick Question for [FirstName]",
-        "Quick Question, [FirstName]",
-        "Need Assistance with [specific challenge]?"
+        "Ideas for Increasing F&B Revenue at [ClubName]",
+        "Quick Note for [FirstName] about On-Demand Service",
+        "A Fresh Take on [ClubName]'s F&B Operations"
     ],
-    # If no matching role, use these fallback subject lines:
+    "golf_ops": [
+        "Keeping [ClubName] Rounds on Pace: Quick Idea",
+        "New Golf Ops Tools for [ClubName]",
+        "Quick Question for [FirstName] – On-Course Efficiency"
+    ],
+    # New line: If job title doesn't match any known category,
+    # we map it to this fallback template
     "fallback": [
-        "Question for [FirstName]",
-        "Quick Question",
-        "Can I help with [specific goal/pain point]?",
-        "Quick Question for [FirstName]",
-        "Quick Question, [FirstName]",
-        "Need Assistance with [specific challenge]?"
+        "Enhancing Your Club's Efficiency with Swoop",
+        "Is [ClubName] Looking to Modernize?"
     ]
 }
 
@@ -44,7 +37,6 @@ CONDITION_SUBJECTS = {
 ###############################################################################
 # 2) PICK SUBJECT LINE BASED ON LEAD ROLE & LAST INTERACTION
 ###############################################################################
-
 def pick_subject_line_based_on_lead(
     lead_role: str,
     last_interaction_days: int,
@@ -67,7 +59,7 @@ def pick_subject_line_based_on_lead(
     else:
         chosen_template = random.choice(subject_variations)
 
-    # 3) Placeholder replacement
+    # 3) Replace placeholders in the subject
     for key, val in placeholders.items():
         chosen_template = chosen_template.replace(f"[{key}]", val)
 
@@ -77,14 +69,12 @@ def pick_subject_line_based_on_lead(
 ###############################################################################
 # 3) SEASON VARIATION LOGIC (OPTIONAL)
 ###############################################################################
-
 def get_season_variation_key(current_month, start_peak_month, end_peak_month):
     """
-    Example from original code:
-    0–2 months away from start => approaching
-    within start-end => in_season
-    if less than 1 month left => winding_down
-    else => off_season
+    0–2 months away from start => "approaching"
+    within start-end => "in_season"
+    if less than 1 month left => "winding_down"
+    else => "off_season"
     """
     if start_peak_month <= current_month <= end_peak_month:
         if (end_peak_month - current_month) < 1:
@@ -117,8 +107,8 @@ def pick_season_snippet(season_key):
             "As your peak season comes to a close,"
         ],
         "off_season": [
-            "While planning for the upcoming season,",
-            "As you look forward to next season,"
+            "While planning for the next season,",
+            "As you look ahead to next season,"
         ]
     }
     if season_key not in snippet_options:
@@ -136,7 +126,6 @@ def apply_season_variation(email_text: str, snippet: str) -> str:
 ###############################################################################
 # 4) OPTION: READING AN .MD TEMPLATE (BODY ONLY)
 ###############################################################################
-
 def extract_subject_and_body(md_text: str) -> tuple[str, str]:
     subject = ""
     body_lines = []
@@ -162,7 +151,6 @@ def extract_subject_and_body(md_text: str) -> tuple[str, str]:
 ###############################################################################
 # 5) MAIN FUNCTION FOR BUILDING EMAIL
 ###############################################################################
-
 def build_outreach_email(
     profile_type: str,
     last_interaction_days: int,
@@ -178,16 +166,20 @@ def build_outreach_email(
     3) Insert a season snippet into the body if desired
     4) Return (subject, body)
     """
+    # First, pick the subject line
     subject_line = pick_subject_line_based_on_lead(
         profile_type, last_interaction_days, placeholders
     )
 
     md_body = ""
     if use_markdown_template:
+        # Attempt to match a .md file based on profile_type
         template_map = {
             "general_manager": "templates/gm_initial_outreach.md",
             "fnb_manager": "templates/fnb_initial_outreach.md",
             "golf_ops": "templates/golf_ops_initial_outreach.md",
+            # NEW: Provide a fallback path for unrecognized roles
+            "fallback": "templates/fallback.md"
         }
         file_path = template_map.get(profile_type)
         if file_path:
@@ -197,8 +189,11 @@ def build_outreach_email(
             if md_content.strip():
                 md_subject, md_body = extract_subject_and_body(md_content)
                 logger.debug(
-                    f"Markdown template loaded successfully. "
-                    f"Parsed subject=[{md_subject.strip()}], body length={len(md_body)}"
+                    "Markdown template loaded successfully.",
+                    extra={
+                        "parsed_subject": md_subject.strip(),
+                        "body_length": len(md_body)
+                    }
                 )
             else:
                 logger.warning(
@@ -211,48 +206,28 @@ def build_outreach_email(
     else:
         logger.debug("use_markdown_template=False, using inline fallback body.")
 
+    # If we couldn't load a .md body, use an inline fallback
     if not md_body.strip():
         logger.warning("Markdown body is empty. Using default fallback body.")
         md_body = (
-            "Hello [FirstName],\n\n"
-            "{SEASON_VARIATION} I'd love to connect on a quick call to "
-            "discuss how Swoop can streamline operations at [ClubName]. "
-            "Let me know if you have a few minutes this week.\n\n"
-            "Best,\nYour Name"
+            "Hey [FirstName],\n\n"
+            "{SEASON_VARIATION} I'd like to discuss how Swoop can significantly "
+            "enhance your club's operational efficiency. Our solutions are designed to:\n\n"
+            "- Automate booking and scheduling to reduce administrative workload.\n"
+            "- Improve member engagement through personalized communications.\n"
+            "- Optimize resource management for better cost control.\n\n"
+            "Could we schedule a brief call this week to explore how these benefits "
+            "could directly address your club's specific needs?\n\n"
+            "Best,\n[YourName]"
         )
 
     # Replace placeholders in the body
     for key, val in placeholders.items():
-        md_body = md_body.replace(f"[{key}]", val)
+        md_body = md_body.replace(f"[{key}]", str(val))
 
     # Insert the season snippet
     season_key = get_season_variation_key(current_month, start_peak_month, end_peak_month)
     snippet = pick_season_snippet(season_key)
-    final_body = apply_season_variation(md_body, snippet)
+    final_body = md_body.replace("{SEASON_VARIATION}", snippet)
 
     return subject_line, final_body
-
-
-if __name__ == "__main__":
-    # Example placeholders
-    placeholders_demo = {
-        "FirstName": "Taylor",
-        "ClubName": "Pinetree CC",
-        "DeadlineDate": "Oct 15th",
-        "Role": "F&B Manager",
-        "Task": "Staff Onboarding",
-        "Topic": "On-Course Ordering"
-    }
-
-    subject, body = build_outreach_email(
-        profile_type="general_manager",
-        last_interaction_days=75,
-        placeholders=placeholders_demo,
-        current_month=9,
-        start_peak_month=5,
-        end_peak_month=8,
-        use_markdown_template=False
-    )
-
-    print("Subject:", subject)
-    print("Body:\n", body)

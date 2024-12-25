@@ -1,23 +1,25 @@
 # Fallback Template
 
 ## Subject
-Quick Intro to Swoop: Streamlining F&B at Your Club
+Enhancing [ClubName] – Modern Solutions
 
 ## Body
-Hey [Name],
+Hey [FirstName],
 
-I hope you’re doing well. I’m reaching out on behalf of Swoop—an on-demand Food & Beverage platform that modernizes service at country clubs and golf courses. Our partners frequently report:
+[ICEBREAKER]
 
-- Improved Member Satisfaction: Faster, easier ordering.
-- Up to 55% Growth in F&B Revenue: Streamlined operations drive repeat orders.
-- Minimal Disruption: The technology integrates with your existing workflow.
+{SEASON_VARIATION} We at Swoop specialize in helping clubs modernize their operations without expensive overhead.
 
-Let me know a good time for a quick call. I’d love to learn more about [Club Name] and see if our platform might fit your needs.
+You’ll be able to:
+- Offer convenient on-demand ordering for food, beverage, and more
+- Improve member satisfaction by reducing wait times
+- Capture extra revenue while keeping staff workload in check
 
-Cheers,
+If that’s something you’d like to explore, let me know a good time for a quick chat.
+
+Best,
 Ty
 
-Swoop Golf
-480-225-9702
+Swoop Golf  
+480-225-9702  
 swoopgolf.com
-

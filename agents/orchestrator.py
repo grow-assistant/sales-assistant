@@ -9,8 +9,6 @@ from datetime import datetime
 from typing import Dict, Any, TypedDict
 from config import OPENAI_API_KEY
 from config.constants import DEFAULTS
-from agents.functions import call_function
-from utils.doc_reader import DocReader
 from utils.logging_setup import logger
 from utils.exceptions import LeadContextError, HubSpotError
 from config.settings import DEBUG_MODE, OPENAI_API_KEY
@@ -18,19 +16,17 @@ from services.orchestrator_service import OrchestratorService
 from services.leads_service import LeadsService
 from services.hubspot_service import HubspotService
 
+# NEW import
+from services.data_gatherer_service import DataGathererService
+
 load_dotenv()
 openai.api_key = OPENAI_API_KEY
 
-# Initialize services
-_leads_service = LeadsService()
-_hubspot_service = HubspotService()
-_orchestrator_service = OrchestratorService(_leads_service, _hubspot_service)
-
 
 class Context(TypedDict):
-    lead_id: str
+    lead_id: str       # We assume this is actually an email address in your system
     domain_docs: Dict[str, str]
-    messages: list  # conversation messages for GPT
+    messages: list
     last_action: Any
     metadata: Dict[str, Any]
 
@@ -45,10 +41,10 @@ class OrchestrationResult(TypedDict):
 
 async def run_sales_leader(context: Context) -> OrchestrationResult:
     """
-    Run the sales leader workflow in two phases:
-       1. Preparation: Gather all required info about the lead.
-       2. Decision: Let the Sales Leader Agent decide the next steps,
-          with pruning to avoid token overload.
+    High-level workflow:
+     1) Gather all lead data from DataGathererService in one pass.
+     2) (Optional) Personalized messaging or further steps.
+     3) Let the Sales Leader Agent decide the next steps.
     """
     result: OrchestrationResult = {
         'success': False,
@@ -59,72 +55,30 @@ async def run_sales_leader(context: Context) -> OrchestrationResult:
     }
 
     try:
-        # 1) Load the Outreach Decision Tree right away
-        decision_tree_md = _orchestrator_service.doc_reader.read_doc(
-            'templates/swoop_sales_outreach_decision_tree.md',
-            fallback_content=""
-        )
+        # 1) Gather data with the new DataGathererService
+        gatherer = DataGathererService()
+        lead_sheet = gatherer.gather_lead_data(context['lead_id'])
+
+        # Save the lead sheet in context for further usage
         context["messages"].append({
             "role": "system",
-            "content": (
-                "You have access to the Swoop Sales Outreach Decision Tree:\n\n" + decision_tree_md
-            )
+            "content": "Lead data gathered successfully."
+        })
+        context["messages"].append({
+            "role": "assistant",
+            "content": f"Enriched lead data: {lead_sheet}"
         })
 
-        logger.info(f"Starting sales leader workflow for lead {context['lead_id']}")
-
-        # 2) Define preparation steps
-        preparation_steps = [
-            ("get_lead_data_from_hubspot", {"contact_id": context["lead_id"]}),
-            ("review_previous_interactions", {"contact_id": context["lead_id"]}),
-            ("market_research", {}),
-            ("analyze_competitors", {}),
-            ("personalize_message", {})
-        ]
-
-        # 3) Iterate over the steps
-        for func_name, args in preparation_steps:
-            if func_name == "market_research":
-                company_name = context.get("lead_data", {}).get("company")
-                if company_name:
-                    args["company_name"] = company_name
-                else:
-                    logger.warning("No company name found; skipping market research.")
-                    continue
-
-            elif func_name == "personalize_message":
-                lead_data = context.get("lead_data")
-                if lead_data:
-                    args["lead_data"] = lead_data
-                else:
-                    logger.warning("Lead data missing; skipping message personalization")
-                    continue
-
-            logger.info(f"Running step: {func_name}")
-            try:
-                if func_name == "get_lead_data_from_hubspot":
-                    result = _orchestrator_service.get_lead_data(args["contact_id"])
-                elif func_name == "review_previous_interactions":
-                    result = _orchestrator_service.review_interactions(args["contact_id"])
-                elif func_name == "market_research":
-                    result = _orchestrator_service.analyze_competitors(args["company_name"])
-                elif func_name == "personalize_message":
-                    result = _orchestrator_service.personalize_message(args["lead_data"])
-                context[func_name.replace("get_", "")] = result
-            except (LeadContextError, HubSpotError) as e:
-                logger.error(f"Error in {func_name}: {e}")
-                continue
-
-        # 4) Decision Phase
-        logger.info("Preparation complete. Creating context summary and initiating decision phase.")
-        summary = _orchestrator_service.create_context_summary(context)
+        # 2) Summarize context
+        summary = create_context_summary(lead_sheet)
         context["messages"].append({"role": "assistant", "content": summary})
+
+        # 3) Initiate decision loop
         context["messages"].append({
             "role": "user",
-            "content": "Now that we have the info and decision tree, what's the next best step?"
+            "content": "Now that we have the info, what's the next best step?"
         })
-
-        decision_success = await _orchestrator_service.run_decision_loop(context)
+        decision_success = await decision_loop(context)
         if decision_success:
             logger.info("Workflow completed successfully.")
             result['success'] = True
@@ -147,7 +101,7 @@ async def run_sales_leader(context: Context) -> OrchestrationResult:
 def prune_or_summarize_messages(messages, max_messages=10):
     """
     If the message list exceeds max_messages, summarize older messages
-    into one condensed message and trim them to keep token usage lower.
+    into one condensed message to reduce token usage.
     """
     if len(messages) > max_messages:
         older_messages = messages[:-max_messages]
@@ -171,7 +125,7 @@ def prune_or_summarize_messages(messages, max_messages=10):
 async def decision_loop(context: Context) -> bool:
     """
     Continuously query the OpenAI model for decisions until it says 'We are done'
-    or reaches max iterations. Prune messages each iteration to avoid token overload.
+    or reaches max iterations. Prune messages each iteration to avoid token issues.
     """
     iteration = 0
     max_iterations = DEFAULTS["MAX_ITERATIONS"]
@@ -216,34 +170,20 @@ async def decision_loop(context: Context) -> bool:
     return False
 
 
-def create_context_summary(context: Context) -> str:
-    """Create a summary of the gathered information for the Sales Leader."""
-    lead_data = context.get("lead_data", {})
-    previous_interactions = context.get("previous_interactions", {})
-    research_data = context.get("research_data", {})
-    competitor_data = context.get("competitor_data", {})
-    personalized_message = context.get("personalized_message", "")
+def create_context_summary(lead_sheet: Dict[str, Any]) -> str:
+    """
+    Create a brief summary of the gathered lead sheet info for the Sales Leader.
+    """
+    metadata = lead_sheet.get("metadata", {})
+    lead_data = lead_sheet.get("lead_data", {})
+    analysis_data = lead_sheet.get("analysis", {})
 
     summary_lines = [
         "Context Summary:",
-        f"Lead Data: {truncate_dict(lead_data)}",
-        f"Previous Interactions: {truncate_dict(previous_interactions)}",
-        f"Market Research: {truncate_dict(research_data)}",
-        f"Competitor Analysis: {truncate_dict(competitor_data)}",
-        "Proposed Personalized Message:",
-        personalized_message[:300]  # short preview
+        f"- Contact ID: {metadata.get('contact_id')}",
+        f"- Company ID: {metadata.get('company_id')}",
+        f"- Email: {metadata.get('lead_email')}",
+        f"Competitor Analysis: {analysis_data.get('competitor_analysis', 'None')}",
+        f"Season: {analysis_data.get('season_data', {})}"
     ]
-
-    logger.debug("Created context summary.")
     return "\n".join(summary_lines)
-
-
-def truncate_dict(data: dict, max_len: int = 200) -> str:
-    """
-    Safely truncate dictionary string representation to avoid huge blocks
-    of text in the summary.
-    """
-    text = str(data)
-    if len(text) > max_len:
-        text = text[:max_len] + "...(truncated)"
-    return text

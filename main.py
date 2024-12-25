@@ -1,5 +1,3 @@
-# File: main.py
-
 import sys
 import logging
 import datetime
@@ -20,9 +18,11 @@ from scheduling.extended_lead_storage import upsert_full_lead
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
 from services.leads_service import LeadsService
+from services.data_gatherer_service import DataGathererService
 
 # Initialize services
 leads_service = LeadsService()
+data_gatherer = DataGathererService()
 
 ###############################################################################
 # Attempt to gather last inbound snippet from:
@@ -102,9 +102,10 @@ def main():
             if DEBUG_MODE:
                 logger.debug(f"Lead '{email}' found in SQL. Using local data.")
         else:
+            # If not found in SQL, gather data from external sources
             if DEBUG_MODE:
                 logger.debug(f"Lead '{email}' not found in SQL; fetching from external source...")
-            lead_sheet = leads_service.prepare_lead_context(email)
+            lead_sheet = data_gatherer.gather_lead_data(email)
 
         # 3) Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
@@ -141,21 +142,12 @@ def main():
             "DeadlineDate": "Oct 15th",
             "Role": lead_data.get("jobtitle", "General Manager"),
             "Task": "Staff Onboarding",
-            "Topic": "On-Course Ordering Platform"
+            "Topic": "On-Course Ordering Platform",
+            "YourName": "Ty"
         }
 
-        if DEBUG_MODE:
-            logger.debug(
-                "Extracted lead data fields:",
-                extra={
-                    "first_name": first_name,
-                    "last_name": last_name,
-                    "company": club_name or "N/A",
-                    "role": lead_data.get("jobtitle", "N/A"),
-                    "email": lead_data.get("email", "N/A"),
-                    "location": location_str
-                }
-            )
+        # Log the placeholders to confirm they're valid
+        logger.debug("Placeholders built", extra=placeholders)
 
         last_interaction_days = 32  # Example fallback
 
@@ -186,12 +178,39 @@ def main():
             use_markdown_template=True
         )
 
-        if not has_news:
-            # Remove the ICEBREAKER placeholder if no news
-            body = body.replace("[ICEBREAKER]\n\n", "")
+        # Log the loaded template
+        logger.debug("Loaded email template", extra={
+            "subject_template": subject,
+            "body_template": body
+        })
 
-        # 9) Personalize with xAI
+        # If no news, remove the ICEBREAKER
+        if not has_news:
+            body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
+
+        # 9) First placeholder replacement pass (pre-xAI)
         orig_subject, orig_body = subject, body
+        for key, val in placeholders.items():
+            subject = subject.replace(f"[{key}]", val)
+            body    = body.replace(f"[{key}]", val)
+
+        logger.debug("After initial replacement (pre-xAI)", extra={
+            "subject": subject,
+            "body": body
+        })
+
+        # Before replacement
+        logger.debug("Original text:", extra={"subject": subject, "body": body})
+
+        # After replacement
+        for key, val in placeholders.items():
+            subject = subject.replace(f"[{key}]", val)
+            body = body.replace(f"[{key}]", val)
+            logger.debug(f"Replacing [{key}] with {val}")
+
+        logger.debug("After replacement:", extra={"subject": subject, "body": body})
+
+        # 10) Personalize with xAI
         try:
             subject, body = personalize_email_with_xai(lead_sheet, subject, body)
             if not subject.strip():
@@ -199,8 +218,17 @@ def main():
             if not body.strip():
                 body = orig_body
 
-            # Clean up leftover bold
+            # Clean up leftover bold if any
             body = body.replace("**", "")
+
+            # 11) Re-apply placeholders if xAI reintroduced them
+            logger.debug("Before final placeholders after xAI", extra={
+                "subject_before_final": subject,
+                "body_before_final": body
+            })
+            for key, val in placeholders.items():
+                subject = subject.replace(f"[{key}]", val)
+                body    = body.replace(f"[{key}]", val)
 
             # Insert greeting if missing
             if placeholders["FirstName"]:
@@ -210,6 +238,7 @@ def main():
                 if not body.lower().startswith("hey"):
                     body = f"Hey there,\n\n{body}"
 
+            # Insert ICEBREAKER if we have news
             if has_news:
                 try:
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
@@ -221,14 +250,20 @@ def main():
 
         except Exception as e:
             logger.error(f"xAI personalization error: {e}")
+            # Fall back to original subject/body if xAI fails
             subject, body = orig_subject, orig_body
 
-        # 10) Attempt to find inbound snippet from Gmail or lead sheet
+        logger.debug("Final content after xAI", extra={
+            "subject": subject,
+            "body": body
+        })
+
+        # 12) Attempt to find inbound snippet from Gmail or lead sheet
         inbound_snippet = get_any_inbound_snippet(email, lead_sheet)
         if inbound_snippet:
             body += f"\n\n---\nP.S. Here's the last inbound message you sent:\n\"{inbound_snippet}\""
 
-        # 11) Create Gmail draft
+        # 13) Create Gmail draft
         lead_email = lead_data.get("email", email)
         draft_result = create_draft(
             sender="me",
@@ -244,7 +279,7 @@ def main():
         else:
             logger.error("Failed to create Gmail draft.")
 
-        # Possibly generate follow-ups
+        # (Optional) Possibly generate follow-ups
         # generate_followup_email_xai(lead_id=..., sequence_num=2)
 
     except LeadContextError as e:

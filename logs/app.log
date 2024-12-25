@@ -1,52 +1,223 @@
-2024-12-24 20:44:53,997 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
-2024-12-24 20:45:54,734 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
-2024-12-24 20:45:55,038 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
-2024-12-24 20:46:39,023 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
-2024-12-24 20:46:39,384 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
-2024-12-24 20:47:23,644 - utils.logging_setup - WARNING - Missing required environment variable: ENABLE_GOOGLE_SEARCH
-2024-12-24 20:47:23,975 - utils.logging_setup - INFO - Retrieved 100 lead(s) from HubSpot.
-2024-12-24 15:15:57,089 - utils.logging_setup - INFO - Successfully loaded season data
-2024-12-24 15:17:44,370 - utils.logging_setup - INFO - Successfully loaded season data
-2024-12-24 15:17:44,916 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-24 15:17:52,859 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-24 15:17:52,896 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-24 15:17:52,909 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' found in SQL. Using local data.
-2024-12-24 15:17:52,910 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-24 15:17:52,910 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-24 15:17:52,911 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
-2024-12-24 15:17:52,912 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=9); updating record.
-2024-12-24 15:17:52,915 - utils.logging_setup - DEBUG - Company found (company_id=7); updating HS fields + season data if needed.
-2024-12-24 15:17:52,917 - utils.logging_setup - DEBUG - Updating existing lead_properties (property_id=9) for lead_id=9.
-2024-12-24 15:17:52,919 - utils.logging_setup - DEBUG - Updating existing company_properties (property_id=7) for company_id=7.
-2024-12-24 15:17:52,921 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
-2024-12-24 15:17:52,922 - utils.logging_setup - DEBUG - Extracted lead data fields:
-2024-12-24 15:17:52,922 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
-2024-12-24 15:17:52,922 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': "You are a helpful assistant that provides a brief overview of a club's location and amenities."}, {'role': 'user', 'content': 'Please provide a concise overview about Short Hills Club in Millburn, NJ, highlighting amenities like no specific amenities. Only provide one short paragraph.'}], 'model': 'grok-beta', 'stream': False, 'temperature': 0.5}
-2024-12-24 15:17:54,915 - utils.logging_setup - DEBUG - xAI response=Short Hills Club, located in Millburn, NJ, offers a serene escape with its lush landscapes and elegant facilities, providing members with an exclusive environment for relaxation and social gatherings.
-2024-12-24 15:17:54,922 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': 'You are a helpful assistant that provides concise summaries of recent club news.'}, {'role': 'user', 'content': "Tell me about any recent news for Short Hills Club. If none exists, respond with 'has not been in the news.'"}], 'model': 'grok-beta', 'stream': False, 'temperature': 0}
-2024-12-24 15:17:55,972 - utils.logging_setup - DEBUG - xAI response=Short Hills Club **has not been in the news.**
-2024-12-24 15:17:55,975 - utils.logging_setup - WARNING - No .md file mapped for profile_type='fallback'. Using fallback body...
-2024-12-24 15:17:55,975 - utils.logging_setup - WARNING - Markdown body is empty. Using default fallback body.
-2024-12-24 15:17:55,975 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': "You are a helpful assistant that provides a brief overview of a club's location and amenities."}, {'role': 'user', 'content': 'Please provide a concise overview about Short Hills Club in Millburn, NJ, highlighting amenities like no specific amenities. Only provide one short paragraph.'}], 'model': 'grok-beta', 'stream': False, 'temperature': 0.5}
-2024-12-24 15:17:57,609 - utils.logging_setup - DEBUG - xAI response=Short Hills Club, located in Millburn, NJ, is a prestigious private club offering a range of amenities including an 18-hole golf course, tennis courts, swimming facilities, and a modern clubhouse with dining options.
-2024-12-24 15:17:57,611 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': 'You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.'}, {'role': 'user', 'content': "Original Subject: Quick Question\nOriginal Body: Hello Friend,\n\nAs you look forward to next season, I'd love to connect on a quick call to discuss how Swoop can streamline operations at Short Hills Club. Let me know if you have a few minutes this week.\n\nBest,\nYour Name\n\nLead Info:\n- First Name: \n- Company: Short Hills Club\n- Role: \n\nAdditional Club Context:\nShort Hills Club, located in Millburn, NJ, is a prestigious private club offering a range of amenities including an 18-hole golf course, tennis courts, swimming facilities, and a modern clubhouse with dining options.\n\nInstructions:\n1. Replace placeholders like [ClubName] with the actual name.\n2. Use the person's real first name if applicable.\n3. Keep the core structure and Swoop info.\n4. Focus on the business value and problem-solving aspects.\n5. Avoid presumptive descriptions of club features or scenery.\n6. Keep references to club specifics brief and relevant to the service.\n7. Return in the format:\n   Subject: <subject>\n   Body: <body>"}], 'model': 'grok-beta', 'stream': False, 'temperature': 0}
-2024-12-24 15:18:01,704 - utils.logging_setup - DEBUG - xAI response=Subject: Streamline Operations at Short Hills Club
+2024-12-24 23:44:36,627 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-24 23:44:36,627 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-24 23:44:38,169 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:44:38,195 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:44:38,195 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' found in SQL. Using local data.
+2024-12-24 23:44:38,195 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:44:38,195 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:44:38,195 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-24 23:44:38,210 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=13); updating record.
+2024-12-24 23:44:38,213 - utils.logging_setup - DEBUG - No company name found, skipping upsert for companies.
+2024-12-24 23:44:38,214 - utils.logging_setup - DEBUG - Updating existing lead_properties (property_id=13) for lead_id=13.
+2024-12-24 23:44:38,216 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-24 23:44:38,216 - utils.logging_setup - DEBUG - Extracted lead data fields:
+2024-12-24 23:44:38,217 - utils.logging_setup - WARNING - No .md file mapped for profile_type='fallback'. Using fallback body...
+2024-12-24 23:44:38,217 - utils.logging_setup - WARNING - Markdown body is empty. Using default fallback body.
+2024-12-24 23:44:38,217 - utils.logging_setup - DEBUG - Empty club_name passed to xai_club_info_search; returning blank.
+2024-12-24 23:44:38,217 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': 'You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.'}, {'role': 'user', 'content': "Original Subject: Need Assistance with [specific challenge]?\nOriginal Body: Hey Friend,\n\nAs you look forward to next season, I'd like to discuss how Swoop can significantly enhance your club's operational efficiency. Our solutions are designed to:\n\n- Automate booking and scheduling to reduce administrative workload.\n- Improve member engagement through personalized communications.\n- Optimize resource management for better cost control.\n\nCould we schedule a brief call this week to explore how these benefits could directly address your club's specific needs?\n\nBest,\n[YourName]\n\nLead Info:\n- First Name: \n- Company: \n- Role: \n\nAdditional Club Context:\n\n\nInstructions:\n1. Replace placeholders like [ClubName] with the actual name.\n2. Use the person's real first name if applicable.\n3. Keep the core structure and Swoop info.\n4. Focus on the business value and problem-solving aspects.\n5. Avoid presumptive descriptions of club features or scenery.\n6. Keep references to club specifics brief and relevant to the service.\n7. Return in the format:\n   Subject: <subject>\n   Body: <body>"}], 'model': 'grok-beta', 'stream': False, 'temperature': 0}
+2024-12-24 23:44:41,832 - utils.logging_setup - DEBUG - xAI response=Subject: Need Assistance with Enhancing Operational Efficiency?
 
-Body: Hello,
+Body: Hey [First Name],
 
-As you prepare for the upcoming season at Short Hills Club, I'd like to discuss how Swoop can enhance your club's operational efficiency. Our solutions are designed to:
+As you look forward to next season, I'd like to discuss how Swoop can significantly enhance [ClubName]'s operational efficiency. Our solutions are designed to:
 
-- **Optimize Staff Scheduling:** Ensure your team is where they need to be, when they need to be there, reducing labor costs and improving service.
-- **Improve Member Experience:** Streamline booking processes for golf, dining, and events, making every interaction smoother for your members.
-- **Enhance Financial Management:** Provide real-time insights into your club's financial health, helping with budgeting and forecasting.
+- **Automate booking and scheduling** to reduce administrative workload, allowing your staff to focus more on member service.
+- **Improve member engagement** through personalized communications, ensuring members feel valued and connected to [ClubName].
+- **Optimize resource management** for better cost control, directly impacting your bottom line.
 
-Could we schedule a brief call this week to explore how these benefits could specifically apply to Short Hills Club?
+Given your role as [Role] at [ClubName], could we schedule a brief call this week to explore how these benefits could directly address your club's specific needs?
 
 Best,
-Your Name
-2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].
-2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Streamline Operations at Short Hills Club
-2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Streamline Operations at Short Hills Club
-2024-12-24 15:18:02,608 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
-2024-12-24 15:18:03,225 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r5643389791894814519
-2024-12-24 15:18:03,225 - utils.logging_setup - DEBUG - Gmail draft created: r5643389791894814519
+[YourName]
+2024-12-24 23:44:42,259 - utils.logging_setup - DEBUG - No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].
+2024-12-24 23:44:42,259 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Need Assistance with Enhancing Operational Efficiency?
+2024-12-24 23:44:42,261 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Need Assistance with Enhancing Operational Efficiency?
+2024-12-24 23:44:42,263 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-24 23:44:42,735 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r-7850797681578396438
+2024-12-24 23:44:42,735 - utils.logging_setup - DEBUG - Gmail draft created: r-7850797681578396438
+2024-12-24 23:48:43,834 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-24 23:48:43,834 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-24 23:48:45,633 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:48:45,669 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:48:45,669 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' found in SQL. Using local data.
+2024-12-24 23:48:45,669 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:48:45,679 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:48:45,679 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-24 23:48:45,680 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=13); updating record.
+2024-12-24 23:48:45,688 - utils.logging_setup - DEBUG - No company name found, skipping upsert for companies.
+2024-12-24 23:48:45,688 - utils.logging_setup - DEBUG - Updating existing lead_properties (property_id=13) for lead_id=13.
+2024-12-24 23:48:45,688 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-24 23:48:45,688 - utils.logging_setup - DEBUG - Extracted lead data fields:
+2024-12-24 23:48:45,688 - utils.logging_setup - WARNING - No .md file mapped for profile_type='fallback'. Using fallback body...
+2024-12-24 23:48:45,688 - utils.logging_setup - WARNING - Markdown body is empty. Using default fallback body.
+2024-12-24 23:48:45,688 - utils.logging_setup - DEBUG - Empty club_name passed to xai_club_info_search; returning blank.
+2024-12-24 23:48:45,688 - utils.logging_setup - DEBUG - xAI request payload={'messages': [{'role': 'system', 'content': 'You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.'}, {'role': 'user', 'content': "Original Subject: Quick Question\nOriginal Body: Hey Friend,\n\nWhile planning for the upcoming season, I'd like to discuss how Swoop can significantly enhance your club's operational efficiency. Our solutions are designed to:\n\n- Automate booking and scheduling to reduce administrative workload.\n- Improve member engagement through personalized communications.\n- Optimize resource management for better cost control.\n\nCould we schedule a brief call this week to explore how these benefits could directly address your club's specific needs?\n\nBest,\nTy\n\nLead Info:\n- First Name: \n- Company: \n- Role: \n\nAdditional Club Context:\n\n\nInstructions:\n1. Replace placeholders like [ClubName] with the actual name.\n2. Use the person's real first name if applicable.\n3. Keep the core structure and Swoop info.\n4. Focus on the business value and problem-solving aspects.\n5. Avoid presumptive descriptions of club features or scenery.\n6. Keep references to club specifics brief and relevant to the service.\n7. Return in the format:\n   Subject: <subject>\n   Body: <body>"}], 'model': 'grok-beta', 'stream': False, 'temperature': 0}
+2024-12-24 23:48:49,409 - utils.logging_setup - DEBUG - xAI response=Subject: Enhancing [ClubName]'s Efficiency with Swoop
+
+Body: Hi [FirstName],
+
+As you plan for the upcoming season at [ClubName], I'd like to discuss how Swoop can significantly enhance your club's operational efficiency. Our solutions are designed to:
+
+- **Automate booking and scheduling** to reduce administrative workload, allowing your staff to focus more on member service.
+- **Improve member engagement** through personalized communications, ensuring members feel valued and connected to [ClubName].
+- **Optimize resource management** for better cost control, directly impacting your bottom line.
+
+Could we schedule a brief call this week to explore how these benefits could directly address [ClubName]'s specific needs?
+
+Best,
+Ty
+2024-12-24 23:48:49,769 - utils.logging_setup - DEBUG - No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].
+2024-12-24 23:48:49,769 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Enhancing Your Club's Efficiency with Swoop
+2024-12-24 23:48:49,770 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Enhancing Your Club's Efficiency with Swoop
+2024-12-24 23:48:49,771 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-24 23:48:50,240 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r-5509173043677673079
+2024-12-24 23:48:50,240 - utils.logging_setup - DEBUG - Gmail draft created: r-5509173043677673079
+2024-12-24 23:52:52,667 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-24 23:52:52,667 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-24 23:52:54,176 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:52:54,213 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:52:54,213 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' not found in SQL; fetching from external source...
+2024-12-24 23:52:58,552 - utils.logging_setup - INFO - Found competitor mention 'jonas club software' on shorthillsclub.org
+2024-12-24 23:52:59,453 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241224_235259.json
+2024-12-24 23:52:59,453 - utils.logging_setup - INFO - Data gathered successfully for smoran@shorthillsclub.org (contact_id=122201).
+2024-12-24 23:52:59,453 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:52:59,453 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:52:59,456 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-24 23:52:59,458 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
+2024-12-24 23:52:59,463 - utils.logging_setup - DEBUG - No company name found, skipping upsert for companies.
+2024-12-24 23:52:59,463 - utils.logging_setup - DEBUG - No lead_properties row found; inserting new one for lead_id=14.
+2024-12-24 23:52:59,466 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-24 23:52:59,466 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-24 23:52:59,466 - utils.logging_setup - WARNING - No .md file mapped for profile_type='fallback'. Using fallback body...
+2024-12-24 23:52:59,467 - utils.logging_setup - WARNING - Markdown body is empty. Using default fallback body.
+2024-12-24 23:52:59,467 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-24 23:52:59,467 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-24 23:52:59,467 - utils.logging_setup - DEBUG - Empty club_name passed to xai_club_info_search; returning blank.
+2024-12-24 23:52:59,467 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-24 23:53:03,097 - utils.logging_setup - DEBUG - xAI response received
+2024-12-24 23:53:03,097 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-24 23:53:03,097 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-24 23:53:03,097 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-24 23:53:03,554 - utils.logging_setup - DEBUG - Found inbound snippet from lead_data['emails']: Yes, how is 2 PM
+
+[cid:image001.png@01D7D166.233BF...
+2024-12-24 23:53:03,554 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Enhancing Your Club's Efficiency with Swoop
+2024-12-24 23:53:03,555 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Enhancing Your Club's Efficiency with Swoop
+2024-12-24 23:53:03,555 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-24 23:53:04,083 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r-967164950821319471
+2024-12-24 23:53:04,083 - utils.logging_setup - DEBUG - Gmail draft created: r-967164950821319471
+2024-12-24 23:56:45,769 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-24 23:56:45,785 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-24 23:56:48,698 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:56:48,735 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:56:48,735 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' found in SQL. Using local data.
+2024-12-24 23:56:48,735 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-24 23:56:48,735 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-24 23:56:48,735 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-24 23:56:48,735 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=14); updating record.
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - No company name found, skipping upsert for companies.
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Updating existing lead_properties (property_id=14) for lead_id=14.
+2024-12-24 23:56:48,748 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-24 23:56:48,748 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Empty club_name passed to xai_club_info_search; returning blank.
+2024-12-24 23:56:48,748 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-24 23:56:52,550 - utils.logging_setup - DEBUG - xAI response received
+2024-12-24 23:56:52,550 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-24 23:56:52,550 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-24 23:56:52,550 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-24 23:56:52,917 - utils.logging_setup - DEBUG - No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].
+2024-12-24 23:56:52,917 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Modernize Your Club for Enhanced Member Experience
+2024-12-24 23:56:52,926 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Modernize Your Club for Enhanced Member Experience
+2024-12-24 23:56:52,926 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-24 23:56:53,436 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r7585470964663890279
+2024-12-24 23:56:53,437 - utils.logging_setup - DEBUG - Gmail draft created: r7585470964663890279
+2024-12-25 00:02:49,837 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 00:02:49,837 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 00:02:50,890 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-25 00:02:50,931 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-25 00:02:50,931 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' found in SQL. Using local data.
+2024-12-25 00:02:50,931 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-25 00:02:50,931 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-25 00:02:50,931 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-25 00:02:50,931 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=14); updating record.
+2024-12-25 00:02:50,942 - utils.logging_setup - DEBUG - No company name found, skipping upsert for companies.
+2024-12-25 00:02:50,942 - utils.logging_setup - DEBUG - Updating existing lead_properties (property_id=14) for lead_id=14.
+2024-12-25 00:02:50,942 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-25 00:02:50,942 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-25 00:02:50,942 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-25 00:02:50,946 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-25 00:02:50,946 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-25 00:02:50,946 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-25 00:02:50,946 - utils.logging_setup - DEBUG - Empty club_name passed to xai_club_info_search; returning blank.
+2024-12-25 00:02:50,946 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 00:02:55,439 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 00:02:55,439 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-25 00:02:55,439 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-25 00:02:55,878 - utils.logging_setup - DEBUG - No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].
+2024-12-25 00:02:55,878 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Streamline Operations at [ClubName] with Swoop
+2024-12-25 00:02:55,878 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Streamline Operations at [ClubName] with Swoop
+2024-12-25 00:02:55,878 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-25 00:02:56,411 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r8528592531654763263
+2024-12-25 00:02:56,411 - utils.logging_setup - DEBUG - Gmail draft created: r8528592531654763263
+2024-12-25 00:03:40,512 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 00:03:40,514 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 00:03:41,962 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-25 00:03:41,998 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-25 00:03:41,998 - utils.logging_setup - DEBUG - Lead 'smoran@shorthillsclub.org' not found in SQL; fetching from external source...
+2024-12-25 00:03:47,201 - utils.logging_setup - INFO - Found competitor mention 'jonas club software' on shorthillsclub.org
+2024-12-25 00:03:47,201 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 00:03:49,133 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 00:03:50,143 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241225_000350.json
+2024-12-25 00:03:50,144 - utils.logging_setup - INFO - Data gathered successfully for smoran@shorthillsclub.org (contact_id=122201).
+2024-12-25 00:03:50,144 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-25 00:03:50,145 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-25 00:03:50,145 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-25 00:03:50,147 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
+2024-12-25 00:03:50,156 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
+2024-12-25 00:03:50,158 - utils.logging_setup - DEBUG - Updating lead_id=15 to reference company_id=8.
+2024-12-25 00:03:50,160 - utils.logging_setup - DEBUG - No lead_properties row found; inserting new one for lead_id=15.
+2024-12-25 00:03:50,162 - utils.logging_setup - DEBUG - No company_properties row found; inserting new one for company_id=8.
+2024-12-25 00:03:50,163 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-25 00:03:50,164 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-25 00:03:50,164 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-25 00:03:50,164 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 00:03:52,350 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 00:03:52,350 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 00:03:53,156 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 00:03:53,157 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-25 00:03:53,158 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-25 00:03:53,158 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-25 00:03:53,158 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-25 00:03:53,158 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-25 00:03:53,158 - utils.logging_setup - DEBUG - Original text:
+2024-12-25 00:03:53,158 - utils.logging_setup - DEBUG - Replacing [FirstName] with Friend
+2024-12-25 00:03:53,158 - utils.logging_setup - DEBUG - Replacing [LastName] with 
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - After replacement:
+2024-12-25 00:03:53,159 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 00:03:55,066 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 00:03:55,066 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 00:03:59,756 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 00:03:59,764 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-25 00:03:59,764 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-25 00:03:59,764 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-25 00:04:00,145 - utils.logging_setup - DEBUG - Found inbound snippet from lead_data['emails']: Yes, how is 2 PM
+
+[cid:image001.png@01D7D166.233BF...
+2024-12-25 00:04:00,145 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Elevate Member Experience at Short Hills Club with Swoop
+2024-12-25 00:04:00,145 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Elevate Member Experience at Short Hills Club with Swoop
+2024-12-25 00:04:00,145 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-25 00:04:00,680 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r-3937266915653076916
+2024-12-25 00:04:00,680 - utils.logging_setup - DEBUG - Gmail draft created: r-3937266915653076916
+2024-12-25 10:41:13,493 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 10:41:13,493 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
