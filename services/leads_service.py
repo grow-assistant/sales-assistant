@@ -18,6 +18,7 @@ from external.external_api import market_research, determine_club_season
 from hubspot_integration.data_enrichment import check_competitor_on_website
 from utils.logging_setup import logger
 from utils.doc_reader import read_doc
+from utils.template_manager import TemplateManager
 
 
 class LeadContextError(Exception):
@@ -34,6 +35,7 @@ class LeadsService:
     
     def __init__(self):
         self._hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+        self._template_manager = TemplateManager()
 
     def generate_lead_summary(self, lead_email: str) -> Dict[str, Any]:
         """
@@ -51,27 +53,19 @@ class LeadsService:
         company_data = self._hubspot.get_company_data(company_id) if company_id else {}
 
         job_title = (props.get("jobtitle", "") or "").strip()
-        filename_job_title = (
-            job_title.lower()
-            .replace("&", "and")
-            .replace("/", "_")
-            .replace(" ", "_")
-            .replace(",", "")
+        
+        # Get template using TemplateManager
+        subject, body = self._template_manager.get_template_for_role(
+            job_title=job_title,
+            last_interaction_days=30,  # TODO: Calculate actual days
+            placeholders={
+                "FirstName": props.get("firstname", ""),
+                "ClubName": company_data.get("name", "Your Club"),
+                "YourName": "Sales Team"  # TODO: Get from config
+            },
+            city=company_data.get("city", ""),
+            state=company_data.get("state", "")
         )
-
-        # Example: fetch template if it exists
-        template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
-        try:
-            template_content = read_doc(template_path)
-            subject = template_content.get("subject", "Default Subject")
-            body = template_content.get("body", "Default Body")
-        except Exception as e:
-            logger.warning(
-                f"Could not read document '{template_path}', using fallback content. "
-                f"Reason: {str(e)}"
-            )
-            subject = "Fallback Subject"
-            body = "Fallback Body..."
 
         # Basic company/season data as an example
         city = company_data.get("city", "")
