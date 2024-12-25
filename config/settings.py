@@ -63,6 +63,7 @@ HUBSPOT_API_KEY = get_env_var("HUBSPOT_API_KEY", required=not DEV_MODE, default=
 GOOGLE_SEARCH_API_KEY = get_env_var("GOOGLE_SEARCH_API_KEY", required=False, default="")
 GOOGLE_CSE_ID = get_env_var("GOOGLE_CSE_ID", required=False, default="")
 XAI_TOKEN = get_env_var("XAI_TOKEN", required=False, default="")
+MARKET_RESEARCH_API = get_env_var("MARKET_RESEARCH_API", required=False, default="")
 
 # Database Configuration
 DB_SERVER = get_env_var("DB_SERVER", required=False, default="localhost")
@@ -154,7 +155,8 @@ __all__ = [
     'PROJECT_ROOT',
     'HEADERS',
     'API_KEYS',
-    'API_ENDPOINTS'
+    'API_ENDPOINTS',
+    'MARKET_RESEARCH_API'
 ]
 
 # Log configuration status
