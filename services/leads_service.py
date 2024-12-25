@@ -75,109 +75,64 @@ class LeadsService:
         except Exception as e:
             logger.warning(f"Failed to save lead context (non-critical): {e}")
 
-    def prepare_lead_context(self, lead_email: str) -> Dict[str, Any]:
+    def prepare_lead_context(self, email: str) -> Dict[str, Any]:
         """
         Prepare comprehensive lead context including HubSpot data,
-        company information, and external research.
-        
-        This maintains the same interface as the original function
-        in context_preparer.py for backward compatibility.
+        company information, and interactions.
         """
-        contact_id = _hubspot.get_contact_by_email(lead_email)
-        if not contact_id:
-            raise LeadContextError(f"No contact found for email: {lead_email}")
+        # Initialize interactions list
+        interactions = []
 
-        lead_data = _hubspot.get_lead_data_from_hubspot(lead_email)
-        if not lead_data:
-            raise LeadContextError(f"No HubSpot lead data found for contact: {contact_id}")
 
+        # Get lead data from HubSpot
         try:
-            lead_emails = _hubspot.get_all_emails_for_contact(contact_id)
-        except Exception as e:
-            logger.error(f"Error fetching emails for contact {contact_id}: {e}")
-            lead_emails = []
+            lead_data = _hubspot.get_lead_data_from_hubspot(email)
+            if not lead_data:
+                raise LeadContextError(f"No lead found for email: {email}")
 
-        lead_data["emails"] = lead_emails
+            contact_id = _hubspot.get_contact_by_email(email)
+            if contact_id:
+                # Get associated company data
+                company_id = _hubspot.get_associated_company_id(contact_id)
+                company_data = _hubspot.get_company_data(company_id) if company_id else {}
+                lead_data["company_data"] = company_data
 
-        company_id = _hubspot.get_associated_company_id(contact_id)
-        company_data = _hubspot.get_company_data(company_id) if company_id else {}
+                # Get interactions/notes
+                interactions = _hubspot.get_all_notes_for_contact(contact_id)
 
-        domain = self.get_domain_from_email(lead_email)
-        competitor = ""
+                # Get additional lead emails
+                try:
+                    lead_emails = _hubspot.get_all_emails_for_contact(contact_id)
+                    lead_data["emails"] = lead_emails
+                except Exception as e:
+                    logger.error(f"Error fetching emails for contact {contact_id}: {e}")
+                    lead_data["emails"] = []
 
-        research_data = {}
-        company_name = company_data.get("name", "").strip()
-        if company_name:
-            # Get market research data from orchestrator
-            if self.orchestrator:
-                # Import only when needed to avoid circular imports
-                from services.orchestrator_service import OrchestratorService
+                # Get season info if company data exists
+                try:
+                    season_info = determine_club_season(
+                        company_data.get("city", ""),
+                        company_data.get("state", "")
+                    )
+                except Exception as e:
+                    logger.warning(f"Error determining season info for contact {contact_id}: {e}")
+                    season_info = {"peak_season_start": "Unknown", "peak_season_end": "Unknown"}
                 
-                research_result = self.orchestrator.analyze_competitors(company_name)
-                research_data = research_result.get("data", {})
-                if research_result.get("error"):
-                    logger.warning(f"Market research failed for '{company_name}': {research_result['error']}")
-                    research_data = {"error": research_result["error"]}
+                lead_data["season_info"] = season_info
 
-                if "recent_news" in research_data:
-                    link_summaries = summarize_recent_news(research_data["recent_news"])
-                    for item in research_data["recent_news"]:
-                        link = item.get("link", "")
-                        item["summary"] = link_summaries.get(link, "No summary available")
+            return {
+                "metadata": {"status": "success"},
+                "lead_data": lead_data,
+                "interactions": interactions
+            }
 
-                # Get interaction data from orchestrator
-                interaction_result = self.orchestrator.review_interactions(contact_id)
-                interactions = interaction_result.get("data", {})
-                if interaction_result.get("error"):
-                    logger.warning(f"Error reviewing interactions for {contact_id}: {interaction_result['error']}")
-                    interactions = {"status": "error", "error": interaction_result["error"]}
-            else:
-                logger.warning("No orchestrator service provided, skipping market research and interactions")
-                research_data = {"error": "No orchestrator service available"}
-                interactions = {"status": "error", "error": "No orchestrator service available"}
-
-        try:
-            season_info = determine_club_season(
-                company_data.get("city", ""),
-                company_data.get("state", "")
-            )
         except Exception as e:
-            logger.warning(f"Error determining season info for contact {contact_id}: {e}")
-            season_info = {"peak_season_start": "Unknown", "peak_season_end": "Unknown"}
-
-        lead_data["company_data"] = company_data
-
-        summary_text = (
-            f"Lead: {lead_email}\n"
-            f"Contact ID: {contact_id}\n"
-            f"Competitor found: {competitor if competitor else 'None'}\n"
-            f"Peak season: {season_info.get('peak_season_start', 'Unknown')} to "
-            f"{season_info.get('peak_season_end', 'Unknown')}\n"
-            f"Last response: {interactions.get('last_response', 'Unknown')}\n"
-            "Overall lead readiness: [Apply custom lead scoring here]\n"
-        )
-
-        lead_sheet = {
-            "metadata": {
-                "created_at": datetime.now().isoformat(),
-                "contact_id": contact_id,
-                "company_id": company_id,
-                "lead_email": lead_email,
-                "status": "success"
-            },
-            "lead_data": lead_data,
-            "company_data": company_data,
-            "analysis": {
-                "competitor_analysis": competitor,
-                "research_data": research_data,
-                "previous_interactions": interactions,
-                "season_data": season_info
-            },
-            "summary_overview": summary_text
-        }
-
-        self._save_lead_context(lead_sheet, contact_id)
-        return lead_sheet
+            logger.error(f"Error preparing lead context: {e}")
+            return {
+                "metadata": {"status": "error", "message": str(e)},
+                "lead_data": {},
+                "interactions": []
+            }
 
     def generate_lead_summary(self, lead_email: str) -> Dict[str, Any]:
         """

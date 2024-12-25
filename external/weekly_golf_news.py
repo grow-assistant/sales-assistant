@@ -1,30 +1,20 @@
 # external/weekly_golf_news.py
 
-import os
 import sys
 import time
 import feedparser
-import logging
 import requests
 import pandas as pd
 import openai
 import json
+from pathlib import Path
 from utils.formatting_utils import extract_text_from_html
+from utils.logging_setup import logger
 from datetime import datetime
+from config.settings import OPENAI_API_KEY, PROJECT_ROOT
 
-# If you have a .env, load it:
-from dotenv import load_dotenv
-load_dotenv()
-
-# Set your OpenAI key from environment
-openai.api_key = os.getenv("OPENAI_API_KEY", "")
-
-# Setup logging (already done in utils.logging_setup, but kept here for clarity)
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Set OpenAI key from settings
+openai.api_key = OPENAI_API_KEY
 
 def fetch_golf_news():
     """
@@ -33,7 +23,7 @@ def fetch_golf_news():
     and logs before/after each feed to pinpoint slowdowns.
     """
 
-    logger.info(f"Fetching golf news... {datetime.now()}")
+    logger.debug(f"Starting golf news fetch at {datetime.now()}")
 
     # Feeds that were working or partially working:
     feeds = {
@@ -71,7 +61,7 @@ def fetch_golf_news():
 
     all_articles = []
     for source, url in feeds.items():
-        logger.info(f"Fetching feed from {source}: {url} ...")
+        logger.debug(f"Fetching feed from {source}: {url}")
         try:
             # Optional: verify=False to skip SSL checks (not recommended in production)
             response = requests.get(url, headers=headers, timeout=5, verify=True)
@@ -100,7 +90,7 @@ def fetch_golf_news():
             logger.error(f"Unknown error fetching {source} ({url}): {e}")
         finally:
             # Always log after each feed
-            logger.info(f"Finished attempting {source}.\n")
+            logger.debug(f"Finished processing feed from {source}")
 
         # Brief pause between feeds
         time.sleep(1)
@@ -109,10 +99,10 @@ def fetch_golf_news():
         logger.warning("No articles fetched. Possibly all feeds failed.")
         return None
 
-    json_path = os.path.join(os.path.dirname(__file__), 'golf_news.json')
+    json_path = PROJECT_ROOT / 'external' / 'golf_news.json'
     with open(json_path, 'w') as f:
         json.dump(all_articles, f, indent=2)
-    logger.info(f"Golf news articles saved to {json_path}")
+    logger.info(f"Successfully saved {len(all_articles)} golf news articles to {json_path}")
 
     return pd.DataFrame(all_articles)
 
@@ -122,13 +112,13 @@ def fetch_article_text(url: str) -> str:
     Fetch HTML text from an article URL, removing scripts/styles.
     """
     try:
-        logger.info(f"Fetching article content: {url}")
+        logger.debug(f"Fetching article content from {url}")
         resp = requests.get(url, timeout=5, verify=True)
         resp.raise_for_status()
 
         return extract_text_from_html(resp.text, preserve_newlines=True)
     except Exception as e:
-        logger.error(f"Error fetching article text ({url}): {e}")
+        logger.warning(f"Unable to fetch article text from {url}: {e}")
         return ""
 
 
@@ -191,7 +181,7 @@ def summarize_and_extract_clubs(article_text: str) -> dict:
         return {"summary": summary, "clubs": clubs}
 
     except Exception as e:
-        logger.error(f"OpenAI summarization error: {e}")
+        logger.error(f"Failed to summarize article using OpenAI API: {e}")
         return {"summary": "Summarization failed.", "clubs": []}
 
 
@@ -200,9 +190,9 @@ def summarize_all_articles():
     Reads 'golf_news.json', fetches each article's content, 
     and uses OpenAI to get summary + clubs. Saves results back to JSON.
     """
-    json_path = os.path.join(os.path.dirname(__file__), 'golf_news.json')
-    if not os.path.exists(json_path):
-        logger.error(f"No JSON found at {json_path}. Run fetch_golf_news first.")
+    json_path = PROJECT_ROOT / 'external' / 'golf_news.json'
+    if not json_path.exists():
+        logger.warning(f"No golf news data found at {json_path}. Please run fetch_golf_news first.")
         return
 
     with open(json_path, 'r') as f:
@@ -218,7 +208,7 @@ def summarize_all_articles():
 
     with open(json_path, 'w') as f:
         json.dump(articles, f, indent=2)
-    logger.info("Updated JSON with summaries and clubs mentioned.")
+    logger.info(f"Successfully updated {len(articles)} articles with AI summaries and club mentions")
     return pd.DataFrame(articles)
 
 

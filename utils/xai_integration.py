@@ -1,15 +1,10 @@
-import os
 import requests
 from typing import Tuple
 from utils.logging_setup import logger
-from dotenv import load_dotenv
-from config.settings import DEBUG_MODE
+from config.settings import DEBUG_MODE, XAI_API_URL, XAI_TOKEN, XAI_MODEL
 
-load_dotenv()
-
-XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
-XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
-MODEL_NAME = os.getenv("XAI_MODEL", "grok-beta")
+XAI_BEARER_TOKEN = f"Bearer {XAI_TOKEN}"
+MODEL_NAME = XAI_MODEL
 
 def _send_xai_request(payload: dict) -> str:
     """
