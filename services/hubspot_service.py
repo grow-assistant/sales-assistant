@@ -44,7 +44,15 @@ class HubspotService:
         try:
             dt = parse_date(ts)
             return dt.strftime("%b %d, %Y %I:%M %p")
-        except:
+        except Exception as e:
+            logger.warning(
+                "Failed to parse timestamp",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "raw_timestamp": ts
+                }
+            )
             return ts
 
 
@@ -78,10 +86,24 @@ class HubspotService:
                 "company": res.get("properties", {}).get("company"),
                 "jobtitle": res.get("properties", {}).get("jobtitle")
             } for res in results]
-            logger.info(f"Retrieved {len(leads)} lead(s) from HubSpot.")
+            logger.info(
+                "Retrieved leads from HubSpot",
+                extra={
+                    "lead_count": len(leads),
+                    "has_data": bool(leads)
+                }
+            )
             return leads
         except requests.RequestException as e:
-            raise HubSpotError(f"Error fetching leads: {str(e)}")
+            logger.error(
+                "Failed to fetch leads from HubSpot",
+                extra={
+                    "error_type": type(e).__name__,
+                    "error": str(e),
+                    "status_code": getattr(e.response, 'status_code', None) if hasattr(e, 'response') else None
+                }
+            )
+            raise HubSpotError("Failed to fetch leads from HubSpot", details={"error": str(e)})
 
     def parse_email_body(self, body: str, recipient_email: str) -> dict:
         """Parse the email body into components: campaign, subject, text."""
@@ -218,7 +240,12 @@ class HubspotService:
         if results:
             return results[0].get("id")
         else:
-            logger.info(f"No contact found for {email}")
+            logger.info(
+                "Contact not found",
+                extra={
+                    "email_domain": email.split('@')[1] if '@' in email else 'unknown'
+                }
+            )
             return None
 
     def get_contact_properties(self, contact_id: str) -> dict:
