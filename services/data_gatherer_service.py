@@ -3,6 +3,7 @@
 import json
 import csv
 import datetime
+from dateutil.parser import parse as parse_date
 from typing import Dict, Any, Union
 from pathlib import Path
 
@@ -10,7 +11,6 @@ import asyncio
 from services.async_hubspot_service import AsyncHubspotService
 from utils.xai_integration import xai_news_search
 from utils.web_fetch import fetch_website_html
-from external.external_api import review_previous_interactions
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
 
@@ -87,15 +87,21 @@ class DataGathererService:
         state = parsed_company_data.get("state", "")
 
         # Run async tasks in parallel
-        competitor_task = self.check_competitor_on_website(website) if website else ""
-        research_task = self.market_research(company_name) if company_name else {}
-        interactions_task = review_previous_interactions(contact_id)
+        competitor_task = self.check_competitor_on_website(website) if website else asyncio.create_task(asyncio.sleep(0))
+        research_task = self.market_research(company_name) if company_name else asyncio.create_task(asyncio.sleep(0))
+        interactions_task = self.review_previous_interactions(contact_id)
 
         competitor, research_data, interactions = await asyncio.gather(
             competitor_task,
             research_task,
             interactions_task
         )
+
+        # Convert empty results to expected types
+        if not website:
+            competitor = ""
+        if not company_name:
+            research_data = {}
 
         # Get season info (already optimized with CSV caching)
         season_info = self.determine_club_season(city, state)
@@ -137,7 +143,7 @@ class DataGathererService:
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
-    async def check_competitor_on_website(self, domain: str) -> str:
+    async def check_competitor_on_website(self, domain: str) -> Dict[str, str]:
         """
         Check if Jonas Club Software is mentioned on the website asynchronously.
         
@@ -145,48 +151,85 @@ class DataGathererService:
             domain (str): The domain to check (without http/https)
             
         Returns:
-            str: "Jonas" if competitor is found, empty string otherwise
+            Dict containing:
+                - competitor: str ("Jonas" if found, empty string otherwise)
+                - status: str ("success", "error", or "no_data")
+                - error: str (error message if any)
         """
-        if not domain:
-            logger.warning("No domain provided for competitor check")
-            return ""
-
-        # Build URL carefully
-        url = domain.strip().lower()
-        if not url.startswith("http"):
-            url = f"https://{url}"
-
-        html = await fetch_website_html(url)
-        if not html:
-            logger.warning(
-                "Could not fetch HTML for domain",
-                extra={
-                    "domain": domain,
-                    "error": "Possible Cloudflare block"
+        try:
+            if not domain:
+                logger.warning("No domain provided for competitor check")
+                return {
+                    "competitor": "",
+                    "status": "no_data",
+                    "error": "No domain provided"
                 }
-            )
-            return ""
 
-        # If we have HTML, proceed with competitor checks
-        competitor_mentions = [
-            "jonas club software",
-            "jonas software",
-            "jonasclub",
-            "jonas club"
-        ]
+            # Build URL carefully
+            url = domain.strip().lower()
+            if not url.startswith("http"):
+                url = f"https://{url}"
 
-        for mention in competitor_mentions:
-            if mention in html.lower():
-                logger.info(
-                    "Found competitor mention on website",
+            html = await fetch_website_html(url)
+            if not html:
+                logger.warning(
+                    "Could not fetch HTML for domain",
                     extra={
                         "domain": domain,
-                        "mention": mention
+                        "error": "Possible Cloudflare block",
+                        "status": "error"
                     }
                 )
-                return "Jonas"
+                return {
+                    "competitor": "",
+                    "status": "error",
+                    "error": "Could not fetch website content"
+                }
 
-        return ""
+            # If we have HTML, proceed with competitor checks
+            competitor_mentions = [
+                "jonas club software",
+                "jonas software",
+                "jonasclub",
+                "jonas club"
+            ]
+
+            for mention in competitor_mentions:
+                if mention in html.lower():
+                    logger.info(
+                        "Found competitor mention on website",
+                        extra={
+                            "domain": domain,
+                            "mention": mention,
+                            "status": "success"
+                        }
+                    )
+                    return {
+                        "competitor": "Jonas",
+                        "status": "success",
+                        "error": ""
+                    }
+
+            return {
+                "competitor": "",
+                "status": "success",
+                "error": ""
+            }
+
+        except Exception as e:
+            logger.error(
+                "Error checking competitor on website",
+                extra={
+                    "domain": domain,
+                    "error_type": type(e).__name__,
+                    "error": str(e)
+                }
+            )
+            return {
+                "competitor": "",
+                "status": "error",
+                "error": f"Error checking competitor: {str(e)}"
+            }
 
     async def market_research(self, company_name: str) -> Dict[str, Any]:
         """
@@ -196,52 +239,80 @@ class DataGathererService:
             company_name: Name of the company to research
             
         Returns:
-            Dictionary containing company overview and recent news
+            Dictionary containing:
+                - company_overview: str (summary of company news)
+                - recent_news: List[Dict] (list of news articles)
+                - status: str ("success", "error", or "no_data")
+                - error: str (error message if any)
         """
-        if not company_name:
-            logger.warning("No company name provided for market research")
-            return {
-                "company_overview": "",
-                "recent_news": [],
-                "status": "error"
-            }
+        try:
+            if not company_name:
+                logger.warning(
+                    "No company name provided for market research",
+                    extra={"status": "no_data"}
+                )
+                return {
+                    "company_overview": "",
+                    "recent_news": [],
+                    "status": "no_data",
+                    "error": "No company name provided"
+                }
 
-        query = f"Has {company_name} been in the news lately? Provide a short summary."
-        news_response = await xai_news_search(query)
+            query = f"Has {company_name} been in the news lately? Provide a short summary."
+            news_response = await xai_news_search(query)
 
-        if not news_response:
-            logger.warning(
-                "Failed to fetch news for company",
+            if not news_response:
+                logger.warning(
+                    "Failed to fetch news for company",
+                    extra={
+                        "company": company_name,
+                        "status": "error"
+                    }
+                )
+                return {
+                    "company_overview": f"Could not fetch recent events for {company_name}",
+                    "recent_news": [],
+                    "status": "error",
+                    "error": "No news data available"
+                }
+
+            logger.info(
+                "Market research completed successfully",
                 extra={
                     "company": company_name,
-                    "status": "error"
+                    "has_news": bool(news_response),
+                    "status": "success"
                 }
             )
             return {
-                "company_overview": f"Could not fetch recent events for {company_name}",
-                "recent_news": [],
-                "status": "error"
+                "company_overview": news_response,
+                "recent_news": [
+                    {
+                        "title": "Recent News",
+                        "snippet": news_response,
+                        "link": "",
+                        "date": ""
+                    }
+                ],
+                "status": "success",
+                "error": ""
             }
 
-        logger.info(
-            "Market research completed successfully",
-            extra={
-                "company": company_name,
-                "has_news": bool(news_response)
-            }
-        )
-        return {
-            "company_overview": news_response,
-            "recent_news": [
-                {
-                    "title": "Recent News",
-                    "snippet": news_response,
-                    "link": "",
-                    "date": ""
+        except Exception as e:
+            logger.error(
+                "Error performing market research",
+                extra={
+                    "company": company_name,
+                    "error_type": type(e).__name__,
+                    "error": str(e)
                 }
-            ],
-            "status": "success"
-        }
+            )
+            return {
+                "company_overview": "",
+                "recent_news": [],
+                "status": "error",
+                "error": f"Error performing market research: {str(e)}"
+            }
 
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
@@ -312,45 +383,114 @@ class DataGathererService:
             })
             raise
 
-    def determine_club_season(self, city: str, state: str) -> dict:
+    def determine_club_season(self, city: str, state: str) -> Dict[str, str]:
         """
         Return the peak season data for the given city/state based on CSV lookups.
+        
+        Args:
+            city (str): City name
+            state (str): State name or abbreviation
+            
+        Returns:
+            Dict containing:
+                - year_round (str): "Yes", "No", or "Unknown"
+                - start_month (str): Season start month or "N/A"
+                - end_month (str): Season end month or "N/A"
+                - peak_season_start (str): Peak season start date (MM-DD)
+                - peak_season_end (str): Peak season end date (MM-DD)
+                - status (str): "success", "error", or "no_data"
+                - error (str): Error message if any
         """
-        city_key = (city.lower(), state.lower())
-        row = CITY_ST_DATA.get(city_key)
+        try:
+            if not city and not state:
+                logger.warning(
+                    "No city or state provided for season lookup",
+                    extra={"status": "no_data"}
+                )
+                return {
+                    "year_round": "Unknown",
+                    "start_month": "N/A",
+                    "end_month": "N/A",
+                    "peak_season_start": "05-01",
+                    "peak_season_end": "08-31",
+                    "status": "no_data",
+                    "error": "No location data provided"
+                }
 
-        if not row:
-            row = ST_DATA.get(state.lower())
+            city_key = (city.lower(), state.lower())
+            row = CITY_ST_DATA.get(city_key)
 
-        if not row:
-            # Default if not found
+            if not row:
+                row = ST_DATA.get(state.lower())
+
+            if not row:
+                logger.info(
+                    "No season data found for location, using defaults",
+                    extra={
+                        "city": city,
+                        "state": state,
+                        "status": "no_data"
+                    }
+                )
+                return {
+                    "year_round": "Unknown",
+                    "start_month": "N/A",
+                    "end_month": "N/A",
+                    "peak_season_start": "05-01",
+                    "peak_season_end": "08-31",
+                    "status": "no_data",
+                    "error": "Location not found in season data"
+                }
+
+            year_round = row["Year-Round?"].strip()
+            start_month_str = row["Start Month"].strip()
+            end_month_str = row["End Month"].strip()
+            peak_season_start_str = row["Peak Season Start"].strip()
+            peak_season_end_str = row["Peak Season End"].strip()
+
+            if not peak_season_start_str or peak_season_start_str == "N/A":
+                peak_season_start_str = "May"
+            if not peak_season_end_str or peak_season_end_str == "N/A":
+                peak_season_end_str = "August"
+
+            logger.info(
+                "Successfully determined club season",
+                extra={
+                    "city": city,
+                    "state": state,
+                    "year_round": year_round,
+                    "status": "success"
+                }
+            )
+            return {
+                "year_round": year_round,
+                "start_month": start_month_str,
+                "end_month": end_month_str,
+                "peak_season_start": self._month_to_first_day(peak_season_start_str),
+                "peak_season_end": self._month_to_last_day(peak_season_end_str),
+                "status": "success",
+                "error": ""
+            }
+
+        except Exception as e:
+            logger.error(
+                "Error determining club season",
+                extra={
+                    "city": city,
+                    "state": state,
+                    "error_type": type(e).__name__,
+                    "error": str(e)
+                }
+            )
             return {
                 "year_round": "Unknown",
                 "start_month": "N/A",
                 "end_month": "N/A",
                 "peak_season_start": "05-01",
-                "peak_season_end": "08-31"
+                "peak_season_end": "08-31",
+                "status": "error",
+                "error": f"Error determining season data: {str(e)}"
             }
-
-
-        year_round = row["Year-Round?"].strip()
-        start_month_str = row["Start Month"].strip()
-        end_month_str = row["End Month"].strip()
-        peak_season_start_str = row["Peak Season Start"].strip()
-        peak_season_end_str = row["Peak Season End"].strip()
-
-        if not peak_season_start_str or peak_season_start_str == "N/A":
-            peak_season_start_str = "May"
-        if not peak_season_end_str or peak_season_end_str == "N/A":
-            peak_season_end_str = "August"
-
-        return {
-            "year_round": year_round,
-            "start_month": start_month_str,
-            "end_month": end_month_str,
-            "peak_season_start": self._month_to_first_day(peak_season_start_str),
-            "peak_season_end": self._month_to_last_day(peak_season_end_str)
-        }
 
     def _month_to_first_day(self, month_name: str) -> str:
         """Convert month name to first day of month in MM-DD format."""
@@ -375,3 +515,119 @@ class DataGathererService:
         if month_name in month_map:
             return f"{month_map[month_name][0]}-{month_map[month_name][1]}"
         return "08-31"
+
+    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
+        """
+        Review previous interactions for a contact using HubSpot data.
+        
+        Args:
+            contact_id (str): HubSpot contact ID
+            
+        Returns:
+            Dict containing:
+                - emails_opened (int): Number of emails opened
+                - emails_sent (int): Number of emails sent
+                - meetings_held (int): Number of meetings detected
+                - last_response (str): Description of last response
+                - status (str): "success", "error", or "no_data"
+                - error (str): Error message if any
+        """
+        try:
+            # Get contact properties from HubSpot
+            lead_data = await self._hubspot.get_contact_properties(contact_id)
+            if not lead_data:
+                logger.warning(
+                    "No lead data found for contact",
+                    extra={
+                        "contact_id": contact_id,
+                        "status": "no_data"
+                    }
+                )
+                return {
+                    "emails_opened": 0,
+                    "emails_sent": 0,
+                    "meetings_held": 0,
+                    "last_response": "No data available",
+                    "status": "no_data",
+                    "error": "Contact not found in HubSpot"
+                }
+
+            # Extract email metrics
+            emails_opened = self._safe_int(lead_data.get("total_opens_weekly"))
+            emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
+
+            # Get all notes for contact
+            notes = await self._hubspot.get_all_notes_for_contact(contact_id)
+
+            # Count meetings from notes
+            meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
+            meetings_held = sum(
+                1 for note in notes
+                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords)
+            )
+
+            # Determine last response status
+            last_reply = lead_data.get("hs_sales_email_last_replied")
+            if last_reply:
+                try:
+                    reply_date = parse_date(last_reply.replace('Z', '+00:00'))
+                    if reply_date.tzinfo is None:
+                        reply_date = reply_date.replace(tzinfo=datetime.timezone.utc)
+                    now_utc = datetime.datetime.now(datetime.timezone.utc)
+                    days_ago = (now_utc - reply_date).days
+                    last_response = f"Responded {days_ago} days ago"
+                except ValueError:
+                    last_response = "Responded recently"
+            else:
+                if emails_opened > 0:
+                    last_response = "Opened emails but no direct reply"
+                else:
+                    last_response = "No recent response"
+
+            logger.info(
+                "Successfully retrieved interaction history",
+                extra={
+                    "contact_id": contact_id,
+                    "emails_opened": emails_opened,
+                    "emails_sent": emails_sent,
+                    "meetings_held": meetings_held,
+                    "status": "success"
+                }
+            )
+            return {
+                "emails_opened": emails_opened,
+                "emails_sent": emails_sent,
+                "meetings_held": meetings_held,
+                "last_response": last_response,
+                "status": "success",
+                "error": ""
+            }
+
+        except Exception as e:
+            logger.error(
+                "Failed to review contact interactions",
+                extra={
+                    "contact_id": contact_id,
+                    "error_type": type(e).__name__,
+                    "error": str(e)
+                }
+            )
+            return {
+                "emails_opened": 0,
+                "emails_sent": 0,
+                "meetings_held": 0,
+                "last_response": "Error retrieving data",
+                "status": "error",
+                "error": f"Error retrieving interaction data: {str(e)}"
+            }
+
+    def _safe_int(self, value: Any, default: int = 0) -> int:
+        """
+        Convert a value to int safely, defaulting if conversion fails.
+        """
+        if value is None:
+            return default
+        try:
+            return int(float(str(value)))
+        except (TypeError, ValueError):
+            return default

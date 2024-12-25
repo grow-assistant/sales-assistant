@@ -1,6 +1,7 @@
 import sys
 import logging
 import datetime
+import asyncio
 
 from utils.logging_setup import logger
 from utils.exceptions import LeadContextError
@@ -81,7 +82,7 @@ def get_any_inbound_snippet(lead_email: str, lead_sheet: dict, max_chars=200) ->
 ###############################################################################
 # Main Workflow
 ###############################################################################
-def main():
+async def main_async():
     # Set up logging level
     if DEBUG_MODE:
         logger.setLevel(logging.DEBUG)
@@ -99,7 +100,7 @@ def main():
         # Gather data from external sources using async implementation
         if DEBUG_MODE:
             logger.debug(f"Fetching lead data for '{email}' using async implementation...")
-        lead_sheet = data_gatherer.gather_lead_data(email)
+        lead_sheet = await data_gatherer.gather_lead_data(email)
 
         # Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
@@ -153,8 +154,8 @@ def main():
         if club_name:
             if DEBUG_MODE:
                 logger.debug(f"Fetching club info/news for '{club_name}'")
-            club_info_snippet = xai_club_info_search(club_name, location_str)
-            news_result = xai_news_search(club_name)
+            club_info_snippet = await xai_club_info_search(club_name, location_str)
+            news_result = await xai_news_search(club_name)
         else:
             club_info_snippet = ""
             news_result = ""
@@ -210,7 +211,7 @@ def main():
 
         # 10) Personalize with xAI
         try:
-            subject, body = personalize_email_with_xai(lead_sheet, subject, body)
+            subject, body = await personalize_email_with_xai(lead_sheet, subject, body)
             if not subject.strip():
                 subject = orig_subject
             if not body.strip():
@@ -289,5 +290,9 @@ def main():
 ###############################################################################
 # Entry point
 ###############################################################################
+def main():
+    """Entry point that runs the async main function."""
+    asyncio.run(main_async())
+
 if __name__ == "__main__":
     main()
