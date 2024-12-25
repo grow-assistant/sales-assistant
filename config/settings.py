@@ -2,7 +2,7 @@
 import os
 from typing import Any, Optional, Dict
 from dotenv import load_dotenv
-from utils.logging_setup import logger
+from utils.logger_base import logger
 from pathlib import Path
 
 # Load environment variables

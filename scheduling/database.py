@@ -1,13 +1,13 @@
 # scheduling/database.py
 
-import os
 import pyodbc
 from utils.logging_setup import logger
+from config.settings import DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD
 
-SERVER = os.getenv("DB_SERVER", "TY\\SQLEXPRESS")
-DATABASE = os.getenv("DB_NAME", "SwoopSchedules")
-UID = os.getenv("DB_USER", "admin")
-PWD = os.getenv("DB_PASSWORD", "admin")
+SERVER = DB_SERVER
+DATABASE = DB_NAME
+UID = DB_USER
+PWD = DB_PASSWORD
 
 def get_db_connection():
     logger.debug(f"Connecting to SQL Server: SERVER={SERVER}, DATABASE={DATABASE}, UID={UID}, PWD={PWD}")

@@ -1,17 +1,16 @@
 from services.hubspot_service import HubspotService
 import logging
-import os
+from config.settings import HUBSPOT_API_KEY
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def test_hubspot_endpoints():
-    hubspot_api_key = os.getenv('HUBSPOT_API_KEY')
-    if not hubspot_api_key:
+    if not HUBSPOT_API_KEY:
         logger.error("HUBSPOT_API_KEY environment variable not found")
         return
 
-    hubspot = HubspotService(api_key=hubspot_api_key)
+    hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
     
     try:
         # Test get_hubspot_leads
