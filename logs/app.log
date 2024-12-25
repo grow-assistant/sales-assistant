@@ -374,3 +374,9 @@ Ty
 2024-12-25 20:50:46,301 - utils.logging_setup - DEBUG - Before final placeholders after xAI
 2024-12-25 20:50:46,301 - utils.logging_setup - DEBUG - Final content after xAI
 2024-12-25 20:50:46,301 - utils.logging_setup - ERROR - Unexpected error in main: [Errno 2] No such file or directory: 'credentials.json'
+2024-12-25 21:40:24,488 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 21:40:24,489 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 21:40:24,489 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 21:40:45,903 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 21:40:45,904 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 21:40:45,904 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
