@@ -7,8 +7,7 @@ from typing import Dict, Any, Union, List
 from pathlib import Path
 from dateutil.parser import parse as parse_date
 
-import asyncio
-from services.async_hubspot_service import AsyncHubspotService
+from services.hubspot_service import HubspotService
 from utils.xai_integration import xai_news_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
@@ -34,24 +33,21 @@ class DataGathererService:
 
     def __init__(self):
         """Initialize the DataGathererService with HubSpot client and season data."""
-        self._hubspot = AsyncHubspotService(api_key=HUBSPOT_API_KEY)
+        self._hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         # Load season data at initialization
         self.load_season_data()
-        # Create event loop for async operations
-        self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
 
-    async def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
-        """Gather all HubSpot data asynchronously."""
-        return await self._hubspot.gather_lead_data(lead_email)
+    def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
+        """Gather all HubSpot data."""
+        return self._hubspot.gather_lead_data(lead_email)
 
-    async def gather_lead_data(self, lead_email: str) -> Dict[str, Any]:
+    def gather_lead_data(self, lead_email: str) -> Dict[str, Any]:
         """
         Main entry point for gathering lead data.
-        Coordinates all async operations in parallel.
+        Gathers all data sequentially using synchronous calls.
         """
-        # 1) Gather all HubSpot data asynchronously
-        hubspot_data = await self._gather_hubspot_data(lead_email)
+        # 1) Gather all HubSpot data
+        hubspot_data = self._hubspot.gather_lead_data(lead_email)
         
         contact_id = hubspot_data["id"]
         lead_data = {
@@ -65,43 +61,41 @@ class DataGathererService:
         # --- NEW: Flatten the company JSON for easy access in main.py
         parsed_company_data = {}
         company_id = None
+        # Initialize with empty values
+        parsed_company_data = {
+            "hs_object_id": "",
+            "name": "",
+            "city": "",
+            "state": "",
+            "domain": "",
+            "website": ""
+        }
+        
         if company_data_raw:
             # Convert HubSpot's structure (id + properties dict) to a simpler format
             company_id = company_data_raw.get("id", "")
             props = company_data_raw.get("properties", {})
-            parsed_company_data = {
+            parsed_company_data.update({
                 "hs_object_id": company_id,
                 "name": props.get("name", ""),
                 "city": props.get("city", ""),
                 "state": props.get("state", ""),
                 "domain": props.get("domain", ""),
                 "website": props.get("website", "")
-            }
+            })
 
         lead_data["company_data"] = parsed_company_data
 
-        # Gather all external data in parallel using asyncio.gather
+        # Gather all external data sequentially
         company_name = parsed_company_data.get("name", "").strip()
         website = parsed_company_data.get("website", "")
         city = parsed_company_data.get("city", "")
         state = parsed_company_data.get("state", "")
 
-        # Run async tasks in parallel
-        competitor_task = self.check_competitor_on_website(website) if website else asyncio.create_task(asyncio.sleep(0))
-        research_task = self.market_research(company_name) if company_name else asyncio.create_task(asyncio.sleep(0))
-        interactions_task = self.review_previous_interactions(contact_id)
-
-        competitor, research_data, interactions = await asyncio.gather(
-            competitor_task,
-            research_task,
-            interactions_task
-        )
-
-        # Convert empty results to expected types
-        if not website:
-            competitor = ""
-        if not company_name:
-            research_data = {}
+        # Run tasks sequentially
+        competitor = self.check_competitor_on_website(website) if website else ""
+        research_data = self.market_research(company_name) if company_name else {}
+        interactions = self.review_previous_interactions(contact_id)
 
         # Get season info (already optimized with CSV caching)
         season_info = self.determine_club_season(city, state)
@@ -143,9 +137,9 @@ class DataGathererService:
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
-    async def check_competitor_on_website(self, domain: str) -> Dict[str, str]:
+    def check_competitor_on_website(self, domain: str) -> Dict[str, str]:
         """
-        Check if Jonas Club Software is mentioned on the website asynchronously.
+        Check if Jonas Club Software is mentioned on the website.
         
         Args:
             domain (str): The domain to check (without http/https)
@@ -170,7 +164,7 @@ class DataGathererService:
             if not url.startswith("http"):
                 url = f"https://{url}"
 
-            html = await fetch_website_html(url)
+            html = fetch_website_html(url)
             if not html:
                 logger.warning(
                     "Could not fetch HTML for domain",
@@ -231,9 +225,9 @@ class DataGathererService:
                 "error": f"Error checking competitor: {str(e)}"
             }
 
-    async def market_research(self, company_name: str) -> Dict[str, Any]:
+    def market_research(self, company_name: str) -> Dict[str, Any]:
         """
-        Perform market research for a company using xAI news search asynchronously.
+        Perform market research for a company using xAI news search.
         
         Args:
             company_name: Name of the company to research
@@ -259,7 +253,7 @@ class DataGathererService:
                 }
 
             query = f"Has {company_name} been in the news lately? Provide a short summary."
-            news_response = await xai_news_search(query)
+            news_response = xai_news_search(query)
 
             if not news_response:
                 logger.warning(
@@ -317,14 +311,32 @@ class DataGathererService:
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
         Save the lead_sheet dictionary to 'test_data/lead_contexts' as a JSON file.
+        Masks sensitive data before saving.
         """
         try:
+            # Create a deep copy to avoid modifying the original
+            masked_sheet = json.loads(json.dumps(lead_sheet))
+            
+            # Mask sensitive data
+            if "lead_data" in masked_sheet:
+                if "properties" in masked_sheet["lead_data"]:
+                    props = masked_sheet["lead_data"]["properties"]
+                    if "email" in props:
+                        email = props["email"]
+                        username = email.split('@')[0]
+                        domain = email.split('@')[1]
+                        props["email"] = f"{username[:3]}...@{domain}"
+                    if "phone" in props: 
+                        props["phone"] = "xxx-xxx-xxxx"
+                if "emails" in masked_sheet["lead_data"]:
+                    masked_sheet["lead_data"]["emails"] = ["(masked)" for _ in masked_sheet["lead_data"]["emails"]]
+
             context_dir = self._create_context_directory()
             filename = self._generate_context_filename(lead_email)
             file_path = context_dir / filename
 
             with file_path.open("w", encoding="utf-8") as f:
-                json.dump(lead_sheet, f, indent=2, ensure_ascii=False)
+                json.dump(masked_sheet, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Lead context saved at: {file_path.resolve()}")
         except Exception as e:
@@ -515,9 +527,8 @@ class DataGathererService:
         if month_name in month_map:
             return f"{month_map[month_name][0]}-{month_map[month_name][1]}"
         return "08-31"
-<<<<<<< HEAD
 
-    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
+    def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
         """
         Review previous interactions for a contact using HubSpot data.
         
@@ -535,7 +546,7 @@ class DataGathererService:
         """
         try:
             # Get contact properties from HubSpot
-            lead_data = await self._hubspot.get_contact_properties(contact_id)
+            lead_data = self._hubspot.get_contact_properties(contact_id)
             if not lead_data:
                 logger.warning(
                     "No lead data found for contact",
@@ -558,7 +569,7 @@ class DataGathererService:
             emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
 
             # Get all notes for contact
-            notes = await self._hubspot.get_all_notes_for_contact(contact_id)
+            notes = self._hubspot.get_all_notes_for_contact(contact_id)
 
             # Count meetings from notes
             meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
@@ -625,19 +636,6 @@ class DataGathererService:
     def _safe_int(self, value: Any, default: int = 0) -> int:
         """
         Convert a value to int safely, defaulting if conversion fails.
-        """
-        if value is None:
-            return default
-        try:
-            return int(float(str(value)))
-        except (TypeError, ValueError):
-            return default
-||||||| f876012
-=======
-
-    def _safe_int(self, value: Any, default: int = 0) -> int:
-        """
-        Convert a value to int safely, defaulting if conversion fails.
         
         Args:
             value: Value to convert to integer
@@ -652,91 +650,3 @@ class DataGathererService:
             return int(float(str(value)))
         except (TypeError, ValueError):
             return default
-
-    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
-        """
-        Review previous interactions asynchronously using the HubSpot service.
-        
-        Args:
-            contact_id (str): The HubSpot contact ID to review
-            
-        Returns:
-            Dict containing interaction metrics and status:
-            {
-                "emails_opened": int,
-                "emails_sent": int,
-                "meetings_held": int,
-                "last_response": str,
-                "status": str
-            }
-        """
-        try:
-            # Get contact properties from HubSpot asynchronously
-            lead_data = await self._hubspot.get_contact_properties(contact_id)
-            if not lead_data: 
-                logger.warning("No lead data found for contact", extra={
-                    "contact_id": contact_id
-                })
-                return {
-                    "emails_opened": 0,
-                    "emails_sent": 0,
-                    "meetings_held": 0,
-                    "last_response": "No data available",
-                    "status": "no_data"
-                }
-
-            # Parse interaction metrics
-            emails_opened = self._safe_int(lead_data.get("total_opens_weekly"))
-            emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
-
-            # Get all notes asynchronously
-            notes = await self._hubspot.get_all_notes_for_contact(contact_id)
-
-            # Count meetings from notes
-            meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
-            meetings_held = sum(
-                1 for note in notes
-                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords)
-            )
-
-            # Calculate last response time
-            last_reply = lead_data.get("hs_sales_email_last_replied")
-            if last_reply:
-                try:
-                    reply_date = parse_date(last_reply.replace('Z', '+00:00'))
-                    if reply_date.tzinfo is None:
-                        reply_date = reply_date.replace(tzinfo=datetime.timezone.utc)
-                    now_utc = datetime.datetime.now(datetime.timezone.utc)
-                    days_ago = (now_utc - reply_date).days
-                    last_response = f"Responded {days_ago} days ago"
-                except ValueError:
-                    last_response = "Responded recently"
-            else:
-                if emails_opened > 0:
-                    last_response = "Opened emails but no direct reply"
-                else:
-                    last_response = "No recent response"
-
-            return {
-                "emails_opened": emails_opened,
-                "emails_sent": emails_sent,
-                "meetings_held": meetings_held,
-                "last_response": last_response,
-                "status": "success"
-            }
-
-        except Exception as e:
-            logger.error("Failed to review contact interactions", extra={
-                "error": str(e),
-                "contact_id": contact_id,
-                "error_type": type(e).__name__
-            })
-            return {
-                "emails_opened": 0,
-                "emails_sent": 0,
-                "meetings_held": 0,
-                "last_response": "Error retrieving data",
-                "status": "error",
-                "error": str(e)
-            }
->>>>>>> origin/main
