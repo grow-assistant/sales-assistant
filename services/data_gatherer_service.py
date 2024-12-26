@@ -12,6 +12,7 @@ from utils.xai_integration import xai_news_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
+from services.hubspot_integration import get_company_data, get_contact_properties
 
 # CSV-based Season Data
 CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
@@ -46,74 +47,48 @@ class DataGathererService:
         Main entry point for gathering lead data.
         Gathers all data sequentially using synchronous calls.
         """
-        # 1) Gather all HubSpot data
-        hubspot_data = self._hubspot.gather_lead_data(lead_email)
-        
-        contact_id = hubspot_data["id"]
-        lead_data = {
-            "id": contact_id,
-            "properties": hubspot_data["properties"],
-            "emails": hubspot_data["emails"]
-        }
-        
-        company_data_raw = hubspot_data.get("company_data", {})
+        # 1) Lookup contact_id via email (you may already do this)
+        contact_id = self._somehow_find_contact_id_by_email(lead_email)
+        if not contact_id:
+            logger.error(f"Could not find contact ID for {lead_email}")
+            return {}
 
-        # --- NEW: Flatten the company JSON for easy access in main.py
-        parsed_company_data = {}
-        company_id = None
-        # Initialize with empty values
-        parsed_company_data = {
-            "hs_object_id": "",
-            "name": "",
-            "city": "",
-            "state": "",
-            "domain": "",
-            "website": ""
-        }
-        
-        if company_data_raw:
-            # Convert HubSpot's structure (id + properties dict) to a simpler format
-            company_id = company_data_raw.get("id", "")
-            props = company_data_raw.get("properties", {})
-            parsed_company_data.update({
-                "hs_object_id": company_id,
-                "name": props.get("name", ""),
-                "city": props.get("city", ""),
-                "state": props.get("state", ""),
-                "domain": props.get("domain", ""),
-                "website": props.get("website", "")
-            })
+        # 2) Get the contact properties
+        contact_props = get_contact_properties(contact_id)
 
-        lead_data["company_data"] = parsed_company_data
+        # 3) Possibly find the associated company_id
+        company_id = self._somehow_find_company_id_by_contact_id(contact_id)
+        # or if you already have it:
+        # company_id = self._hubspot.get_associated_company_id(contact_id)
 
-        # Gather all external data sequentially
-        company_name = parsed_company_data.get("name", "").strip()
-        website = parsed_company_data.get("website", "")
-        city = parsed_company_data.get("city", "")
-        state = parsed_company_data.get("state", "")
+        # 4) Get the company data (including city/state)
+        company_props = get_company_data(company_id)
 
-        # Run tasks sequentially
-        competitor = self.check_competitor_on_website(website) if website else ""
-        research_data = self.market_research(company_name) if company_name else {}
-        interactions = self.review_previous_interactions(contact_id)
-
-        # Get season info (already optimized with CSV caching)
-        season_info = self.determine_club_season(city, state)
-
-        # 6) Build final lead_sheet for consistent usage across the app
+        # 5) Combine them into a single JSON
         lead_sheet = {
             "metadata": {
                 "contact_id": contact_id,
                 "company_id": company_id,
-                "lead_email": lead_email,
+                "lead_email": contact_props.get("email", ""),
                 "status": "success"
             },
-            "lead_data": lead_data,
+            "lead_data": {
+                "id": contact_id,
+                "properties": contact_props,
+                "company_data": {
+                    "hs_object_id": company_props.get("hs_object_id", ""),
+                    "name": company_props.get("name", ""),
+                    "city": company_props.get("city", ""),
+                    "state": company_props.get("state", ""),
+                    "domain": company_props.get("domain", ""),
+                    "website": company_props.get("website", "")
+                }
+            },
             "analysis": {
-                "competitor_analysis": competitor,
-                "research_data": research_data,
-                "previous_interactions": interactions,
-                "season_data": season_info
+                "competitor_analysis": self.check_competitor_on_website(company_props.get("website", "")),
+                "research_data": self.market_research(company_props.get("name", "")),
+                "previous_interactions": self.review_previous_interactions(contact_id),
+                "season_data": self.determine_club_season(company_props.get("city", ""), company_props.get("state", ""))
             }
         }
 
@@ -128,8 +103,8 @@ class DataGathererService:
                 "masked_email": masked_email,
                 "contact_found": bool(contact_id),
                 "company_found": bool(company_id),
-                "has_research": bool(research_data),
-                "has_season_info": bool(season_info)
+                "has_research": bool(lead_sheet["analysis"]["research_data"]),
+                "has_season_info": bool(lead_sheet["analysis"]["season_data"])
             }
         )
         return lead_sheet
