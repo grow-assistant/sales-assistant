@@ -117,6 +117,7 @@ def main():
         if DEBUG_MODE:
             logger.debug(f"Fetching lead data for '{email}'...")
         lead_sheet = data_gatherer.gather_lead_data(email)
+        logger.debug(f"Company data received: {lead_sheet.get('lead_data', {}).get('company_data', {})}")
 
         # Add this block here:
         try:
