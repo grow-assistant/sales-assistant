@@ -19,6 +19,18 @@ OUTREACH_SCHEDULE = [
         "days_from_now": 3,
         "subject": "Checking In on Swoop Golf",
         "body": "Hello [Name],\n\nJust wanted to follow up..."
+    },
+    {
+        "name": "Follow-Up #2 (Day 7)",
+        "days_from_now": 7,
+        "subject": "Just Checking In: Swoop Golf",
+        "body": "Hi [Name],\n\nI hope this email finds you well. It's been a week since we reached out about Swoop Golf's on-demand F&B solution for your club. Given your role in enhancing member experiences, I wanted to ensure you had a chance to explore how we're helping clubs like yours modernize their on-course service.\n\nWould you be open to a brief conversation this week to discuss how Swoop Golf could benefit your members?"
+    },
+    {
+        "name": "Follow-Up #3 (Day 14)",
+        "days_from_now": 14,
+        "subject": "Final Note: Swoop Golf's Club Enhancement Opportunity",
+        "body": "Hello [Name],\n\nI wanted to send one final note regarding Swoop Golf's on-demand F&B platform. Many clubs we work with have seen significant improvements in both member satisfaction and F&B revenue after implementing our solution.\n\nIf you're interested in learning how we could create similar results for your club, I'm happy to schedule a quick call at your convenience. Otherwise, I'll assume the timing isn't right and won't continue to follow up."
     }
 ]
 

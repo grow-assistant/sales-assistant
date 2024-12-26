@@ -38,19 +38,25 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
         conn.close()
         return
 
-    # Example user prompt to xAI
+    # Customize prompt based on sequence number
+    follow_up_context = {
+        2: "This is the second follow-up (7 days after initial). Focus on value proposition and member experience enhancement.",
+        3: "This is the final follow-up (14 days after initial). Emphasize success stories and create urgency, but maintain professionalism."
+    }.get(sequence_num, "This is a follow-up email. Be professional and concise.")
+
     user_prompt = f"""
     The lead's name is {lead['first_name']} {lead['last_name']}, 
     role is {lead['role']}, at ??? (club_name placeholder).
 
-    This is follow-up email #{sequence_num}. 
+    {follow_up_context}
     Assume they have not responded to our previous outreach about Swoop Golf.
 
     Requirements:
     1. Provide a concise subject line.
     2. Write a short 2-paragraph body referencing on-demand F&B for golf clubs.
     3. Be polite, mention the previous email, and show a sense of urgency.
-    4. Output should be in the format:
+    4. For sequence 3 (final follow-up), mention this is the last follow-up.
+    5. Output should be in the format:
        Subject: ...
        Body: ...
     """
