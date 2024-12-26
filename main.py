@@ -118,6 +118,14 @@ def main():
             logger.debug(f"Fetching lead data for '{email}'...")
         lead_sheet = data_gatherer.gather_lead_data(email)
 
+        # Add this block here:
+        try:
+            logger.debug("Attempting to save lead data to SQL database...")
+            upsert_full_lead(lead_sheet)
+            logger.info("Successfully saved lead data to SQL database")
+        except Exception as e:
+            logger.error(f"Failed to save lead data to SQL: {str(e)}")
+
         # Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
             logger.error("Failed to prepare or retrieve lead context. Exiting.")
