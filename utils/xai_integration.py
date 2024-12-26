@@ -67,7 +67,7 @@ async def xai_news_search(club_name: str) -> str:
     }
     return await _send_xai_request(payload)
 
-def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
+async def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
     if not club_name.strip() or not news_summary.strip():
         if DEBUG_MODE:
             logger.debug("Empty input passed to _build_icebreaker_from_news; returning blank.")
@@ -96,7 +96,7 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
         "stream": False,
         "temperature": 0.7
     }
-    return _send_xai_request(payload)
+    return await _send_xai_request(payload)
 
 ##############################################################################
 # Club Info Search (Used ONLY for Final Email Rewriting)

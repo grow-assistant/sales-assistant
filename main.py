@@ -240,7 +240,7 @@ async def main_async():
             # Insert ICEBREAKER if we have news
             if has_news:
                 try:
-                    icebreaker = _build_icebreaker_from_news(club_name, news_result)
+                    icebreaker = await _build_icebreaker_from_news(club_name, news_result)
                     if icebreaker:
                         body = body.replace("[ICEBREAKER]", icebreaker)
                 except Exception as e:
