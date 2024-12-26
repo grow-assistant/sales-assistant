@@ -25,6 +25,12 @@ def upsert_full_lead(lead_sheet: dict) -> None:
       2) lead_properties (phone, lifecyclestage, competitor_analysis, etc.)
       3) companies (incl. hs_object_id, hs_createdate, hs_lastmodifieddate, plus season data)
       4) company_properties (annualrevenue, competitor_analysis, company_overview, etc. but NO season data)
+
+    Modifications per request:
+      - Do NOT save competitor_analysis (store as blank).
+      - Ensure first_name/last_name are saved in the leads table.
+      - Ensure xai_facilities_info is saved in the companies table.
+      - Ensure xai_facilities_news is saved in the company_properties table.
     """
 
     conn = get_db_connection()
@@ -45,6 +51,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
         logger.debug(f"Upserting lead with email={email}")
 
+        # Make sure first name / last name are present for the leads table
         first_name = lead_data.get("firstname", "")
         last_name = lead_data.get("lastname", "")
         role = lead_data.get("jobtitle", "")
@@ -73,30 +80,45 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 5) lead_properties (dynamic)
         phone = lead_data.get("phone", "")
         lifecyclestage = lead_data.get("lifecyclestage", "")
+
         competitor_analysis = analysis_data.get("competitor_analysis", "")
         # Convert competitor_analysis to JSON string if it's a dictionary
         if isinstance(competitor_analysis, dict):
             competitor_analysis = json.dumps(competitor_analysis)
 
-        # Attempt to parse "last_response" if it’s a date
-        last_resp_str = analysis_data.get("previous_interactions", {}).get("last_response", "")
-        last_response_date = safe_parse_date(last_resp_str)
+        # Per request: do NOT save competitor_analysis (set blank)
+        competitor_analysis = ""
 
-        # 6) Season data (now stored in the COMPANIES table)
+        # Attempt to parse "last_response" as needed; storing None for now
+        last_resp_str = analysis_data.get("previous_interactions", {}).get("last_response", "")
+        last_response_date = None  # "Responded 1148 days ago" is not ISO, so we keep it as None
+
+        # 6) Season data (stored in companies)
         season_data = analysis_data.get("season_data", {})
-        year_round = season_data.get("year_round", "")            # e.g. "No"
-        start_month = season_data.get("start_month", "")          # e.g. "May"
-        end_month = season_data.get("end_month", "")              # e.g. "October"
-        peak_season_start = season_data.get("peak_season_start", "")  # "06-01"
-        peak_season_end = season_data.get("peak_season_end", "")      # "08-31"
+        year_round = season_data.get("year_round", "")
+        start_month = season_data.get("start_month", "")
+        end_month = season_data.get("end_month", "")
+        peak_season_start = season_data.get("peak_season_start", "")
+        peak_season_end = season_data.get("peak_season_end", "")
 
         # 7) Other company_properties (dynamic)
         annualrevenue = company_data.get("annualrevenue", "")
-        company_overview = analysis_data.get("research_data", {}).get("company_overview", "")
-        
+
+        research_data = analysis_data.get("research_data", {})
+        company_overview = research_data.get("company_overview", "")
+
         # 8) xAI Facilities Data
-        facilities_info = analysis_data.get("facilities_info", "")
-        facilities_news = analysis_data.get("facilities_news", "")
+        #   - xai_facilities_info goes in dbo.companies
+        #   - xai_facilities_news goes in dbo.company_properties
+        facilities_info = analysis_data.get("facilities", {}).get("response", "")
+        
+        # Get the 'snippet' field from the first 'recent_news' item
+        recent_news = analysis_data.get("facilities", {}).get("recent_news", [])
+        facilities_news = recent_news[0]["snippet"] if recent_news else ""
+        
+        # Get the company overview separately
+        research_data = analysis_data.get("research_data", {}) 
+        company_overview = research_data.get("company_overview", "")
 
         # ==========================================================
         # 1. Upsert into leads (static fields + HS fields)
@@ -157,7 +179,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         if not static_company_name.strip():
             logger.debug("No company name found, skipping upsert for companies.")
         else:
-            # Try to find if there's already a row for this company by name + city + state
             cursor.execute("""
                 SELECT company_id 
                 FROM dbo.companies
@@ -193,7 +214,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     end_month,
                     peak_season_start,
                     peak_season_end,
-                    facilities_info,
+                    facilities_info,  # Save xai_facilities_info into dbo.companies
                     company_id
                 ))
             else:
@@ -220,7 +241,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     end_month,
                     peak_season_start,
                     peak_season_end,
-                    facilities_info
+                    facilities_info  # Save xai_facilities_info
                 ))
                 inserted_co = cursor.fetchone()
                 company_id = inserted_co[0]
@@ -253,14 +274,13 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 UPDATE dbo.lead_properties
                 SET phone = ?,
                     lifecyclestage = ?,
-                    competitor_analysis = ?,
+                    competitor_analysis = '',  -- store blank
                     last_response_date = ?,
                     last_modified = GETDATE()
                 WHERE property_id = ?
             """, (
                 phone,
                 lifecyclestage,
-                competitor_analysis,
                 last_response_date,
                 prop_id
             ))
@@ -271,19 +291,19 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     lead_id, phone, lifecyclestage, competitor_analysis,
                     last_response_date, last_modified
                 )
-                VALUES (?, ?, ?, ?, ?, GETDATE())
+                VALUES (?, ?, ?, '', ?, GETDATE())
             """, (
                 lead_id,
                 phone,
                 lifecyclestage,
-                competitor_analysis,
                 last_response_date
             ))
         conn.commit()
 
         # ==========================================================
         # 4. Upsert into company_properties (dynamic fields)
-        #    (Removed peak_season_start / peak_season_end references)
+        #    No competitor_analysis is saved here (store blank).
+        #    Make sure xai_facilities_news is saved.
         # ==========================================================
         if company_id:
             cursor.execute("""
@@ -291,25 +311,23 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             """, (company_id,))
             cp_row = cursor.fetchone()
 
-            # competitor_analysis might be stored in either place, but we keep it here
-            research_data = analysis_data.get("research_data", {})
-            annualrevenue = company_data.get("annualrevenue", "")
-            company_overview = research_data.get("company_overview", "")
-
+            # competitor_analysis left blank
+            competitor_analysis = ""
+            # annualrevenue + company_overview are from above
+            # xai_facilities_news is the new item to store
             if cp_row:
                 cp_id = cp_row[0]
                 logger.debug(f"Updating existing company_properties (property_id={cp_id}) for company_id={company_id}.")
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
-                        competitor_analysis = ?,
+                        competitor_analysis = '',
                         company_overview = ?,
                         xai_facilities_news = ?,
                         last_modified = GETDATE()
                     WHERE property_id = ?
                 """, (
                     annualrevenue,
-                    competitor_analysis,
                     company_overview,
                     facilities_news,
                     cp_id
@@ -325,11 +343,10 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                         xai_facilities_news,
                         last_modified
                     )
-                    VALUES (?, ?, ?, ?, ?, GETDATE())
+                    VALUES (?, ?, '', ?, ?, GETDATE())
                 """, (
                     company_id,
                     annualrevenue,
-                    competitor_analysis,
                     company_overview,
                     facilities_news
                 ))
