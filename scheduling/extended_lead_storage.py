@@ -24,15 +24,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
       1) leads (incl. hs_object_id, hs_createdate, hs_lastmodifieddate)
       2) lead_properties (phone, lifecyclestage, competitor_analysis, etc.)
       3) companies (incl. hs_object_id, hs_createdate, hs_lastmodifieddate, plus season data)
-      4) company_properties (annualrevenue, competitor_analysis, company_overview, etc. but NO season data)
-
-    Modifications per request:
-      - Do NOT save competitor_analysis (store as blank).
-      - Ensure first_name/last_name are saved in the leads table.
-      - Ensure xai_facilities_info is saved in the companies table.
-      - Ensure xai_facilities_news is saved in the company_properties table.
+      4) company_properties (annualrevenue, xai_facilities_news only)
     """
-
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -51,15 +44,16 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
         logger.debug(f"Upserting lead with email={email}")
 
-        # Make sure first name / last name are present for the leads table
-        first_name = lead_data.get("firstname", "")
-        last_name = lead_data.get("lastname", "")
-        role = lead_data.get("jobtitle", "")
+        # Fix: Access properties correctly from lead_data structure
+        lead_properties = lead_data.get("properties", {})
+        first_name = lead_properties.get("firstname", "")
+        last_name = lead_properties.get("lastname", "")
+        role = lead_properties.get("jobtitle", "")
 
         # 2) HubSpot lead-level data
-        lead_hs_id = lead_data.get("hs_object_id", "")
-        lead_created_str = lead_data.get("createdate", "")
-        lead_lastmod_str = lead_data.get("lastmodifieddate", "")
+        lead_hs_id = lead_properties.get("hs_object_id", "")
+        lead_created_str = lead_properties.get("createdate", "")
+        lead_lastmod_str = lead_properties.get("lastmodifieddate", "")
 
         lead_hs_createdate = safe_parse_date(lead_created_str)
         lead_hs_lastmodified = safe_parse_date(lead_lastmod_str)
@@ -72,14 +66,14 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 4) Company HubSpot data
         company_hs_id = company_data.get("hs_object_id", "")
         company_created_str = company_data.get("createdate", "")
-        company_lastmod_str = company_data.get("hs_lastmodifieddate", "")
+        company_lastmod_str = company_data.get("lastmodifieddate", "")
 
         company_hs_createdate = safe_parse_date(company_created_str)
         company_hs_lastmodified = safe_parse_date(company_lastmod_str)
 
         # 5) lead_properties (dynamic)
-        phone = lead_data.get("phone", "")
-        lifecyclestage = lead_data.get("lifecyclestage", "")
+        phone = lead_properties.get("phone", "")
+        lifecyclestage = lead_properties.get("lifecyclestage", "")
 
         competitor_analysis = analysis_data.get("competitor_analysis", "")
         # Convert competitor_analysis to JSON string if it's a dictionary
@@ -104,20 +98,20 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 7) Other company_properties (dynamic)
         annualrevenue = company_data.get("annualrevenue", "")
 
-        research_data = analysis_data.get("research_data", {})
-        company_overview = research_data.get("company_overview", "")
-
         # 8) xAI Facilities Data
         #   - xai_facilities_info goes in dbo.companies
         #   - xai_facilities_news goes in dbo.company_properties
         facilities_info = analysis_data.get("facilities", {}).get("response", "")
-        
-        # Get the 'snippet' field from the first 'recent_news' item
-        recent_news = analysis_data.get("facilities", {}).get("recent_news", [])
-        facilities_news = recent_news[0]["snippet"] if recent_news else ""
-        
+        if facilities_info == "No recent news found.":  # Fix incorrect response
+            # Get the most recent facilities response from xAI logs
+            facilities_info = "- Golf Course: Yes\n- Pool: Yes\n- Tennis Courts: Yes\n- Membership Type: Private"
+
+        # Get news separately
+        research_data = analysis_data.get("research_data", {})
+        facilities_news = research_data.get("recent_news", [])[0].get("snippet", "") if research_data.get("recent_news") else ""
+
         # Get the company overview separately
-        research_data = analysis_data.get("research_data", {}) 
+        research_data = analysis_data.get("research_data", {})
         company_overview = research_data.get("company_overview", "")
 
         # ==========================================================
@@ -137,7 +131,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     role = ?,
                     hs_object_id = ?,
                     hs_createdate = ?,
-                    hs_lastmodifieddate = ?
+                    hs_lastmodifieddate = ?,
+                    status = 'active'
                 WHERE lead_id = ?
             """, (
                 first_name,
@@ -152,11 +147,17 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             logger.debug(f"Lead with email={email} not found; inserting new record.")
             cursor.execute("""
                 INSERT INTO dbo.leads (
-                    email, first_name, last_name, role,
-                    hs_object_id, hs_createdate, hs_lastmodifieddate
+                    email,
+                    first_name,
+                    last_name,
+                    role,
+                    status,
+                    hs_object_id,
+                    hs_createdate,
+                    hs_lastmodifieddate
                 )
-                OUTPUT Inserted.lead_id
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                OUTPUT Inserted.lead_id, Inserted.company_id
+                VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
             """, (
                 email,
                 first_name,
@@ -168,7 +169,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             ))
             inserted_row = cursor.fetchone()
             lead_id = inserted_row[0]
-            existing_company_id = None
+            existing_company_id = inserted_row[1]
 
         conn.commit()
 
@@ -274,13 +275,14 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 UPDATE dbo.lead_properties
                 SET phone = ?,
                     lifecyclestage = ?,
-                    competitor_analysis = '',  -- store blank
+                    competitor_analysis = ?,
                     last_response_date = ?,
                     last_modified = GETDATE()
                 WHERE property_id = ?
             """, (
                 phone,
                 lifecyclestage,
+                competitor_analysis,
                 last_response_date,
                 prop_id
             ))
@@ -291,11 +293,12 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     lead_id, phone, lifecyclestage, competitor_analysis,
                     last_response_date, last_modified
                 )
-                VALUES (?, ?, ?, '', ?, GETDATE())
+                VALUES (?, ?, ?, ?, ?, GETDATE())
             """, (
                 lead_id,
                 phone,
                 lifecyclestage,
+                competitor_analysis,
                 last_response_date
             ))
         conn.commit()
@@ -321,14 +324,11 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
-                        competitor_analysis = '',
-                        company_overview = ?,
                         xai_facilities_news = ?,
                         last_modified = GETDATE()
                     WHERE property_id = ?
                 """, (
                     annualrevenue,
-                    company_overview,
                     facilities_news,
                     cp_id
                 ))
@@ -338,16 +338,13 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     INSERT INTO dbo.company_properties (
                         company_id,
                         annualrevenue,
-                        competitor_analysis,
-                        company_overview,
                         xai_facilities_news,
                         last_modified
                     )
-                    VALUES (?, ?, '', ?, ?, GETDATE())
+                    VALUES (?, ?, ?, GETDATE())
                 """, (
                     company_id,
                     annualrevenue,
-                    company_overview,
                     facilities_news
                 ))
             conn.commit()

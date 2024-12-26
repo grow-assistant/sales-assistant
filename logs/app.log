@@ -1,118 +1,154 @@
-2024-12-26 12:46:45,396 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 12:46:45,396 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 12:46:46,481 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
-2024-12-26 12:46:48,693 - utils.logging_setup - WARNING - No domain provided for competitor check
-2024-12-26 12:46:48,694 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:46:49,638 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:46:49,639 - utils.logging_setup - INFO - Market research completed successfully
-2024-12-26 12:46:50,641 - utils.logging_setup - INFO - Successfully retrieved interaction history
-2024-12-26 12:46:50,644 - utils.logging_setup - INFO - Successfully determined club season
-2024-12-26 12:46:50,644 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:46:53,056 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:46:53,057 - utils.logging_setup - INFO - Facilities check completed
-2024-12-26 12:46:53,058 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_124653.json
-2024-12-26 12:46:53,058 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
-2024-12-26 12:46:53,060 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
-2024-12-26 12:46:53,060 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
-2024-12-26 12:46:53,060 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-26 12:46:53,105 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-26 12:46:53,105 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
-2024-12-26 12:46:53,107 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
-2024-12-26 12:46:53,116 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
-2024-12-26 12:46:53,119 - utils.logging_setup - DEBUG - Updating lead_id=1 to reference company_id=1.
-2024-12-26 12:46:53,121 - utils.logging_setup - DEBUG - No lead_properties row found; inserting new one for lead_id=1.
-2024-12-26 12:46:53,123 - utils.logging_setup - DEBUG - No company_properties row found; inserting new one for company_id=1.
-2024-12-26 12:46:53,124 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
-2024-12-26 12:46:53,125 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
-2024-12-26 12:46:53,125 - utils.logging_setup - DEBUG - Lead data retrieved:
-2024-12-26 12:46:53,125 - utils.logging_setup - DEBUG - Placeholders built
-2024-12-26 12:46:53,125 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:46:55,121 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:46:55,122 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:46:56,103 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:46:56,104 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
-2024-12-26 12:46:56,104 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Loaded email template
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Original text:
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - After replacement:
-2024-12-26 12:46:56,105 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:46:57,906 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:46:57,908 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:47:02,080 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:47:02,080 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
-2024-12-26 12:47:02,080 - utils.logging_setup - DEBUG - Before final placeholders after xAI
-2024-12-26 12:47:02,080 - utils.logging_setup - DEBUG - Final content after xAI
-2024-12-26 12:47:02,544 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Modernize Short Hills Club's Operations for Enhanced Member Experience
-2024-12-26 12:47:02,552 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Modernize Short Hills Club's Operations for Enhanced Member Experience
-2024-12-26 12:47:02,552 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
-2024-12-26 12:47:03,039 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r588273150183905865
-2024-12-26 12:47:03,039 - utils.logging_setup - DEBUG - Gmail draft created: r588273150183905865
-2024-12-26 12:48:24,764 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 12:48:24,764 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 12:48:37,355 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
-2024-12-26 12:48:39,701 - utils.logging_setup - WARNING - No domain provided for competitor check
-2024-12-26 12:48:39,702 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:48:40,651 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:48:40,652 - utils.logging_setup - INFO - Market research completed successfully
-2024-12-26 12:48:41,727 - utils.logging_setup - INFO - Successfully retrieved interaction history
-2024-12-26 12:48:41,727 - utils.logging_setup - INFO - Successfully determined club season
-2024-12-26 12:48:41,728 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:48:43,593 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:48:43,593 - utils.logging_setup - INFO - Facilities check completed
-2024-12-26 12:48:43,593 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_124843.json
-2024-12-26 12:48:43,593 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
-2024-12-26 12:48:43,609 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
-2024-12-26 12:48:43,609 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
-2024-12-26 12:48:43,609 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-26 12:48:43,648 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-26 12:48:43,649 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
-2024-12-26 12:48:43,650 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
-2024-12-26 12:48:43,660 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
-2024-12-26 12:48:43,663 - utils.logging_setup - DEBUG - Updating lead_id=1 to reference company_id=1.
-2024-12-26 12:48:43,665 - utils.logging_setup - DEBUG - No lead_properties row found; inserting new one for lead_id=1.
-2024-12-26 12:48:43,667 - utils.logging_setup - DEBUG - No company_properties row found; inserting new one for company_id=1.
-2024-12-26 12:48:43,669 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
-2024-12-26 12:48:43,669 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
-2024-12-26 12:48:43,669 - utils.logging_setup - DEBUG - Lead data retrieved:
-2024-12-26 12:48:43,670 - utils.logging_setup - DEBUG - Placeholders built
-2024-12-26 12:48:43,670 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:48:45,464 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:48:45,465 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
-2024-12-26 12:48:47,725 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Loaded email template
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Original text:
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - After replacement:
-2024-12-26 12:48:47,725 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:48:49,828 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:48:49,828 - utils.logging_setup - DEBUG - Sending xAI request payload
-2024-12-26 12:48:55,874 - utils.logging_setup - DEBUG - xAI response received
-2024-12-26 12:48:55,874 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
-2024-12-26 12:48:55,874 - utils.logging_setup - DEBUG - Before final placeholders after xAI
-2024-12-26 12:48:55,874 - utils.logging_setup - DEBUG - Final content after xAI
-2024-12-26 12:48:56,363 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Elevate Short Hills Club's Member Experience with Swoop
-2024-12-26 12:48:56,363 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Elevate Short Hills Club's Member Experience with Swoop
-2024-12-26 12:48:56,363 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
-2024-12-26 12:48:56,880 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r2591986497801553776
-2024-12-26 12:48:56,880 - utils.logging_setup - DEBUG - Gmail draft created: r2591986497801553776
+2024-12-26 14:28:42,496 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 14:28:42,497 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 14:28:49,505 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
+2024-12-26 14:28:51,814 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 14:28:51,815 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:28:51,815 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 14:28:51,816 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 14:28:52,620 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 14:28:52,621 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 14:28:53,695 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 14:28:53,696 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 14:28:53,696 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:28:53,697 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 14:28:53,697 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-26 14:28:54,513 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 14:28:54,515 - utils.logging_setup - INFO - Facilities check completed
+2024-12-26 14:28:54,517 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_142854.json
+2024-12-26 14:28:54,517 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
+2024-12-26 14:28:54,517 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
+2024-12-26 14:28:54,517 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
+2024-12-26 14:28:54,517 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-26 14:28:54,554 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-26 14:28:54,554 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-26 14:28:54,555 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
+2024-12-26 14:28:54,563 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
+2024-12-26 14:28:54,566 - utils.logging_setup - DEBUG - Updating lead_id=1 to reference company_id=1.
+2024-12-26 14:28:54,568 - utils.logging_setup - DEBUG - No lead_properties row found; inserting new one for lead_id=1.
+2024-12-26 14:28:54,570 - utils.logging_setup - DEBUG - No company_properties row found; inserting new one for company_id=1.
+2024-12-26 14:28:54,572 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
+2024-12-26 14:28:54,572 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
+2024-12-26 14:28:54,572 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 14:28:54,573 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 14:28:54,573 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 14:28:54,573 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 14:28:54,573 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:28:54,573 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 14:28:54,573 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 14:28:55,798 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 14:28:55,799 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 14:28:55,799 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:28:55,799 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 14:28:55,800 - utils.logging_setup - INFO - xAI user message: Has Short Hills Club been in the news lately?
+2024-12-26 14:28:56,589 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 14:28:56,591 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 14:28:56,591 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 14:28:56,592 - utils.logging_setup - INFO - Starting email personalization with xAI
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 14:28:56,592 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:28:56,593 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 14:28:56,593 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 14:28:57,907 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 14:28:57,910 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 14:28:57,910 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:28:57,911 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
+2024-12-26 14:28:57,912 - utils.logging_setup - INFO - xAI user message: Original Subject: Is Short Hills Club Looking to Modernize?
+Original Body: Hey Scotty,
+
+[ICEBREAKER]
+
+As you look forward to the coming season, We at Swoop specialize in helping clubs modernize their operations without expensive overhead.
+
+You’ll be able to:
+- Offer convenient on-demand ordering for food, beverage, and more
+- Improve member satisfaction by reducing wait times
+- Capture extra revenue while keeping staff workload in check
+
+If that’s something you’d like to explore, let me know a good time for a quick chat.
+
+Best,
+Ty
+
+Swoop Golf  
+480-225-9702  
+swoopgolf.com
+
+Lead Info:
+- First Name: 
+- Company: Short Hills Club
+- Role: 
+
+Additional Club Context:
+- **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+
+Club Facilities:
+No recent news found.
+
+Instructions:
+1. Replace placeholders like [ClubName] with the actual name.
+2. Use the person's real first name if applicable.
+3. Keep the core structure and Swoop info.
+4. Focus on the business value and problem-solving aspects.
+5. Use verified club facilities information when available.
+6. Keep references to club specifics brief and relevant to the service.
+7. Return in the format:
+   Subject: <subject>
+   Body: <body>
+2024-12-26 14:29:02,345 - utils.logging_setup - INFO - xAI response received: Subject: Modernizing Operations at Short Hills Club
+
+Body: Hey Scotty,
+
+I hope you're enjoying the season at Short Hills Club. As you look forward to the coming season, we at Swoop specialize in helping clubs like yours modernize their operations without the burden of expensive overhead.
+
+Here’s how Swoop can benefit Short Hills Club:
+- **Convenient On-Demand Ordering:** Members can order food, beverages, and more directly from their phones, enhancing their experience at the golf course, pool, or tennis courts.
+- **Improved Member Satisfaction:** By reducing wait times, members will enjoy their time at the club even more, leading to higher satisfaction and retention.
+- **Increased Revenue:** Capture extra revenue with minimal impact on staff workload, ensuring your operations run smoothly and efficiently.
+
+If that’s something you’d like to explore, let me know a good time for a quick chat.
+
+Best,
+Ty
+
+Swoop Golf  
+480-225-9702  
+swoopgolf.com
+2024-12-26 14:29:02,350 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 14:29:02,350 - utils.logging_setup - INFO - Email personalization completed successfully
+2024-12-26 14:29:02,350 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 14:29:02,350 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 14:29:02,350 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
+2024-12-26 14:29:02,351 - utils.logging_setup - INFO - xAI user message: Club: Short Hills Club
+News: No recent news found.
+
+Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
+2024-12-26 14:29:03,384 - utils.logging_setup - INFO - xAI response received: Even though the Short Hills Club hasn't made headlines lately, its timeless charm and exclusive member benefits continue to be the talk of the town.
+2024-12-26 14:29:03,386 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 14:29:03,735 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Modernizing Operations at Short Hills Club
+2024-12-26 14:29:03,738 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Modernizing Operations at Short Hills Club
+2024-12-26 14:29:03,740 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-26 14:29:04,209 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r3160711233551757376
+2024-12-26 14:29:04,210 - utils.logging_setup - DEBUG - Gmail draft created: r3160711233551757376
