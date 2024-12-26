@@ -107,13 +107,6 @@ class LeadsService:
         ]
 
         return {
-            "metadata": {
-                "status": "success",
-                "timestamp": datetime.utcnow().isoformat(),
-                "email": lead_email,
-                "job_title": job_title
-            },
-            "lead_data": lead_data,
             "lead_summary": lead_care_about,
             "club_context": club_context,
             "subject": subject,
