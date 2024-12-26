@@ -156,6 +156,8 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
     club_info_snippet = xai_club_info_search(club_name, location_str, amenities)
 
     # 2) Build user_content for rewriting
+    facilities_info = lead_sheet.get("analysis", {}).get("facilities", {}).get("response", "")
+    
     user_content = (
         f"Original Subject: {subject}\n"
         f"Original Body: {body}\n\n"
@@ -165,12 +167,14 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
         f"- Role: {lead_data.get('jobtitle', '')}\n\n"
         "Additional Club Context:\n"
         f"{club_info_snippet}\n\n"
+        "Club Facilities:\n"
+        f"{facilities_info}\n\n"
         "Instructions:\n"
         "1. Replace placeholders like [ClubName] with the actual name.\n"
         "2. Use the person's real first name if applicable.\n"
         "3. Keep the core structure and Swoop info.\n"
         "4. Focus on the business value and problem-solving aspects.\n"
-        "5. Avoid presumptive descriptions of club features or scenery.\n"
+        "5. Use verified club facilities information when available.\n"
         "6. Keep references to club specifics brief and relevant to the service.\n"
         "7. Return in the format:\n"
         "   Subject: <subject>\n"

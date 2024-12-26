@@ -89,7 +89,10 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 7) Other company_properties (dynamic)
         annualrevenue = company_data.get("annualrevenue", "")
         company_overview = analysis_data.get("research_data", {}).get("company_overview", "")
-        # Note: peak_season_start / peak_season_end are removed from company_properties now
+        
+        # 8) xAI Facilities Data
+        facilities_info = analysis_data.get("facilities_info", "")
+        facilities_news = analysis_data.get("facilities_news", "")
 
         # ==========================================================
         # 1. Upsert into leads (static fields + HS fields)
@@ -172,7 +175,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                         start_month = ?,
                         end_month = ?,
                         peak_season_start = ?,
-                        peak_season_end = ?
+                        peak_season_end = ?,
+                        xai_facilities_info = ?
                     WHERE company_id = ?
                 """, (
                     static_city,
@@ -185,6 +189,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     end_month,
                     peak_season_start,
                     peak_season_end,
+                    facilities_info,
                     company_id
                 ))
             else:
@@ -194,10 +199,11 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                         name, city, state,
                         hs_object_id, hs_createdate, hs_lastmodifieddate,
                         year_round, start_month, end_month,
-                        peak_season_start, peak_season_end
+                        peak_season_start, peak_season_end,
+                        xai_facilities_info
                     )
                     OUTPUT Inserted.company_id
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     static_company_name,
                     static_city,
@@ -209,7 +215,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     start_month,
                     end_month,
                     peak_season_start,
-                    peak_season_end
+                    peak_season_end,
+                    facilities_info
                 ))
                 inserted_co = cursor.fetchone()
                 company_id = inserted_co[0]
@@ -293,12 +300,14 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     SET annualrevenue = ?,
                         competitor_analysis = ?,
                         company_overview = ?,
+                        xai_facilities_news = ?,
                         last_modified = GETDATE()
                     WHERE property_id = ?
                 """, (
                     annualrevenue,
                     competitor_analysis,
                     company_overview,
+                    facilities_news,
                     cp_id
                 ))
             else:
@@ -309,14 +318,16 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                         annualrevenue,
                         competitor_analysis,
                         company_overview,
+                        xai_facilities_news,
                         last_modified
                     )
-                    VALUES (?, ?, ?, ?, GETDATE())
+                    VALUES (?, ?, ?, ?, ?, GETDATE())
                 """, (
                     company_id,
                     annualrevenue,
                     competitor_analysis,
-                    company_overview
+                    company_overview,
+                    facilities_news
                 ))
             conn.commit()
 
