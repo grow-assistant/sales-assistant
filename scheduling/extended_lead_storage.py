@@ -1,6 +1,7 @@
 # scheduling/extended_lead_storage.py
 
 import datetime
+import json
 from dateutil.parser import parse as parse_date
 from utils.logging_setup import logger
 from scheduling.database import get_db_connection
@@ -73,6 +74,9 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         phone = lead_data.get("phone", "")
         lifecyclestage = lead_data.get("lifecyclestage", "")
         competitor_analysis = analysis_data.get("competitor_analysis", "")
+        # Convert competitor_analysis to JSON string if it's a dictionary
+        if isinstance(competitor_analysis, dict):
+            competitor_analysis = json.dumps(competitor_analysis)
 
         # Attempt to parse "last_response" if it’s a date
         last_resp_str = analysis_data.get("previous_interactions", {}).get("last_response", "")
