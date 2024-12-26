@@ -106,7 +106,16 @@ class LeadsService:
             f"- Peak Season: {season_data.get('peak_season_start', 'Unknown')} to {season_data.get('peak_season_end', 'Unknown')}"
         ]
 
+        # Add metadata about the lead context generation
+        metadata = {
+            "status": "success",
+            "timestamp": datetime.utcnow().isoformat(),
+            "email": lead_email,
+            "job_title": job_title
+        }
+
         return {
+            "metadata": metadata,
             "lead_summary": lead_care_about,
             "club_context": club_context,
             "subject": subject,
