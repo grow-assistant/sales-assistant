@@ -85,19 +85,22 @@ class DataGathererService:
                 "competitor_analysis": self.check_competitor_on_website(company_props.get("website", "")),
                 "research_data": self.market_research(company_props.get("name", "")),
                 "previous_interactions": self.review_previous_interactions(contact_id),
-                "season_data": self.determine_club_season(company_props.get("city", ""), company_props.get("state", ""))
+                "season_data": self.determine_club_season(company_props.get("city", ""), company_props.get("state", "")),
+                "facilities": self.check_facilities(
+                    company_props.get("name", ""),
+                    company_props.get("city", ""),
+                    company_props.get("state", "")
+                )
             }
         }
 
         # 7) Save the lead_sheet to disk so we can review the final context
         self._save_lead_context(lead_sheet, lead_email)
 
-        # Mask sensitive data in logs
-        masked_email = f"{lead_email.split('@')[0][:3]}...@{lead_email.split('@')[1]}"
+        # Log data gathering success
         logger.info(
-            "Data gathered successfully",
+            f"Data gathered successfully for email={lead_email}",
             extra={
-                "masked_email": masked_email,
                 "contact_found": bool(contact_id),
                 "company_found": bool(company_id),
                 "has_research": bool(lead_sheet["analysis"]["research_data"]),
@@ -197,6 +200,85 @@ class DataGathererService:
                 "error": f"Error checking competitor: {str(e)}"
             }
 
+    def check_facilities(self, company_name: str, city: str, state: str) -> Dict[str, str]:
+        """
+        Query xAI about company facilities (golf course, pool, tennis courts) and club type.
+        
+        Args:
+            company_name: Name of the company to check
+            city: City where the company is located
+            state: State where the company is located
+            
+        Returns:
+            Dictionary containing:
+                - response: Full xAI response about facilities
+                - status: Status of the query ("success", "error", or "no_data")
+        """
+        try:
+            if not company_name or not city or not state:
+                logger.warning(
+                    "Missing location data for facilities check",
+                    extra={
+                        "company": company_name,
+                        "city": city,
+                        "state": state,
+                        "status": "no_data"
+                    }
+                )
+                return {
+                    "response": "",
+                    "status": "no_data"
+                }
+
+            query = f"Does {company_name} in {city}, {state} have a Golf Course, pool, or tennis courts? Is it a private club?"
+            response = xai_news_search(query)
+
+            if not response:
+                logger.warning(
+                    "Failed to get facilities information",
+                    extra={
+                        "company": company_name,
+                        "city": city,
+                        "state": state,
+                        "status": "error"
+                    }
+                )
+                return {
+                    "response": "",
+                    "status": "error"
+                }
+
+            logger.info(
+                "Facilities check completed",
+                extra={
+                    "company": company_name,
+                    "city": city,
+                    "state": state,
+                    "status": "success"
+                }
+            )
+
+            return {
+                "response": response,
+                "status": "success"
+            }
+
+        except Exception as e:
+            logger.error(
+                "Error checking facilities",
+                extra={
+                    "company": company_name,
+                    "city": city,
+                    "state": state,
+                    "error_type": type(e).__name__,
+                    "error": str(e)
+                }
+            )
+            return {
+                "response": "",
+                "status": "error"
+            }
+
     def market_research(self, company_name: str) -> Dict[str, Any]:
         """
         Perform market research for a company using xAI news search.
@@ -286,15 +368,12 @@ class DataGathererService:
         Masks sensitive data before saving.
         """
         try:
-            # Save without masking
-            lead_sheet_to_save = lead_sheet
-
             context_dir = self._create_context_directory()
             filename = self._generate_context_filename(lead_email)
             file_path = context_dir / filename
 
             with file_path.open("w", encoding="utf-8") as f:
-                json.dump(lead_sheet_to_save, f, indent=2, ensure_ascii=False)
+                json.dump(lead_sheet, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Lead context saved at: {file_path.resolve()}")
         except Exception as e:

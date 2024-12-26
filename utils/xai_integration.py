@@ -151,7 +151,6 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
     state = company_data.get("state", "")
     location_str = f"{city}, {state}".strip(", ")
     amenities = lead_sheet.get("analysis", {}).get("amenities", [])
-    facilities_response = lead_sheet.get("analysis", {}).get("facilities", {}).get("response", "")
 
     # 1) Use xai_club_info_search to gather context
     club_info_snippet = xai_club_info_search(club_name, location_str, amenities)
@@ -165,8 +164,7 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
         f"- Company: {club_name}\n"
         f"- Role: {lead_data.get('jobtitle', '')}\n\n"
         "Additional Club Context:\n"
-        f"{club_info_snippet}\n"
-        f"Facilities Info:\n{facilities_response}\n\n"
+        f"{club_info_snippet}\n\n"
         "Instructions:\n"
         "1. Replace placeholders like [ClubName] with the actual name.\n"
         "2. Use the person's real first name if applicable.\n"
