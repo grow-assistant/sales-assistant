@@ -11,8 +11,9 @@ def _send_xai_request(payload: dict) -> str:
     Sends request to xAI API and returns response content or empty string on error.
     Uses synchronous requests library.
     """
+    logger.info("Sending xAI API request", extra={"model": payload.get("model", "unknown")})
     if DEBUG_MODE:
-        logger.debug("Sending xAI request payload", extra={"payload": payload})
+        logger.debug("xAI request payload details", extra={"payload": payload})
 
     try:
         response = requests.post(
@@ -29,8 +30,12 @@ def _send_xai_request(payload: dict) -> str:
             return ""
         data = response.json()
         content = data["choices"][0]["message"]["content"].strip() if data.get("choices") else ""
+        logger.info("Received xAI API response", extra={
+            "status_code": response.status_code,
+            "content_length": len(content) if content else 0
+        })
         if DEBUG_MODE:
-            logger.debug("xAI response received", extra={"content": content})
+            logger.debug("xAI response content", extra={"content": content})
         return content
     except Exception as e:
         logger.error(f"Error in xAI request: {str(e)}")
@@ -41,6 +46,7 @@ def _send_xai_request(payload: dict) -> str:
 ##############################################################################
 
 def xai_news_search(club_name: str) -> str:
+    logger.info("Starting xAI news search", extra={"club_name": club_name})
     if not club_name.strip():
         if DEBUG_MODE:
             logger.debug("Empty club_name passed to xai_news_search; returning blank.")
@@ -102,6 +108,11 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 ##############################################################################
 
 def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
+    logger.info("Starting xAI club info search", extra={
+        "club_name": club_name,
+        "location": location,
+        "has_amenities": bool(amenities)
+    })
     if not club_name.strip():
         if DEBUG_MODE:
             logger.debug("Empty club_name passed to xai_club_info_search; returning blank.")
@@ -143,6 +154,11 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
     2) Incorporate that snippet into user_content for final rewriting.
     3) Use the result to rewrite subject and body.
     """
+    logger.info("Starting email personalization with xAI", extra={
+        "has_lead_data": bool(lead_sheet.get("lead_data")),
+        "subject_length": len(subject) if subject else 0,
+        "body_length": len(body) if body else 0
+    })
     lead_data = lead_sheet.get("lead_data", {})
     company_data = lead_data.get("company_data", {})
 
@@ -227,4 +243,8 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
             "new_body_preview": final_body[:150] + "..." if len(final_body) > 150 else final_body
         })
 
+    logger.info("Completed email personalization with xAI", extra={
+        "new_subject_length": len(new_subject) if new_subject else 0,
+        "new_body_length": len(final_body) if final_body else 0
+    })
     return (new_subject if new_subject.strip() else subject), final_body
