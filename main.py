@@ -6,9 +6,7 @@ from utils.logging_setup import logger
 from utils.exceptions import LeadContextError
 from utils.xai_integration import (
     personalize_email_with_xai,
-    xai_news_search,
-    _build_icebreaker_from_news,
-    xai_club_info_search
+    _build_icebreaker_from_news
 )
 from utils.gmail_integration import create_draft, search_inbound_messages_for_email
 from scripts.build_template import build_outreach_email
@@ -20,7 +18,7 @@ from scheduling.sql_lookup import build_lead_sheet_from_sql
 from services.leads_service import LeadsService
 from services.data_gatherer_service import DataGathererService
 
-# Initialize services with proper dependencies
+# Initialize services
 data_gatherer = DataGathererService()
 leads_service = LeadsService(data_gatherer)
 
@@ -173,23 +171,24 @@ def main():
         # Log the placeholders to confirm they're valid
         logger.debug("Placeholders built", extra=placeholders)
 
-        last_interaction_days = 32  # Example fallback
-
-        # 6) If we have a club name, fetch optional club info & news
-        if club_name:
-            if DEBUG_MODE:
-                logger.debug(f"Fetching club info/news for '{club_name}'")
-            club_info_snippet = xai_club_info_search(club_name, location_str)
-            news_result = xai_news_search(club_name)
-        else:
-            club_info_snippet = ""
-            news_result = ""
-
+        # 6) Make two separate xAI calls: one for club info, one for club news
+        club_info_snippet = data_gatherer.gather_club_info(club_name, city, state)
+        news_result = data_gatherer.gather_club_news(club_name)
         has_news = bool(news_result and "has not been" not in news_result.lower())
 
         # 7) Determine job title category
         jobtitle_str = lead_data.get("jobtitle", "")
         profile_type = categorize_job_title(jobtitle_str)
+
+        # Calculate last interaction days
+        last_interaction = lead_data.get("properties", {}).get("hs_sales_email_last_replied", "")
+        last_interaction_days = 0
+        if last_interaction:
+            try:
+                last_date = datetime.datetime.fromtimestamp(int(last_interaction)/1000)
+                last_interaction_days = (datetime.datetime.now() - last_date).days
+            except (ValueError, TypeError):
+                last_interaction_days = 0
 
         # 8) Build initial outreach email
         subject, body = build_outreach_email(
@@ -265,6 +264,7 @@ def main():
             # Insert ICEBREAKER if we have news
             if has_news:
                 try:
+                    from utils.xai_integration import _build_icebreaker_from_news
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
                     if icebreaker:
                         body = body.replace("[ICEBREAKER]", icebreaker)
@@ -274,7 +274,6 @@ def main():
 
         except Exception as e:
             logger.error(f"xAI personalization error: {e}")
-            # Fall back to original subject/body if xAI fails
             subject, body = orig_subject, orig_body
 
         logger.debug("Final content after xAI", extra={
@@ -282,8 +281,8 @@ def main():
             "body": body
         })
 
-        # 12) Attempt to find inbound snippet from Gmail or lead sheet
-        inbound_snippet = get_any_inbound_snippet(email, lead_sheet)
+        # 12) Optional: attach inbound snippet from Gmail
+        inbound_snippet = search_inbound_messages_for_email(email) or ""
         if inbound_snippet:
             body += f"\n\n---\nP.S. Here's the last inbound message you sent:\n\"{inbound_snippet}\""
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from dateutil.parser import parse as parse_date
 
 from services.hubspot_service import HubspotService
-from utils.xai_integration import xai_news_search
+from utils.xai_integration import xai_news_search, xai_club_info_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
@@ -108,6 +108,22 @@ class DataGathererService:
             }
         )
         return lead_sheet
+
+    # -------------------------------------------------------------------------
+    # New xAI helpers
+    # -------------------------------------------------------------------------
+    def gather_club_info(self, club_name: str, city: str, state: str) -> str:
+        """
+        Calls xai_club_info_search to get a short overview snippet about the club.
+        """
+        location_str = f"{city}, {state}".strip(", ")
+        return xai_club_info_search(club_name, location_str, amenities=None)
+
+    def gather_club_news(self, club_name: str) -> str:
+        """
+        Calls xai_news_search to get recent news about the club.
+        """
+        return xai_news_search(club_name)
 
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
