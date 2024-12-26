@@ -32,8 +32,13 @@ leads_service = LeadsService(data_gatherer)
 ###############################################################################
 def get_any_inbound_snippet(lead_email: str, lead_sheet: dict, max_chars=200) -> str:
     """
-    Returns a snippet (up to max_chars) from the most recent inbound message 
-    found in Gmail or the lead sheet. Logs where the snippet came from.
+    Returns a snippet from the most recent inbound message found in Gmail or lead data.
+    Searches through Gmail, lead_data["emails"], and lead_data["notes"] in that order.
+    
+    :param lead_email: str - Email address of the lead to search for
+    :param lead_sheet: dict - Dictionary containing lead data and history
+    :param max_chars: int - Maximum length of the returned snippet (default: 200)
+    :return: str - Most recent inbound message snippet or empty string if none found
     """
     # 1) Check Gmail
     inbound_snippets = search_inbound_messages_for_email(lead_email, max_results=1)
@@ -82,6 +87,18 @@ def get_any_inbound_snippet(lead_email: str, lead_sheet: dict, max_chars=200) ->
 # Main Workflow
 ###############################################################################
 def main():
+    """
+    Main entry point for the sales assistant application. Handles the workflow of:
+    1. Getting lead email input
+    2. Retrieving or creating lead context from SQL/external sources
+    3. Building personalized email content with AI assistance
+    4. Creating Gmail drafts with the generated content
+    
+    The function prompts for a lead's email address and orchestrates the entire
+    process of generating and saving a personalized email draft.
+    
+    :return: None
+    """
     # Set up logging level
     if DEBUG_MODE:
         logger.setLevel(logging.DEBUG)

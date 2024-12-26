@@ -1,4 +1,4 @@
-name: project_swarm
+name: sales-assistant
 channels:
   - conda-forge
   - defaults
