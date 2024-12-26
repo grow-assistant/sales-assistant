@@ -64,8 +64,10 @@ class DataGathererService:
         # 5) Combine them into a single JSON
         lead_sheet = {
             "metadata": {
-                "contact_id": contact_id,
-                "company_id": company_id,
+                "contact_id": contact_id,  # Keep for backwards compatibility
+                "company_id": company_id,  # Keep for backwards compatibility
+                "hs_object_id": contact_id,
+                "company_hs_id": company_id,
                 "lead_email": contact_props.get("email", ""),
                 "status": "success"
             },
@@ -581,12 +583,12 @@ class DataGathererService:
             return f"{month_map[month_name][0]}-{month_map[month_name][1]}"
         return "08-31"
 
-    def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
+    def review_previous_interactions(self, hs_object_id: str) -> Dict[str, Union[int, str]]:
         """
         Review previous interactions for a contact using HubSpot data.
         
         Args:
-            contact_id (str): HubSpot contact ID
+            hs_object_id (str): HubSpot contact ID
             
         Returns:
             Dict containing:
