@@ -91,7 +91,10 @@ def init_db():
             start_month          VARCHAR(20),
             end_month            VARCHAR(20),
             peak_season_start    VARCHAR(10),
-            peak_season_end      VARCHAR(10)
+            peak_season_end      VARCHAR(10),
+
+            -- xAI Facilities Data:
+            xai_facilities_info  VARCHAR(MAX)
         );
         """)
         conn.commit()
@@ -106,6 +109,7 @@ def init_db():
             annualrevenue        VARCHAR(50),
             competitor_analysis  VARCHAR(MAX),
             company_overview     VARCHAR(MAX),
+            xai_facilities_news  VARCHAR(MAX),
             last_modified        DATETIME DEFAULT GETDATE(),
 
             CONSTRAINT FK_company_props

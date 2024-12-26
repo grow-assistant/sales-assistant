@@ -156,15 +156,17 @@ class TestDataGathererService:
         assert result["peak_season_start"] == "05-01"
         assert result["peak_season_end"] == "08-31"
 
-    def test_save_lead_context_masks_sensitive_data(self, data_gatherer, mock_lead_data, tmp_path):
-        """Test that sensitive data is properly masked when saving lead context."""
+    def test_save_lead_context_preserves_sensitive_data(self, data_gatherer, mock_lead_data, tmp_path):
+        """Test that sensitive data is preserved when saving lead context."""
         # Setup test data
+        test_email = "sensitive@example.com"
+        test_phone = "123-456-7890"
         lead_sheet = {
             "metadata": {"contact_id": "12345", "status": "success"},
             "lead_data": {
                 "properties": {
-                    "email": "sensitive@example.com",
-                    "phone": "123-456-7890"
+                    "email": test_email,
+                    "phone": test_phone
                 },
                 "emails": ["Email content 1", "Email content 2"]
             }
@@ -176,15 +178,15 @@ class TestDataGathererService:
              patch('json.dump') as mock_json_dump:
 
             # Execute
-            data_gatherer._save_lead_context(lead_sheet, "sensitive@example.com")
+            data_gatherer._save_lead_context(lead_sheet, test_email)
 
-            # Get the masked data that was passed to json.dump
+            # Get the saved data that was passed to json.dump
             saved_data = mock_json_dump.call_args[0][0]
 
-            # Verify email masking
-            assert "sen...@example.com" in saved_data["lead_data"]["properties"]["email"]
-            assert "xxx-xxx-xxxx" == saved_data["lead_data"]["properties"]["phone"]
-            assert all("(masked)" in email for email in saved_data["lead_data"]["emails"])
+            # Verify data is preserved unmasked
+            assert saved_data["lead_data"]["properties"]["email"] == test_email
+            assert saved_data["lead_data"]["properties"]["phone"] == test_phone
+            assert saved_data["lead_data"]["emails"] == ["Email content 1", "Email content 2"]
 
     def test_month_conversion_methods(self, data_gatherer):
         """Test month name to date conversion methods."""

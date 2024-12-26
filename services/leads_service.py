@@ -48,7 +48,7 @@ class LeadsService:
             logger.warning(
                 "No lead data found for lead summary generation",
                 extra={
-                    "email_domain": lead_email.split('@')[1] if '@' in lead_email else 'unknown'
+                    "email": lead_email
                 }
             )
             return {}
@@ -116,6 +116,8 @@ class LeadsService:
 
         return {
             "metadata": metadata,
+            "lead_data": lead_data,
+            "analysis": analysis,
             "lead_summary": lead_care_about,
             "club_context": club_context,
             "subject": subject,
