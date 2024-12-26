@@ -1,6 +1,6 @@
 import pytest
 import json
-from unittest.mock import Mock, patch
+from unittest.mock import Mock, patch, AsyncMock
 from pathlib import Path
 from datetime import datetime
 
@@ -10,9 +10,48 @@ from utils.logging_setup import logger
 @pytest.fixture
 def data_gatherer():
     """Create a DataGathererService instance with mocked dependencies."""
-    with patch('services.data_gatherer_service.AsyncHubspotService') as mock_hubspot:
+    with patch('services.data_gatherer_service.AsyncHubspotService') as mock_hubspot, \
+         patch('services.data_gatherer_service.xai_news_search', new_callable=AsyncMock) as mock_news, \
+         patch('services.data_gatherer_service.fetch_website_html', new_callable=AsyncMock) as mock_fetch:
+        
+        # Set up HubSpot mock
+        mock_hubspot.gather_lead_data = AsyncMock()
+        mock_hubspot.gather_lead_data.return_value = {}  # Default empty response
+        
+        # Set up news search mock
+        mock_news.return_value = "Mock news response"
+        
+        # Set up website fetch mock
+        mock_fetch.return_value = "Mock website content"
+        
         service = DataGathererService()
         service._hubspot = mock_hubspot
+        
+        # Mock the review_previous_interactions method
+        service.review_previous_interactions = AsyncMock()
+        service.review_previous_interactions.return_value = {
+            "interactions": [],
+            "status": "success",
+            "error": ""
+        }
+        
+        # Mock check_competitor_on_website method
+        service.check_competitor_on_website = AsyncMock()
+        service.check_competitor_on_website.return_value = {
+            "competitor": "",
+            "status": "success",
+            "error": ""
+        }
+        
+        # Mock market_research method
+        service.market_research = AsyncMock()
+        service.market_research.return_value = {
+            "company_overview": "Mock overview",
+            "recent_news": [],
+            "status": "success",
+            "error": ""
+        }
+        
         return service
 
 @pytest.fixture
@@ -43,18 +82,20 @@ def mock_company_data():
         }
     }
 
+@pytest.mark.asyncio
 class TestDataGathererService:
     """Test suite for DataGathererService."""
 
     async def test_gather_lead_data_success(self, data_gatherer, mock_lead_data, mock_company_data):
         """Test successful lead data gathering with all components."""
-        # Setup mock responses
-        data_gatherer._hubspot.gather_lead_data.return_value = {
+        # Setup mock responses with async return value
+        mock_response = {
             "id": mock_lead_data["id"],
             "properties": mock_lead_data["properties"],
             "emails": mock_lead_data["emails"],
             "company_data": mock_company_data
         }
+        data_gatherer._hubspot.gather_lead_data.return_value = mock_response
 
         # Execute
         result = await data_gatherer.gather_lead_data("test@example.com")
@@ -76,13 +117,14 @@ class TestDataGathererService:
 
     async def test_gather_lead_data_no_company(self, data_gatherer, mock_lead_data):
         """Test lead data gathering without company data."""
-        # Setup mock responses
-        data_gatherer._hubspot.gather_lead_data.return_value = {
+        # Setup mock responses with async return value
+        mock_response = {
             "id": mock_lead_data["id"],
             "properties": mock_lead_data["properties"],
             "emails": mock_lead_data["emails"],
             "company_data": {}
         }
+        data_gatherer._hubspot.gather_lead_data.return_value = mock_response
 
         # Execute
         result = await data_gatherer.gather_lead_data("test@example.com")

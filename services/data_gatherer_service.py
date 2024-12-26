@@ -63,20 +63,29 @@ class DataGathererService:
         company_data_raw = hubspot_data.get("company_data", {})
 
         # --- NEW: Flatten the company JSON for easy access in main.py
-        parsed_company_data = {}
+        # Initialize empty company data structure
+        parsed_company_data = {
+            "hs_object_id": "",
+            "name": "",
+            "city": "",
+            "state": "",
+            "domain": "",
+            "website": ""
+        }
         company_id = None
+        
         if company_data_raw:
             # Convert HubSpot's structure (id + properties dict) to a simpler format
             company_id = company_data_raw.get("id", "")
             props = company_data_raw.get("properties", {})
-            parsed_company_data = {
+            parsed_company_data.update({
                 "hs_object_id": company_id,
                 "name": props.get("name", ""),
                 "city": props.get("city", ""),
                 "state": props.get("state", ""),
                 "domain": props.get("domain", ""),
                 "website": props.get("website", "")
-            }
+            })
 
         lead_data["company_data"] = parsed_company_data
 
@@ -317,23 +326,51 @@ class DataGathererService:
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
         Save the lead_sheet dictionary to 'test_data/lead_contexts' as a JSON file.
+        Masks sensitive data before saving.
         """
         try:
+            # Create a copy to avoid modifying the original
+            masked_sheet = json.loads(json.dumps(lead_sheet))
+            
+            # Mask sensitive data
+            if "lead_data" in masked_sheet:
+                if "properties" in masked_sheet["lead_data"]:
+                    props = masked_sheet["lead_data"]["properties"]
+                    if "email" in props:
+                        email = props["email"]
+                        props["email"] = f"{email.split('@')[0][:3]}...@{email.split('@')[1]}"
+                    if "phone" in props:
+                        props["phone"] = "xxx-xxx-xxxx"
+                if "emails" in masked_sheet["lead_data"]:
+                    masked_sheet["lead_data"]["emails"] = [
+                        f"Email {i+1} (masked)" for i in range(len(masked_sheet["lead_data"]["emails"]))
+                    ]
+
             context_dir = self._create_context_directory()
             filename = self._generate_context_filename(lead_email)
             file_path = context_dir / filename
 
             with file_path.open("w", encoding="utf-8") as f:
-                json.dump(lead_sheet, f, indent=2, ensure_ascii=False)
+                json.dump(masked_sheet, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"Lead context saved at: {file_path.resolve()}")
+            # Mask email in logs
+            masked_email = f"{lead_email.split('@')[0][:3]}...@{lead_email.split('@')[1]}"
+            logger.info(
+                "Lead context saved successfully",
+                extra={
+                    "masked_email": masked_email,
+                    "file_path": str(file_path.resolve()),
+                    "status": "success"
+                }
+            )
         except Exception as e:
             logger.warning(
                 "Failed to save lead context (non-critical)",
                 extra={
                     "error_type": type(e).__name__,
                     "error": str(e),
-                    "context_dir": str(context_dir)
+                    "context_dir": str(context_dir),
+                    "status": "error"
                 }
             )
 
@@ -501,7 +538,25 @@ class DataGathererService:
             "October": ("10", "31"), "November": ("11", "30"), "December": ("12", "31")
         }
         if month_name in month_map:
-            return f"{month_map[month_name][0]}-01"
+            result = f"{month_map[month_name][0]}-01"
+            logger.debug(
+                "Converted month to first day",
+                extra={
+                    "month": month_name,
+                    "result": result,
+                    "status": "success"
+                }
+            )
+            return result
+        
+        logger.warning(
+            "Invalid month name, using default",
+            extra={
+                "month": month_name,
+                "default": "05-01",
+                "status": "error"
+            }
+        )
         return "05-01"
 
     def _month_to_last_day(self, month_name: str) -> str:
@@ -513,127 +568,26 @@ class DataGathererService:
             "October": ("10", "31"), "November": ("11", "30"), "December": ("12", "31")
         }
         if month_name in month_map:
-            return f"{month_map[month_name][0]}-{month_map[month_name][1]}"
-        return "08-31"
-<<<<<<< HEAD
-
-    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
-        """
-        Review previous interactions for a contact using HubSpot data.
-        
-        Args:
-            contact_id (str): HubSpot contact ID
-            
-        Returns:
-            Dict containing:
-                - emails_opened (int): Number of emails opened
-                - emails_sent (int): Number of emails sent
-                - meetings_held (int): Number of meetings detected
-                - last_response (str): Description of last response
-                - status (str): "success", "error", or "no_data"
-                - error (str): Error message if any
-        """
-        try:
-            # Get contact properties from HubSpot
-            lead_data = await self._hubspot.get_contact_properties(contact_id)
-            if not lead_data:
-                logger.warning(
-                    "No lead data found for contact",
-                    extra={
-                        "contact_id": contact_id,
-                        "status": "no_data"
-                    }
-                )
-                return {
-                    "emails_opened": 0,
-                    "emails_sent": 0,
-                    "meetings_held": 0,
-                    "last_response": "No data available",
-                    "status": "no_data",
-                    "error": "Contact not found in HubSpot"
-                }
-
-            # Extract email metrics
-            emails_opened = self._safe_int(lead_data.get("total_opens_weekly"))
-            emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
-
-            # Get all notes for contact
-            notes = await self._hubspot.get_all_notes_for_contact(contact_id)
-
-            # Count meetings from notes
-            meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
-            meetings_held = sum(
-                1 for note in notes
-                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords)
-            )
-
-            # Determine last response status
-            last_reply = lead_data.get("hs_sales_email_last_replied")
-            if last_reply:
-                try:
-                    reply_date = parse_date(last_reply.replace('Z', '+00:00'))
-                    if reply_date.tzinfo is None:
-                        reply_date = reply_date.replace(tzinfo=datetime.timezone.utc)
-                    now_utc = datetime.datetime.now(datetime.timezone.utc)
-                    days_ago = (now_utc - reply_date).days
-                    last_response = f"Responded {days_ago} days ago"
-                except ValueError:
-                    last_response = "Responded recently"
-            else:
-                if emails_opened > 0:
-                    last_response = "Opened emails but no direct reply"
-                else:
-                    last_response = "No recent response"
-
-            logger.info(
-                "Successfully retrieved interaction history",
+            result = f"{month_map[month_name][0]}-{month_map[month_name][1]}"
+            logger.debug(
+                "Converted month to last day",
                 extra={
-                    "contact_id": contact_id,
-                    "emails_opened": emails_opened,
-                    "emails_sent": emails_sent,
-                    "meetings_held": meetings_held,
+                    "month": month_name,
+                    "result": result,
                     "status": "success"
                 }
             )
-            return {
-                "emails_opened": emails_opened,
-                "emails_sent": emails_sent,
-                "meetings_held": meetings_held,
-                "last_response": last_response,
-                "status": "success",
-                "error": ""
+            return result
+            
+        logger.warning(
+            "Invalid month name, using default",
+            extra={
+                "month": month_name,
+                "default": "08-31",
+                "status": "error"
             }
-
-        except Exception as e:
-            logger.error(
-                "Failed to review contact interactions",
-                extra={
-                    "contact_id": contact_id,
-                    "error_type": type(e).__name__,
-                    "error": str(e)
-                }
-            )
-            return {
-                "emails_opened": 0,
-                "emails_sent": 0,
-                "meetings_held": 0,
-                "last_response": "Error retrieving data",
-                "status": "error",
-                "error": f"Error retrieving interaction data: {str(e)}"
-            }
-
-    def _safe_int(self, value: Any, default: int = 0) -> int:
-        """
-        Convert a value to int safely, defaulting if conversion fails.
-        """
-        if value is None:
-            return default
-        try:
-            return int(float(str(value)))
-        except (TypeError, ValueError):
-            return default
-||||||| f876012
-=======
+        )
+        return "08-31"
 
     def _safe_int(self, value: Any, default: int = 0) -> int:
         """
@@ -653,53 +607,65 @@ class DataGathererService:
         except (TypeError, ValueError):
             return default
 
-    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
+    async def review_previous_interactions(self, contact_id: str) -> Dict[str, Any]:
         """
-        Review previous interactions asynchronously using the HubSpot service.
+        Review previous interactions for a contact using HubSpot data.
         
         Args:
-            contact_id (str): The HubSpot contact ID to review
+            contact_id (str): HubSpot contact ID
             
         Returns:
-            Dict containing interaction metrics and status:
-            {
-                "emails_opened": int,
-                "emails_sent": int,
-                "meetings_held": int,
-                "last_response": str,
-                "status": str
-            }
+            Dict containing:
+                metadata: Dict with status and optional error message
+                lead_data: Dict with contact properties or empty
+                interactions: List of interaction metrics
         """
         try:
-            # Get contact properties from HubSpot asynchronously
+            # Initialize empty response structure
+            response = {
+                "metadata": {
+                    "status": "no_data",
+                    "message": None
+                },
+                "lead_data": {},
+                "interactions": []
+            }
+
+            # Get contact properties from HubSpot
             lead_data = await self._hubspot.get_contact_properties(contact_id)
-            if not lead_data: 
-                logger.warning("No lead data found for contact", extra={
-                    "contact_id": contact_id
-                })
-                return {
-                    "emails_opened": 0,
-                    "emails_sent": 0,
-                    "meetings_held": 0,
-                    "last_response": "No data available",
-                    "status": "no_data"
-                }
+            if not lead_data:
+                logger.warning(
+                    "No lead data found for contact",
+                    extra={
+                        "contact_id": contact_id,
+                        "status": "no_data"
+                    }
+                )
+                response["metadata"]["message"] = "Contact not found in HubSpot"
+                return response
 
-            # Parse interaction metrics
-            emails_opened = self._safe_int(lead_data.get("total_opens_weekly"))
-            emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
+            # Store contact properties
+            response["lead_data"] = lead_data
 
-            # Get all notes asynchronously
+            # Build interaction metrics
+            interaction_metrics = {
+                "emails_opened": self._safe_int(lead_data.get("total_opens_weekly")),
+                "emails_sent": self._safe_int(lead_data.get("num_contacted_notes")),
+                "meetings_held": 0,
+                "last_response": ""
+            }
+
+            # Get all notes for contact
             notes = await self._hubspot.get_all_notes_for_contact(contact_id)
 
             # Count meetings from notes
             meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
-            meetings_held = sum(
+            interaction_metrics["meetings_held"] = sum(
                 1 for note in notes
                 if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords)
             )
 
-            # Calculate last response time
+            # Determine last response status
             last_reply = lead_data.get("hs_sales_email_last_replied")
             if last_reply:
                 try:
@@ -708,35 +674,46 @@ class DataGathererService:
                         reply_date = reply_date.replace(tzinfo=datetime.timezone.utc)
                     now_utc = datetime.datetime.now(datetime.timezone.utc)
                     days_ago = (now_utc - reply_date).days
-                    last_response = f"Responded {days_ago} days ago"
+                    interaction_metrics["last_response"] = f"Responded {days_ago} days ago"
                 except ValueError:
-                    last_response = "Responded recently"
+                    interaction_metrics["last_response"] = "Responded recently"
             else:
-                if emails_opened > 0:
-                    last_response = "Opened emails but no direct reply"
+                if interaction_metrics["emails_opened"] > 0:
+                    interaction_metrics["last_response"] = "Opened emails but no direct reply"
                 else:
-                    last_response = "No recent response"
+                    interaction_metrics["last_response"] = "No recent response"
 
-            return {
-                "emails_opened": emails_opened,
-                "emails_sent": emails_sent,
-                "meetings_held": meetings_held,
-                "last_response": last_response,
-                "status": "success"
-            }
+            # Add metrics to interactions list
+            response["interactions"].append(interaction_metrics)
+            response["metadata"]["status"] = "success"
+
+            logger.info(
+                "Successfully retrieved interaction history",
+                extra={
+                    "contact_id": contact_id,
+                    "emails_opened": interaction_metrics["emails_opened"],
+                    "emails_sent": interaction_metrics["emails_sent"],
+                    "meetings_held": interaction_metrics["meetings_held"],
+                    "status": "success"
+                }
+            )
+            return response
 
         except Exception as e:
-            logger.error("Failed to review contact interactions", extra={
-                "error": str(e),
-                "contact_id": contact_id,
-                "error_type": type(e).__name__
-            })
+            error_msg = f"Error retrieving interaction data: {str(e)}"
+            logger.error(
+                "Failed to review contact interactions",
+                extra={
+                    "contact_id": contact_id,
+                    "error_type": type(e).__name__,
+                    "error": error_msg
+                }
+            )
             return {
-                "emails_opened": 0,
-                "emails_sent": 0,
-                "meetings_held": 0,
-                "last_response": "Error retrieving data",
-                "status": "error",
-                "error": str(e)
+                "metadata": {
+                    "status": "error",
+                    "message": error_msg
+                },
+                "lead_data": {},
+                "interactions": []
             }
->>>>>>> origin/main

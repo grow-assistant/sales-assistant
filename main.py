@@ -91,8 +91,12 @@ async def main_async():
         logger.info("Starting main workflow...")
 
     try:
-        # 1) Prompt for lead email
-        email = input("Please enter a lead's email address: ").strip()
+        # 1) Get lead email from command line or prompt
+        if len(sys.argv) > 1:
+            email = sys.argv[1].strip()
+        else:
+            email = input("Please enter a lead's email address: ").strip()
+        
         if not email:
             logger.error("No email entered; exiting.")
             return

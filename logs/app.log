@@ -380,3 +380,231 @@ Ty
 2024-12-25 21:40:45,903 - utils.logging_setup - INFO - Successfully loaded golf season data
 2024-12-25 21:40:45,904 - utils.logging_setup - INFO - Successfully loaded golf season data
 2024-12-25 21:40:45,904 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 21:48:32,203 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 21:48:32,204 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 21:48:32,205 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 21:48:52,158 - utils.logging_setup - ERROR - Unexpected error in main: 
+2024-12-25 22:41:31,907 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 22:42:15,575 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 22:42:15,575 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 22:42:39,825 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-25 22:42:40,498 - utils.logging_setup - ERROR - Unexpected error in main: An asyncio.Future, a coroutine or an awaitable is required
+2024-12-25 22:45:27,396 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 22:45:27,396 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 22:45:48,305 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-25 22:45:48,987 - utils.logging_setup - ERROR - Unexpected error in main: An asyncio.Future, a coroutine or an awaitable is required
+2024-12-25 22:46:57,146 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 22:46:57,147 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 22:47:19,997 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-25 22:47:20,734 - utils.logging_setup - ERROR - Unexpected error in main: An asyncio.Future, a coroutine or an awaitable is required
+2024-12-25 22:48:30,923 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 22:48:30,924 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 22:48:54,449 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-25 22:48:55,108 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:48:55,795 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:48:55,796 - utils.logging_setup - ERROR - Error performing market research
+2024-12-25 22:48:55,796 - utils.logging_setup - ERROR - Failed to review contact interactions
+2024-12-25 22:48:55,797 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-25 22:48:55,798 - utils.logging_setup - INFO - Lead context saved at: /home/ubuntu/sales-assistant/test_data/lead_contexts/lead_context_smoran_shorthillsclub_org_20241225_224855.json
+2024-12-25 22:48:55,798 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-25 22:48:55,798 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-25 22:48:55,798 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-25 22:48:55,798 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-25 22:48:55,798 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:48:57,415 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:48:57,415 - utils.logging_setup - ERROR - Unexpected error in main: object str can't be used in 'await' expression
+2024-12-25 22:50:57,551 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-25 22:50:57,552 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-25 22:51:32,430 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-25 22:51:33,073 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:51:33,073 - utils.logging_setup - ERROR - Failed to review contact interactions
+2024-12-25 22:51:33,562 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:51:33,562 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-25 22:51:33,563 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-25 22:51:33,563 - utils.logging_setup - INFO - Lead context saved at: /home/ubuntu/sales-assistant/test_data/lead_contexts/lead_context_smoran_shorthillsclub_org_20241225_225133.json
+2024-12-25 22:51:33,564 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-25 22:51:33,564 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-25 22:51:33,564 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-25 22:51:33,564 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-25 22:51:33,564 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:51:34,458 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:51:34,458 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:51:35,025 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:51:35,025 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-25 22:51:35,026 - utils.logging_setup - INFO - Successfully read document: /home/ubuntu/sales-assistant/docs/templates/fallback.md
+2024-12-25 22:51:35,026 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-25 22:51:35,026 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Original text:
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - After replacement:
+2024-12-25 22:51:35,027 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:51:35,938 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:51:35,938 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-25 22:51:39,108 - utils.logging_setup - DEBUG - xAI response received
+2024-12-25 22:51:39,108 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-25 22:51:39,108 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-25 22:51:39,108 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-25 22:51:39,108 - utils.logging_setup - ERROR - Unexpected error in main: [Errno 2] No such file or directory: 'credentials.json'
+2024-12-26 04:36:41,344 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:36:41,344 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 04:37:02,727 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-26 04:37:03,584 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:37:03,586 - utils.logging_setup - ERROR - Failed to review contact interactions
+2024-12-26 04:37:04,158 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:37:04,159 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 04:37:04,159 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:37:04,160 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:37:04,160 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 04:37:04,161 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 04:37:04,161 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 04:37:04,161 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-26 04:37:04,161 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:37:05,676 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:37:05,676 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:37:06,210 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:37:06,211 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 04:37:06,212 - utils.logging_setup - INFO - Successfully read document: /home/ubuntu/sales-assistant/docs/templates/fallback.md
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 04:37:06,212 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:37:07,481 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:37:07,481 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:37:10,995 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:37:10,996 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 04:37:10,996 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 04:37:10,996 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 04:37:10,996 - utils.logging_setup - ERROR - Unexpected error in main: [Errno 2] No such file or directory: 'credentials.json'
+2024-12-26 04:37:48,609 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:37:48,609 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 04:38:09,944 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org' using async implementation...
+2024-12-26 04:38:10,668 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:38:10,669 - utils.logging_setup - ERROR - Failed to review contact interactions
+2024-12-26 04:38:11,210 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:38:11,210 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 04:38:11,210 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:38:11,211 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:38:11,211 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 04:38:11,211 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 04:38:11,211 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 04:38:11,212 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-26 04:38:11,212 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:38:12,414 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:38:12,415 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:38:12,952 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 04:38:12,953 - utils.logging_setup - INFO - Successfully read document: /home/ubuntu/sales-assistant/docs/templates/fallback.md
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 04:38:12,953 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 04:38:12,954 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 04:38:12,954 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:38:14,494 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:38:14,494 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 04:38:17,932 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 04:38:17,932 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 04:38:17,932 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 04:38:17,932 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 04:38:17,932 - utils.logging_setup - ERROR - Unexpected error in main: [Errno 2] No such file or directory: 'credentials.json'
+2024-12-26 04:39:16,522 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:16,526 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:16,529 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:16,529 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 04:39:16,531 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:16,532 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:39:16,534 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:16,538 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:39:16,540 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:16,540 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:39:16,540 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:39:32,302 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:32,307 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:32,310 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:32,310 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 04:39:32,313 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:32,314 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:39:32,316 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:32,320 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:39:32,322 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:39:32,323 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:39:32,323 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:40:41,702 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:40:41,781 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:40:41,800 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:40:41,800 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 04:40:41,803 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:40:41,803 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:40:41,805 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:40:41,809 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:40:41,811 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:40:41,812 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:40:41,812 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:43:00,626 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:43:00,628 - utils.logging_setup - INFO - No season data found for location, using defaults
+2024-12-26 04:43:00,629 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:43:00,629 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 04:43:00,632 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:43:00,633 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:43:00,634 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:43:00,634 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 04:43:00,688 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:43:00,690 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 04:43:00,693 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:43:00,694 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:43:00,697 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:43:00,701 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:43:00,704 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:43:00,705 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:43:00,706 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:44:04,076 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:44:04,077 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 04:44:29,413 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:44:29,413 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 04:44:54,650 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:44:54,650 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 04:45:54,030 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:45:54,031 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 04:48:00,241 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:48:00,243 - utils.logging_setup - INFO - No season data found for location, using defaults
+2024-12-26 04:48:00,245 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:48:00,245 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 04:48:00,248 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:48:00,250 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:48:00,250 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:48:00,250 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 04:48:00,253 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:48:00,255 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 04:48:00,258 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:48:00,259 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 04:48:00,262 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:48:00,267 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-26 04:48:00,271 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 04:48:00,272 - utils.logging_setup - WARNING - Invalid month name, using default
+2024-12-26 04:48:00,272 - utils.logging_setup - WARNING - Invalid month name, using default
