@@ -12,8 +12,6 @@ from utils.xai_integration import xai_news_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
-from services.hubspot_integration import get_company_data, get_contact_properties
-
 # CSV-based Season Data
 CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
 ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_st.csv'
@@ -47,22 +45,21 @@ class DataGathererService:
         Main entry point for gathering lead data.
         Gathers all data sequentially using synchronous calls.
         """
-        # 1) Lookup contact_id via email (you may already do this)
-        contact_id = self._somehow_find_contact_id_by_email(lead_email)
-        if not contact_id:
+        # 1) Lookup contact_id via email
+        contact_data = self._hubspot.get_contact_by_email(lead_email)
+        if not contact_data:
             logger.error(f"Could not find contact ID for {lead_email}")
             return {}
+        contact_id = contact_data["id"]  # ID is directly on the contact object
 
         # 2) Get the contact properties
-        contact_props = get_contact_properties(contact_id)
+        contact_props = self._hubspot.get_contact_properties(contact_id)
 
-        # 3) Possibly find the associated company_id
-        company_id = self._somehow_find_company_id_by_contact_id(contact_id)
-        # or if you already have it:
-        # company_id = self._hubspot.get_associated_company_id(contact_id)
+        # 3) Get the associated company_id
+        company_id = self._hubspot.get_associated_company_id(contact_id)
 
         # 4) Get the company data (including city/state)
-        company_props = get_company_data(company_id)
+        company_props = self._hubspot.get_company_data(company_id)
 
         # 5) Combine them into a single JSON
         lead_sheet = {

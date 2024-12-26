@@ -37,9 +37,9 @@ class LeadsService:
         """
         self.data_gatherer = data_gatherer_service
 
-    def generate_lead_summary(self, lead_email: str) -> Dict[str, Any]:
+    def prepare_lead_context(self, lead_email: str) -> Dict[str, Any]:
         """
-        Generate a short summary for personalization (subject/body).
+        Prepare lead context for personalization (subject/body).
         Uses DataGathererService for data retrieval.
         """
         # Get comprehensive lead data from DataGathererService
