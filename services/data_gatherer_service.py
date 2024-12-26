@@ -286,29 +286,15 @@ class DataGathererService:
         Masks sensitive data before saving.
         """
         try:
-            # Create a deep copy to avoid modifying the original
-            masked_sheet = json.loads(json.dumps(lead_sheet))
-            
-            # Mask sensitive data
-            if "lead_data" in masked_sheet:
-                if "properties" in masked_sheet["lead_data"]:
-                    props = masked_sheet["lead_data"]["properties"]
-                    if "email" in props:
-                        email = props["email"]
-                        username = email.split('@')[0]
-                        domain = email.split('@')[1]
-                        props["email"] = f"{username[:3]}...@{domain}"
-                    if "phone" in props: 
-                        props["phone"] = "xxx-xxx-xxxx"
-                if "emails" in masked_sheet["lead_data"]:
-                    masked_sheet["lead_data"]["emails"] = ["(masked)" for _ in masked_sheet["lead_data"]["emails"]]
+            # Save without masking
+            lead_sheet_to_save = lead_sheet
 
             context_dir = self._create_context_directory()
             filename = self._generate_context_filename(lead_email)
             file_path = context_dir / filename
 
             with file_path.open("w", encoding="utf-8") as f:
-                json.dump(masked_sheet, f, indent=2, ensure_ascii=False)
+                json.dump(lead_sheet_to_save, f, indent=2, ensure_ascii=False)
 
             logger.info(f"Lead context saved at: {file_path.resolve()}")
         except Exception as e:
