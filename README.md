@@ -76,6 +76,17 @@ DEBUG_MODE=false
 
 Note: The project includes both `environment.yml` (Conda) and `requirements.txt`. We recommend using Conda with `environment.yml` for the most consistent environment setup.
 
+## Gmail Credentials Setup
+
+1. Go to Google Cloud Console and enable the Gmail API for your project.
+2. Create an OAuth 2.0 Client ID (Desktop application type).
+3. Download the JSON credentials file and rename it to `credentials.json`.
+4. Place `credentials.json` in the project root directory (it is already in .gitignore).
+5. On first run, a browser window will open to authenticate. Once completed, a `token.json` file is created locally.
+6. Keep these files private and do not commit them to the repository.
+
+Note: The application requires the `https://www.googleapis.com/auth/gmail.modify` scope for creating and managing email drafts. If you modify the scopes, delete `token.json` to force re-authentication.
+
 ## Key Components
 
 ### 1. Agent System (`/agents`)
