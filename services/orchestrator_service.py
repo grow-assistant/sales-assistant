@@ -26,8 +26,9 @@ class OrchestratorService:
         Personalize a message for a lead using the existing LeadsService summary.
         This does not fetch new data; that is the job of DataGathererService.
         """
-        lead_email = lead_data.get("email")
+        metadata = lead_data.get("metadata", {})
+        lead_email = metadata.get("email")
         if not lead_email:
-            raise LeadContextError("No email found in lead data for personalization.")
+            raise LeadContextError("No email found in lead data metadata for personalization.")
 
-        return self.leads_service.generate_lead_summary(lead_email)
+        return self.leads_service.prepare_lead_context(lead_email)
