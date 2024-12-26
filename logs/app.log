@@ -380,3 +380,111 @@ Ty
 2024-12-25 21:40:45,903 - utils.logging_setup - INFO - Successfully loaded golf season data
 2024-12-25 21:40:45,904 - utils.logging_setup - INFO - Successfully loaded golf season data
 2024-12-25 21:40:45,904 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 06:06:39,983 - utils.logging_setup - ERROR - Test failed: LeadsService.__init__() missing 1 required positional argument: 'data_gatherer_service'
+2024-12-26 06:06:39,992 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:06:40,833 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:06:40,834 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:06:41,664 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:06:41,665 - utils.logging_setup - INFO - No season data found for location, using defaults
+2024-12-26 06:06:41,665 - utils.logging_setup - WARNING - Failed to save lead context (non-critical)
+2024-12-26 06:06:41,665 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 06:06:41,668 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:06:41,668 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 06:06:41,669 - utils.logging_setup - WARNING - Failed to save lead context (non-critical)
+2024-12-26 06:06:41,669 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 06:06:41,680 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:06:41,681 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 06:06:41,683 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:06:41,683 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 06:06:41,685 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:06:41,688 - utils.logging_setup - INFO - Lead context saved at: /home/ubuntu/sales-assistant/test_data/lead_contexts/lead_context_sensitive_example_com_20241226_060641.json
+2024-12-26 06:06:41,693 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:10:03,327 - utils.logging_setup - ERROR - Test failed: LeadsService.__init__() missing 1 required positional argument: 'data_gatherer_service'
+2024-12-26 06:10:03,335 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:10:04,162 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:10:04,163 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:10:04,746 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:11:22,532 - utils.logging_setup - ERROR - Test failed: LeadsService.__init__() missing 1 required positional argument: 'data_gatherer_service'
+2024-12-26 06:11:22,540 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:11:23,407 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:11:23,408 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:11:23,986 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:25:39,730 - utils.logging_setup - ERROR - Test failed: LeadsService.__init__() missing 1 required positional argument: 'data_gatherer_service'
+2024-12-26 06:25:39,738 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:25:40,606 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:25:40,607 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:25:41,386 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:27:25,589 - utils.logging_setup - ERROR - Test failed: LeadsService.__init__() missing 1 required positional argument: 'data_gatherer_service'
+2024-12-26 06:27:25,655 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:27:26,486 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:27:26,487 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:27:27,023 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:29:18,974 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:29:18,975 - utils.logging_setup - ERROR - Test failed: HubspotService.__init__() missing 1 required positional argument: 'api_key'
+2024-12-26 06:29:19,057 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:29:19,884 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:29:19,885 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:29:20,428 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:32:58,884 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:32:58,885 - utils.logging_setup - ERROR - Test failed: HubspotService.__init__() missing 1 required positional argument: 'api_key'
+2024-12-26 06:34:24,508 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:34:24,509 - utils.logging_setup - INFO - Testing with email: smoran@shorthillsclub.org
+2024-12-26 06:34:24,509 - utils.logging_setup - ERROR - Test failed: 'LeadsService' object has no attribute 'prepare_lead_context'
+2024-12-26 06:34:24,575 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:34:25,404 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:34:25,405 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:34:25,967 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:37:35,743 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:37:35,743 - utils.logging_setup - INFO - Testing with email: smoran@shorthillsclub.org
+2024-12-26 06:37:35,743 - utils.logging_setup - ERROR - Test failed: 'LeadsService' object has no attribute 'prepare_lead_context'
+2024-12-26 06:37:35,818 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:37:36,644 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:37:36,645 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:37:37,225 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:39:16,782 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:39:16,782 - utils.logging_setup - INFO - Testing with email: smoran@shorthillsclub.org
+2024-12-26 06:39:16,782 - utils.logging_setup - ERROR - Test failed: 'LeadsService' object has no attribute 'prepare_lead_context'
+2024-12-26 06:39:16,847 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:39:17,740 - utils.logging_setup - ERROR - Failed to fetch website https://testcompany.com: 
+2024-12-26 06:39:17,741 - utils.logging_setup - WARNING - Could not fetch HTML for domain
+2024-12-26 06:39:18,391 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:39:42,619 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 06:39:42,619 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 06:40:09,574 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
+2024-12-26 06:40:10,969 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 06:40:11,502 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 06:40:11,504 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 06:40:11,947 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 06:40:11,947 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-26 06:40:11,948 - utils.logging_setup - INFO - Lead context saved at: /home/ubuntu/sales-assistant/test_data/lead_contexts/lead_context_smoran_shorthillsclub_org_20241226_064011.json
+2024-12-26 06:40:11,948 - utils.logging_setup - INFO - Data gathered successfully
+2024-12-26 06:40:11,948 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 06:40:11,948 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 06:40:11,949 - utils.logging_setup - DEBUG - Fetching club info/news for 'Short Hills Club'
+2024-12-26 06:40:11,949 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 06:40:13,302 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 06:40:13,304 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 06:40:13,851 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 06:40:13,852 - utils.logging_setup - INFO - Successfully read document: /home/ubuntu/sales-assistant/docs/templates/fallback.md
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 06:40:13,852 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 06:40:13,853 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 06:40:14,911 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 06:40:14,912 - utils.logging_setup - DEBUG - Sending xAI request payload
+2024-12-26 06:40:19,338 - utils.logging_setup - DEBUG - xAI response received
+2024-12-26 06:40:19,339 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 06:40:19,339 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 06:40:19,339 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 06:40:19,339 - utils.logging_setup - ERROR - Unexpected error in main: [Errno 2] No such file or directory: 'credentials.json'

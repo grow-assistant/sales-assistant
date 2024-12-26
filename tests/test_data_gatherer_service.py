@@ -10,7 +10,7 @@ from utils.logging_setup import logger
 @pytest.fixture
 def data_gatherer():
     """Create a DataGathererService instance with mocked dependencies."""
-    with patch('services.data_gatherer_service.AsyncHubspotService') as mock_hubspot:
+    with patch('services.data_gatherer_service.HubspotService') as mock_hubspot:
         service = DataGathererService()
         service._hubspot = mock_hubspot
         return service
@@ -46,7 +46,7 @@ def mock_company_data():
 class TestDataGathererService:
     """Test suite for DataGathererService."""
 
-    async def test_gather_lead_data_success(self, data_gatherer, mock_lead_data, mock_company_data):
+    def test_gather_lead_data_success(self, data_gatherer, mock_lead_data, mock_company_data):
         """Test successful lead data gathering with all components."""
         # Setup mock responses
         data_gatherer._hubspot.gather_lead_data.return_value = {
@@ -57,7 +57,7 @@ class TestDataGathererService:
         }
 
         # Execute
-        result = await data_gatherer.gather_lead_data("test@example.com")
+        result = data_gatherer.gather_lead_data("test@example.com")
 
         # Verify structure
         assert "metadata" in result
@@ -74,7 +74,7 @@ class TestDataGathererService:
         assert result["lead_data"]["properties"] == mock_lead_data["properties"]
         assert result["lead_data"]["emails"] == mock_lead_data["emails"]
 
-    async def test_gather_lead_data_no_company(self, data_gatherer, mock_lead_data):
+    def test_gather_lead_data_no_company(self, data_gatherer, mock_lead_data):
         """Test lead data gathering without company data."""
         # Setup mock responses
         data_gatherer._hubspot.gather_lead_data.return_value = {
@@ -85,7 +85,7 @@ class TestDataGathererService:
         }
 
         # Execute
-        result = await data_gatherer.gather_lead_data("test@example.com")
+        result = data_gatherer.gather_lead_data("test@example.com")
 
         # Verify structure
         assert "metadata" in result

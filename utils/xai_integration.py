@@ -1,4 +1,4 @@
-import aiohttp
+import requests
 from typing import Tuple
 from utils.logging_setup import logger
 from config.settings import DEBUG_MODE, XAI_API_URL, XAI_TOKEN, XAI_MODEL
@@ -6,33 +6,32 @@ from config.settings import DEBUG_MODE, XAI_API_URL, XAI_TOKEN, XAI_MODEL
 XAI_BEARER_TOKEN = f"Bearer {XAI_TOKEN}"
 MODEL_NAME = XAI_MODEL
 
-async def _send_xai_request(payload: dict) -> str:
+def _send_xai_request(payload: dict) -> str:
     """
     Sends request to xAI API and returns response content or empty string on error.
+    Uses synchronous requests library.
     """
     if DEBUG_MODE:
         logger.debug("Sending xAI request payload", extra={"payload": payload})
 
     try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(
-                XAI_API_URL,
-                headers={
-                    "Content-Type": "application/json",
-                    "Authorization": XAI_BEARER_TOKEN
-                },
-                json=payload,
-                timeout=15
-            ) as response:
-                if response.status != 200:
-                    error_text = await response.text()
-                    logger.error(f"xAI API error ({response.status}): {error_text}")
-                    return ""
-                data = await response.json()
-                content = data["choices"][0]["message"]["content"].strip() if data.get("choices") else ""
-                if DEBUG_MODE:
-                    logger.debug("xAI response received", extra={"content": content})
-                return content
+        response = requests.post(
+            XAI_API_URL,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": XAI_BEARER_TOKEN
+            },
+            json=payload,
+            timeout=15
+        )
+        if response.status_code != 200:
+            logger.error(f"xAI API error ({response.status_code}): {response.text}")
+            return ""
+        data = response.json()
+        content = data["choices"][0]["message"]["content"].strip() if data.get("choices") else ""
+        if DEBUG_MODE:
+            logger.debug("xAI response received", extra={"content": content})
+        return content
     except Exception as e:
         logger.error(f"Error in xAI request: {str(e)}")
         return ""
@@ -41,7 +40,7 @@ async def _send_xai_request(payload: dict) -> str:
 # News Search + Icebreaker
 ##############################################################################
 
-async def xai_news_search(club_name: str) -> str:
+def xai_news_search(club_name: str) -> str:
     if not club_name.strip():
         if DEBUG_MODE:
             logger.debug("Empty club_name passed to xai_news_search; returning blank.")
@@ -65,7 +64,7 @@ async def xai_news_search(club_name: str) -> str:
         "stream": False,
         "temperature": 0
     }
-    return await _send_xai_request(payload)
+    return _send_xai_request(payload)
 
 def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
     if not club_name.strip() or not news_summary.strip():
@@ -102,7 +101,7 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 # Club Info Search (Used ONLY for Final Email Rewriting)
 ##############################################################################
 
-async def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
+def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
     if not club_name.strip():
         if DEBUG_MODE:
             logger.debug("Empty club_name passed to xai_club_info_search; returning blank.")
@@ -132,13 +131,13 @@ async def xai_club_info_search(club_name: str, location: str, amenities: list = 
         "stream": False,
         "temperature": 0.5
     }
-    return await _send_xai_request(payload)
+    return _send_xai_request(payload)
 
 ##############################################################################
 # Personalize Email with xAI
 ##############################################################################
 
-async def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tuple[str, str]:
+def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tuple[str, str]:
     """
     1) Fetch a short 'club info' snippet from xai_club_info_search.
     2) Incorporate that snippet into user_content for final rewriting.
@@ -154,7 +153,7 @@ async def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) 
     amenities = lead_sheet.get("analysis", {}).get("amenities", [])
 
     # 1) Use xai_club_info_search to gather context
-    club_info_snippet = await xai_club_info_search(club_name, location_str, amenities)
+    club_info_snippet = xai_club_info_search(club_name, location_str, amenities)
 
     # 2) Build user_content for rewriting
     user_content = (
@@ -198,7 +197,7 @@ async def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) 
     }
 
     # 3) Send to xAI for rewriting
-    result = await _send_xai_request(payload)
+    result = _send_xai_request(payload)
     if not result:
         logger.warning("No content returned from xAI. Falling back to original subject/body.")
         return subject, body
