@@ -48,13 +48,26 @@ class TestDataGathererService:
 
     def test_gather_lead_data_success(self, data_gatherer, mock_lead_data, mock_company_data):
         """Test successful lead data gathering with all components."""
-        # Setup mock responses
-        data_gatherer._hubspot.gather_lead_data.return_value = {
+        # Setup mock responses for individual HubSpot API calls
+        data_gatherer._hubspot.get_contact_by_email.return_value = {
             "id": mock_lead_data["id"],
-            "properties": mock_lead_data["properties"],
-            "emails": mock_lead_data["emails"],
-            "company_data": mock_company_data
+            "properties": mock_lead_data["properties"]
         }
+        data_gatherer._hubspot.get_contact_properties.return_value = mock_lead_data["properties"]
+        data_gatherer._hubspot.get_associated_company_id.return_value = mock_company_data["id"]
+        data_gatherer._hubspot.get_company_data.return_value = mock_company_data["properties"]
+
+        # Create Mock objects for the analysis methods
+        mock_competitor = Mock(return_value={})
+        mock_research = Mock(return_value={})
+        mock_interactions = Mock(return_value=[])
+        mock_season = Mock(return_value={})
+
+        # Replace the instance methods with Mock objects
+        data_gatherer.check_competitor_on_website = mock_competitor
+        data_gatherer.market_research = mock_research
+        data_gatherer.review_previous_interactions = mock_interactions
+        data_gatherer.determine_club_season = mock_season
 
         # Execute
         result = data_gatherer.gather_lead_data("test@example.com")
@@ -72,17 +85,32 @@ class TestDataGathererService:
         # Verify lead data
         assert result["lead_data"]["id"] == mock_lead_data["id"]
         assert result["lead_data"]["properties"] == mock_lead_data["properties"]
-        assert result["lead_data"]["emails"] == mock_lead_data["emails"]
+        assert "company_data" in result["lead_data"]
+        assert result["lead_data"]["company_data"]["city"] == mock_company_data["properties"]["city"]
+        assert result["lead_data"]["company_data"]["state"] == mock_company_data["properties"]["state"]
 
     def test_gather_lead_data_no_company(self, data_gatherer, mock_lead_data):
         """Test lead data gathering without company data."""
-        # Setup mock responses
-        data_gatherer._hubspot.gather_lead_data.return_value = {
+        # Setup mock responses for individual HubSpot API calls
+        data_gatherer._hubspot.get_contact_by_email.return_value = {
             "id": mock_lead_data["id"],
-            "properties": mock_lead_data["properties"],
-            "emails": mock_lead_data["emails"],
-            "company_data": {}
+            "properties": mock_lead_data["properties"]
         }
+        data_gatherer._hubspot.get_contact_properties.return_value = mock_lead_data["properties"]
+        data_gatherer._hubspot.get_associated_company_id.return_value = None
+        data_gatherer._hubspot.get_company_data.return_value = {}
+
+        # Create Mock objects for the analysis methods
+        mock_competitor = Mock(return_value={})
+        mock_research = Mock(return_value={})
+        mock_interactions = Mock(return_value=[])
+        mock_season = Mock(return_value={})
+
+        # Replace the instance methods with Mock objects
+        data_gatherer.check_competitor_on_website = mock_competitor
+        data_gatherer.market_research = mock_research
+        data_gatherer.review_previous_interactions = mock_interactions
+        data_gatherer.determine_club_season = mock_season
 
         # Execute
         result = data_gatherer.gather_lead_data("test@example.com")

@@ -29,7 +29,7 @@ class HubspotService:
         self.tasks_endpoint = f"{self.base_url}/crm/v3/objects/tasks"
         self.emails_search_url = f"{self.base_url}/crm/v3/objects/emails/search"
 
-    def get_contact_by_email(self, email: str) -> Optional[str]:
+    def get_contact_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Find a contact by email address."""
         url = f"{self.contacts_endpoint}/search"
         payload = {
@@ -52,7 +52,7 @@ class HubspotService:
             response.raise_for_status()
             data = response.json()
             results = data.get("results", [])
-            return results[0].get("id") if results else None
+            return results[0] if results else None
         except Exception as e:
             raise HubSpotError(f"Error searching for contact by email {email}: {str(e)}")
 
@@ -175,11 +175,12 @@ class HubspotService:
         if not company_id:
             return {}
             
-        url = f"{self.companies_endpoint}/{company_id}"
+        url = f"{self.companies_endpoint}/{company_id}?properties=name&properties=city&properties=state&properties=annualrevenue&properties=createdate&properties=hs_lastmodifieddate&properties=hs_object_id"
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
-            return response.json()
+            data = response.json()
+            return data.get("properties", {})
         except Exception as e:
             raise HubSpotError(f"Error fetching company data: {str(e)}")
 
