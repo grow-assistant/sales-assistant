@@ -6,30 +6,30 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from utils.gmail_integration import create_draft
 from utils.logging_setup import logger
 
-# Example schedule: day offsets and email contents
+# Follow-up email schedule with specific focus for each stage
 OUTREACH_SCHEDULE = [
     {
-        "name": "Email #1 (Day 0)",
-        "days_from_now": 0,
-        "subject": "Initial Outreach – Let's Chat about Swoop Golf",
-        "body": "Hi [Name],\n\nWe discussed Swoop Golf previously..."
+        "name": "Intro Email (Day 1)",
+        "days_from_now": 1,
+        "subject": "Enhancing Member Experience with Swoop Golf",
+        "body": "Hi [Name],\n\nI hope this finds you well. I wanted to reach out about Swoop Golf's on-demand F&B platform, which is helping golf clubs like yours modernize their on-course service and enhance member satisfaction.\n\nWould you be open to a brief conversation about how we could help streamline your club's F&B operations while improving the member experience?"
     },
     {
-        "name": "Follow-Up #1 (Day 3–4)", 
+        "name": "Quick Follow-Up (Day 3)",
         "days_from_now": 3,
-        "subject": "Checking In on Swoop Golf",
-        "body": "Hello [Name],\n\nJust wanted to follow up..."
+        "subject": "Quick follow-up: Swoop Golf",
+        "body": "Hello [Name],\n\nI wanted to quickly follow up on my previous email about Swoop Golf's F&B platform. Have you had a chance to consider how our solution might benefit your club's operations?\n\nI'd be happy to schedule a brief call to discuss your specific needs."
     },
     {
-        "name": "Follow-Up #2 (Day 7)",
+        "name": "Value-Add Follow-Up (Day 7)",
         "days_from_now": 7,
-        "subject": "Just Checking In: Swoop Golf",
-        "body": "Hi [Name],\n\nI hope this email finds you well. It's been a week since we reached out about Swoop Golf's on-demand F&B solution for your club. Given your role in enhancing member experiences, I wanted to ensure you had a chance to explore how we're helping clubs like yours modernize their on-course service.\n\nWould you be open to a brief conversation this week to discuss how Swoop Golf could benefit your members?"
+        "subject": "Success Story: How Clubs Are Transforming F&B with Swoop Golf",
+        "body": "Hi [Name],\n\nI wanted to share a quick success story: One of our partner clubs saw a 40% increase in on-course F&B revenue and significantly improved member satisfaction scores within just three months of implementing Swoop Golf.\n\nI'd love to discuss how we could achieve similar results for your club. Would you be open to a brief conversation this week?"
     },
     {
-        "name": "Follow-Up #3 (Day 14)",
+        "name": "Final Check-In (Day 14)",
         "days_from_now": 14,
-        "subject": "Final Note: Swoop Golf's Club Enhancement Opportunity",
+        "subject": "Final Note: Swoop Golf Opportunity",
         "body": "Hello [Name],\n\nI wanted to send one final note regarding Swoop Golf's on-demand F&B platform. Many clubs we work with have seen significant improvements in both member satisfaction and F&B revenue after implementing our solution.\n\nIf you're interested in learning how we could create similar results for your club, I'm happy to schedule a quick call at your convenience. Otherwise, I'll assume the timing isn't right and won't continue to follow up."
     }
 ]

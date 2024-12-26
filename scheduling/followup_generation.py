@@ -38,25 +38,28 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
         conn.close()
         return
 
-    # Customize prompt based on sequence number
+    # Customize prompt based on sequence number and follow-up stage
     follow_up_context = {
-        2: "This is the second follow-up (7 days after initial). Focus on value proposition and member experience enhancement.",
-        3: "This is the final follow-up (14 days after initial). Emphasize success stories and create urgency, but maintain professionalism."
+        1: "This is the first follow-up (Day 3). Keep it short, friendly, and focused on checking if they've had a chance to review the initial email.",
+        2: "This is the value-add follow-up (Day 7). Share a relevant success story about member satisfaction and revenue improvements. Focus on concrete metrics and results.",
+        3: "This is the final follow-up (Day 14). Be polite but create urgency, emphasizing the opportunity while maintaining professionalism."
     }.get(sequence_num, "This is a follow-up email. Be professional and concise.")
 
     user_prompt = f"""
     The lead's name is {lead['first_name']} {lead['last_name']}, 
-    role is {lead['role']}, at ??? (club_name placeholder).
+    role is {lead['role']}, at {lead.get('club_name', 'their club')}.
 
     {follow_up_context}
-    Assume they have not responded to our previous outreach about Swoop Golf.
+    Assume they have not responded to our previous outreach about Swoop Golf's on-demand F&B platform.
 
     Requirements:
     1. Provide a concise subject line.
-    2. Write a short 2-paragraph body referencing on-demand F&B for golf clubs.
-    3. Be polite, mention the previous email, and show a sense of urgency.
-    4. For sequence 3 (final follow-up), mention this is the last follow-up.
-    5. Output should be in the format:
+    2. Write a personalized email that matches the follow-up stage context.
+    3. For sequence=1 (Day 3): Keep it brief and friendly.
+    4. For sequence=2 (Day 7): Include specific success metrics from similar clubs.
+    5. For sequence=3 (Day 14): Politely indicate this is the final follow-up.
+    6. Always reference on-demand F&B and member experience enhancement.
+    7. Output format:
        Subject: ...
        Body: ...
     """
