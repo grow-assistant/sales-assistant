@@ -107,8 +107,6 @@ def init_db():
             property_id          INT IDENTITY(1,1) PRIMARY KEY,
             company_id           INT NOT NULL,
             annualrevenue        VARCHAR(50),
-            competitor_analysis  VARCHAR(MAX),
-            company_overview     VARCHAR(MAX),
             xai_facilities_news  VARCHAR(MAX),
             last_modified        DATETIME DEFAULT GETDATE(),
 

@@ -81,6 +81,11 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         phone = lead_data.get("phone", "")
         lifecyclestage = lead_data.get("lifecyclestage", "")
 
+        competitor_analysis = analysis_data.get("competitor_analysis", "")
+        # Convert competitor_analysis to JSON string if it's a dictionary
+        if isinstance(competitor_analysis, dict):
+            competitor_analysis = json.dumps(competitor_analysis)
+
         # Per request: do NOT save competitor_analysis (set blank)
         competitor_analysis = ""
 

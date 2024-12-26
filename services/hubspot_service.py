@@ -189,9 +189,13 @@ class HubspotService:
         Gather all lead data sequentially.
         """
         # 1. Get contact ID
-        contact_id = self.get_contact_by_email(email)
-        if not contact_id:
+        contact = self.get_contact_by_email(email)
+        if not contact:
             raise HubSpotError(f"No contact found for email: {email}")
+        
+        contact_id = contact.get('id')
+        if not contact_id:
+            raise HubSpotError(f"Contact found but missing ID for email: {email}")
 
         # 2. Fetch data points sequentially
         contact_props = self.get_contact_properties(contact_id)
