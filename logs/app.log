@@ -152,3 +152,7 @@ Write ONE engaging sentence that naturally references this news. Avoid starting 
 2024-12-26 14:29:03,740 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
 2024-12-26 14:29:04,209 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r3160711233551757376
 2024-12-26 14:29:04,210 - utils.logging_setup - DEBUG - Gmail draft created: r3160711233551757376
+2024-12-26 21:50:37,639 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 21:50:37,639 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 21:51:49,388 - utils.logging_setup - ERROR - Error connecting to SQL Server: ('01000', "[01000] [unixODBC][Driver Manager]Can't open lib 'ODBC Driver 17 for SQL Server' : file not found (0) (SQLDriverConnect)")
+2024-12-26 22:38:47,080 - utils.logging_setup - ERROR - Error connecting to SQL Server: ('01000', "[01000] [unixODBC][Driver Manager]Can't open lib 'ODBC Driver 17 for SQL Server' : file not found (0) (SQLDriverConnect)")
