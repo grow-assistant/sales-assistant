@@ -156,3 +156,143 @@ Write ONE engaging sentence that naturally references this news. Avoid starting 
 2024-12-26 21:50:37,639 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
 2024-12-26 21:51:49,388 - utils.logging_setup - ERROR - Error connecting to SQL Server: ('01000', "[01000] [unixODBC][Driver Manager]Can't open lib 'ODBC Driver 17 for SQL Server' : file not found (0) (SQLDriverConnect)")
 2024-12-26 22:38:47,080 - utils.logging_setup - ERROR - Error connecting to SQL Server: ('01000', "[01000] [unixODBC][Driver Manager]Can't open lib 'ODBC Driver 17 for SQL Server' : file not found (0) (SQLDriverConnect)")
+2024-12-26 16:36:57,185 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 16:36:57,185 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 16:36:59,113 - utils.logging_setup - DEBUG - Fetching lead data for 'mlupton@starfiregolf.com'...
+2024-12-26 16:37:00,983 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 16:37:00,983 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:37:00,983 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 16:37:00,983 - utils.logging_setup - INFO - xAI user message: Has Has Starfire Golf Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 16:37:01,799 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 16:37:01,799 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 16:37:01,799 - utils.logging_setup - ERROR - Unexpected error in main: name 'contact_id' is not defined
+2024-12-26 16:39:16,637 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 16:39:16,637 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 16:39:18,305 - utils.logging_setup - DEBUG - Fetching lead data for 'mlupton@starfiregolf.com'...
+2024-12-26 16:39:20,391 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 16:39:20,391 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:20,391 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 16:39:20,392 - utils.logging_setup - INFO - xAI user message: Has Has Starfire Golf Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 16:39:21,195 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 16:39:21,197 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 16:39:22,077 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 16:39:22,077 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 16:39:22,077 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:22,077 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 16:39:22,092 - utils.logging_setup - INFO - xAI user message: Has Does Starfire Golf Club in Scottsdale, AZ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-26 16:39:22,991 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 16:39:22,991 - utils.logging_setup - INFO - Facilities check completed
+2024-12-26 16:39:23,002 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_mlupton_starfiregolf_com_20241226_163922.json
+2024-12-26 16:39:23,002 - utils.logging_setup - INFO - Data gathered successfully for email=mlupton@starfiregolf.com
+2024-12-26 16:39:23,002 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '6627439189', 'name': 'Starfire Golf Club', 'city': 'Scottsdale', 'state': 'AZ', 'domain': '', 'website': ''}
+2024-12-26 16:39:23,002 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
+2024-12-26 16:39:23,004 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Upserting lead with email=mlupton@starfiregolf.com
+2024-12-26 16:39:23,038 - utils.logging_setup - ERROR - Error in upsert_full_lead: ('42S22', "[42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Invalid column name 'company_hs_id'. (207) (SQLExecDirectW); [42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Statement(s) could not be prepared. (8180)")
+2024-12-26 16:39:23,038 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
+2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 16:39:23,038 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:23,038 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 16:39:23,038 - utils.logging_setup - INFO - xAI user message: Does Starfire Golf Club in Scottsdale, AZ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 16:39:24,257 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 16:39:24,257 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 16:39:24,257 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:24,257 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 16:39:24,257 - utils.logging_setup - INFO - xAI user message: Has Starfire Golf Club been in the news lately?
+2024-12-26 16:39:25,092 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 16:39:25,092 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [FirstName] with Matt
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [LastName] with Lupton
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [ClubName] with Starfire Golf Club
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 16:39:25,092 - utils.logging_setup - INFO - Starting email personalization with xAI
+2024-12-26 16:39:25,103 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 16:39:25,103 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 16:39:25,103 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:25,103 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 16:39:25,103 - utils.logging_setup - INFO - xAI user message: Does Starfire Golf Club in Scottsdale, AZ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 16:39:26,297 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 16:39:26,297 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 16:39:26,297 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:26,297 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
+2024-12-26 16:39:26,297 - utils.logging_setup - INFO - xAI user message: Original Subject: Enhancing Your Club's Efficiency with Swoop
+Original Body: Hey Matt,
+
+[ICEBREAKER]
+
+While planning for next season, We at Swoop specialize in helping clubs modernize their operations without expensive overhead.
+
+You’ll be able to:
+- Offer convenient on-demand ordering for food, beverage, and more
+- Improve member satisfaction by reducing wait times
+- Capture extra revenue while keeping staff workload in check
+
+If that’s something you’d like to explore, let me know a good time for a quick chat.
+
+Best,
+Ty
+
+Swoop Golf  
+480-225-9702  
+swoopgolf.com
+
+Lead Info:
+- First Name: 
+- Company: Starfire Golf Club
+- Role: 
+
+Additional Club Context:
+- **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+
+Club Facilities:
+No recent news found.
+
+Instructions:
+1. Replace placeholders like [ClubName] with the actual name.
+2. Use the person's real first name if applicable.
+3. Keep the core structure and Swoop info.
+4. Focus on the business value and problem-solving aspects.
+5. Use verified club facilities information when available.
+6. Keep references to club specifics brief and relevant to the service.
+7. Return in the format:
+   Subject: <subject>
+   Body: <body>
+2024-12-26 16:39:30,353 - utils.logging_setup - ERROR - xAI API error (429): {"code":"Some resource has been exhausted","error":"h2 protocol error: http2 error"}
+2024-12-26 16:39:30,353 - utils.logging_setup - WARNING - No content returned from xAI. Falling back to original subject/body.
+2024-12-26 16:39:30,353 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 16:39:30,353 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 16:39:30,353 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
+2024-12-26 16:39:30,353 - utils.logging_setup - INFO - xAI user message: Club: Starfire Golf Club
+News: No recent news found.
+
+Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
+2024-12-26 16:39:31,533 - utils.logging_setup - INFO - xAI response received: Even though there hasn't been any new buzz around Starfire Golf Club lately, their commitment to providing an unmatched golfing experience remains as strong as ever.
+2024-12-26 16:39:31,533 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 16:39:32,976 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=mlupton@starfiregolf.com, Subject=Enhancing Your Club's Efficiency with Swoop
+2024-12-26 16:39:32,978 - utils.logging_setup - DEBUG - Building MIMEText email: to=mlupton@starfiregolf.com, subject=Enhancing Your Club's Efficiency with Swoop
+2024-12-26 16:39:32,979 - utils.logging_setup - DEBUG - Message built successfully for mlupton@starfiregolf.com
+2024-12-26 16:39:33,610 - utils.logging_setup - INFO - Draft created successfully for 'mlupton@starfiregolf.com' – ID=r-5239050077246973221
+2024-12-26 16:39:33,611 - utils.logging_setup - DEBUG - Gmail draft created: r-5239050077246973221
