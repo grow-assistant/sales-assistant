@@ -257,6 +257,17 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # ==========================================================
         # 3. Upsert into lead_properties (phone, lifecycle, competitor, etc.)
         # ==========================================================
+        if not lead_id:
+            logger.error("lead_id is not defined before lead_properties operation")
+            return
+            
+        logger.debug(f"Attempting to upsert lead_properties for lead_id={lead_id}")
+        # Validate required variables are defined
+        if not all(var is not None for var in [phone, lifecyclestage, last_response_date]):
+            logger.error(f"Missing required lead properties: phone={phone}, lifecyclestage={lifecyclestage}, last_response_date={last_response_date}")
+            return
+            
+        logger.debug(f"Lead properties data: phone={phone}, lifecyclestage={lifecyclestage}, last_response_date={last_response_date}")
         cursor.execute("""
             SELECT property_id FROM dbo.lead_properties WHERE lead_id = ?
         """, (lead_id,))
@@ -302,6 +313,17 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         #    No competitor_analysis is saved here (store blank).
         #    Make sure xai_facilities_news is saved.
         # ==========================================================
+        if not company_id:
+            logger.debug("No company_id available, skipping company_properties operation")
+            return
+            
+        logger.debug(f"Checking company_properties for company_id={company_id}")
+        # Validate required company properties
+        if not all(var is not None for var in [annualrevenue, facilities_news]):
+            logger.error(f"Missing required company properties: annualrevenue={annualrevenue}, facilities_news_present={'yes' if facilities_news else 'no'}")
+            return
+            
+        logger.debug(f"Company properties data: annualrevenue={annualrevenue}, facilities_news length={len(facilities_news) if facilities_news else 0}")
         if company_id:
             cursor.execute("""
                 SELECT property_id FROM dbo.company_properties WHERE company_id = ?
@@ -328,6 +350,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 ))
             else:
                 logger.debug(f"No company_properties row found; inserting new one for company_id={company_id}.")
+                logger.debug(f"Inserting company properties: company_id={company_id}, annualrevenue={annualrevenue}, facilities_news_present={'yes' if facilities_news else 'no'}")
                 cursor.execute("""
                     INSERT INTO dbo.company_properties (
                         company_id,
@@ -347,6 +370,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
     except Exception as e:
         logger.error(f"Error in upsert_full_lead: {e}")
+        logger.error(f"Error details - lead_id={lead_id if 'lead_id' in locals() else 'Not set'}, company_id={company_id if 'company_id' in locals() else 'Not set'}")
         conn.rollback()
     finally:
         conn.close()
