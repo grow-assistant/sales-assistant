@@ -129,7 +129,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 SET first_name = ?,
                     last_name = ?,
                     role = ?,
-                    hs_object_id = ?,
                     hs_createdate = ?,
                     hs_lastmodifieddate = ?,
                     status = 'active'
@@ -138,7 +137,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 first_name,
                 last_name,
                 role,
-                lead_hs_id,
                 lead_hs_createdate,
                 lead_hs_lastmodified,
                 lead_hs_id
@@ -147,36 +145,31 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             logger.debug(f"Lead with email={email} not found; inserting new record.")
             cursor.execute("""
                 INSERT INTO dbo.leads (
+                    hs_object_id,
                     email,
                     first_name,
                     last_name,
                     role,
                     status,
-                    hs_object_id,
                     hs_createdate,
                     hs_lastmodifieddate
                 )
-                OUTPUT Inserted.lead_id, Inserted.company_id
-                VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, 'active', ?, ?)
             """, (
+                lead_hs_id,
                 email,
                 first_name,
                 last_name,
                 role,
-                lead_hs_id,
                 lead_hs_createdate,
                 lead_hs_lastmodified
             ))
-            inserted_row = cursor.fetchone()
-            lead_id = inserted_row[0]
-            existing_company_id = inserted_row[1]
 
         conn.commit()
 
         # ==========================================================
         # 2. Upsert into companies (static fields + HS fields + season data)
         # ==========================================================
-        company_id = None
         if not static_company_name.strip():
             logger.debug("No company name found, skipping upsert for companies.")
         else:
@@ -194,7 +187,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     UPDATE dbo.companies
                     SET city = ?,
                         state = ?,
-                        hs_object_id = ?,
                         hs_createdate = ?,
                         hs_lastmodifieddate = ?,
                         year_round = ?,
@@ -207,7 +199,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 """, (
                     static_city,
                     static_state,
-                    company_hs_id,
                     company_hs_createdate,
                     company_hs_lastmodified,
                     year_round,
@@ -228,7 +219,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                         peak_season_start, peak_season_end,
                         xai_facilities_info
                     )
-                    OUTPUT Inserted.company_id
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     static_company_name,
@@ -244,8 +234,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     peak_season_end,
                     facilities_info  # Save xai_facilities_info
                 ))
-                inserted_co = cursor.fetchone()
-                company_id = inserted_co[0]
 
             conn.commit()
 
@@ -265,12 +253,12 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # ==========================================================
         cursor.execute("""
             SELECT property_id FROM dbo.lead_properties WHERE hs_object_id = ?
-        """, (lead_id,))
+        """, (lead_hs_id,))
         lp_row = cursor.fetchone()
 
         if lp_row:
             prop_id = lp_row[0]
-            logger.debug(f"Updating existing lead_properties (property_id={prop_id}) for hs_object_id={lead_id}.")
+            logger.debug(f"Updating existing lead_properties (property_id={prop_id}) for hs_object_id={lead_hs_id}.")
             cursor.execute("""
                 UPDATE dbo.lead_properties
                 SET phone = ?,
@@ -287,7 +275,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 prop_id
             ))
         else:
-            logger.debug(f"No lead_properties row found; inserting new one for hs_object_id={lead_id}.")
+            logger.debug(f"No lead_properties row found; inserting new one for hs_object_id={lead_hs_id}.")
             cursor.execute("""
                 INSERT INTO dbo.lead_properties (
                     hs_object_id, phone, lifecyclestage, competitor_analysis,
@@ -295,7 +283,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 )
                 VALUES (?, ?, ?, ?, ?, GETDATE())
             """, (
-                lead_id,
+                lead_hs_id,
                 phone,
                 lifecyclestage,
                 competitor_analysis,
@@ -308,10 +296,10 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         #    No competitor_analysis is saved here (store blank).
         #    Make sure xai_facilities_news is saved.
         # ==========================================================
-        if company_id:
+        if company_hs_id:
             cursor.execute("""
                 SELECT property_id FROM dbo.company_properties WHERE hs_object_id = ?
-            """, (company_id,))
+            """, (company_hs_id,))
             cp_row = cursor.fetchone()
 
             # competitor_analysis left blank
@@ -320,7 +308,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             # xai_facilities_news is the new item to store
             if cp_row:
                 cp_id = cp_row[0]
-                logger.debug(f"Updating existing company_properties (property_id={cp_id}) for hs_object_id={company_id}.")
+                logger.debug(f"Updating existing company_properties (property_id={cp_id}) for hs_object_id={company_hs_id}.")
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
@@ -333,7 +321,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     cp_id
                 ))
             else:
-                logger.debug(f"No company_properties row found; inserting new one for hs_object_id={company_id}.")
+                logger.debug(f"No company_properties row found; inserting new one for hs_object_id={company_hs_id}.")
                 cursor.execute("""
                     INSERT INTO dbo.company_properties (
                         hs_object_id,
@@ -343,7 +331,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     )
                     VALUES (?, ?, ?, GETDATE())
                 """, (
-                    company_id,
+                    company_hs_id,
                     annualrevenue,
                     facilities_news
                 ))
