@@ -1,96 +1,239 @@
-2024-12-26 14:28:42,496 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 14:28:42,497 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 14:28:49,505 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
-2024-12-26 14:28:51,814 - utils.logging_setup - WARNING - No domain provided for competitor check
-2024-12-26 14:28:51,815 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:28:51,815 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 14:28:51,816 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
-2024-12-26 14:28:52,620 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 14:28:52,621 - utils.logging_setup - INFO - Market research completed successfully
-2024-12-26 14:28:53,695 - utils.logging_setup - INFO - Successfully retrieved interaction history
-2024-12-26 14:28:53,696 - utils.logging_setup - INFO - Successfully determined club season
-2024-12-26 14:28:53,696 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:28:53,697 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 14:28:53,697 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
-2024-12-26 14:28:54,513 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 14:28:54,515 - utils.logging_setup - INFO - Facilities check completed
-2024-12-26 14:28:54,517 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_142854.json
-2024-12-26 14:28:54,517 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
-2024-12-26 14:28:54,517 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
-2024-12-26 14:28:54,517 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
-2024-12-26 14:28:54,517 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-26 14:28:54,554 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-26 14:28:54,554 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
-2024-12-26 14:28:54,555 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
-2024-12-26 14:28:54,563 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
-2024-12-26 14:28:54,566 - utils.logging_setup - DEBUG - Updating lead_id=1 to reference company_id=1.
-2024-12-26 14:28:54,568 - utils.logging_setup - DEBUG - No lead_properties row found; inserting new one for lead_id=1.
-2024-12-26 14:28:54,570 - utils.logging_setup - DEBUG - No company_properties row found; inserting new one for company_id=1.
-2024-12-26 14:28:54,572 - utils.logging_setup - INFO - Successfully upserted lead + company info for email='smoran@shorthillsclub.org'.
-2024-12-26 14:28:54,572 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
-2024-12-26 14:28:54,572 - utils.logging_setup - DEBUG - Lead data retrieved:
-2024-12-26 14:28:54,573 - utils.logging_setup - DEBUG - Placeholders built
-2024-12-26 14:28:54,573 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
-2024-12-26 14:28:54,573 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
-2024-12-26 14:28:54,573 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:28:54,573 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
-2024-12-26 14:28:54,573 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
-2024-12-26 14:28:55,798 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+2024-12-26 19:14:04,753 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 19:14:04,753 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 19:14:21,088 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
+2024-12-26 19:14:23,506 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 19:14:23,506 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:23,506 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:14:23,506 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 19:14:24,349 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:14:24,351 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 19:14:25,245 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 19:14:25,246 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 19:14:25,246 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:25,246 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:14:25,246 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-26 19:14:26,066 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:14:26,079 - utils.logging_setup - INFO - Facilities check completed
+2024-12-26 19:14:26,081 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_191426.json
+2024-12-26 19:14:26,083 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
+2024-12-26 19:14:26,083 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
+2024-12-26 19:14:26,083 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
+2024-12-26 19:14:26,083 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-26 19:14:26,104 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-26 19:14:26,114 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-26 19:14:26,116 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
+2024-12-26 19:14:26,125 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
+2024-12-26 19:14:26,125 - utils.logging_setup - ERROR - Error in upsert_full_lead: local variable 'company_id' referenced before assignment
+2024-12-26 19:14:26,125 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
+2024-12-26 19:14:26,125 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 19:14:26,125 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 19:14:26,125 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:14:26,125 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:14:26,125 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:26,125 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:14:26,125 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:14:27,457 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
 - **Pool:** Yes
 - **Tennis Courts:** Yes
 - **Membership Type:** Private
-2024-12-26 14:28:55,799 - utils.logging_setup - DEBUG - Facilities Search - Response:
-2024-12-26 14:28:55,799 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:28:55,799 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 14:28:55,800 - utils.logging_setup - INFO - xAI user message: Has Short Hills Club been in the news lately?
-2024-12-26 14:28:56,589 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 14:28:56,591 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
-2024-12-26 14:28:56,591 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Loaded email template
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Original text:
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - After replacement:
-2024-12-26 14:28:56,592 - utils.logging_setup - INFO - Starting email personalization with xAI
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
-2024-12-26 14:28:56,592 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
-2024-12-26 14:28:56,592 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:28:56,593 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
-2024-12-26 14:28:56,593 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
-2024-12-26 14:28:57,907 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
-- **Pool:** Yes
-- **Tennis Courts:** Yes
+2024-12-26 19:14:27,459 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:14:27,459 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:27,459 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:14:27,460 - utils.logging_setup - INFO - xAI user message: Has Short Hills Club been in the news lately?
+2024-12-26 19:14:28,465 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 19:14:28,465 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 19:14:28,465 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 19:14:28,480 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 19:14:28,480 - utils.logging_setup - INFO - Starting email personalization with xAI
+2024-12-26 19:14:28,480 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:14:28,480 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:14:28,480 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:28,481 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:14:28,481 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:14:29,882 - utils.logging_setup - INFO - xAI response received: - **Facilities:**
+  - Golf Course
+  - Pool
+  - Tennis Courts
+
 - **Membership Type:** Private
-2024-12-26 14:28:57,910 - utils.logging_setup - DEBUG - Facilities Search - Response:
-2024-12-26 14:28:57,910 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:28:57,911 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
-2024-12-26 14:28:57,912 - utils.logging_setup - INFO - xAI user message: Original Subject: Is Short Hills Club Looking to Modernize?
+2024-12-26 19:14:29,882 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:14:29,882 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:29,882 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
+2024-12-26 19:14:29,882 - utils.logging_setup - INFO - xAI user message: Original Subject: Is Short Hills Club Looking to Modernize?
 Original Body: Hey Scotty,
 
 [ICEBREAKER]
 
-As you look forward to the coming season, We at Swoop specialize in helping clubs modernize their operations without expensive overhead.
+As you prepare for the year ahead, We’ve transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
 
-You’ll be able to:
-- Offer convenient on-demand ordering for food, beverage, and more
-- Improve member satisfaction by reducing wait times
-- Capture extra revenue while keeping staff workload in check
+We’re seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you’re open to it, I can share how our current partners have grown revenue and improved the overall member experience.
 
-If that’s something you’d like to explore, let me know a good time for a quick chat.
+Would you be up for a brief conversation to see if this might fit Short Hills Club?
 
-Best,
+Cheers,
 Ty
+Swoop Golf
+480-225-9702
+swoopgolf.com
 
-Swoop Golf  
-480-225-9702  
+Lead Info:
+- First Name: 
+- Company: Short Hills Club
+- Role: 
+
+Additional Club Context:
+- **Facilities:**
+  - Golf Course
+  - Pool
+  - Tennis Courts
+
+- **Membership Type:** Private
+
+Club Facilities:
+No recent news found.
+
+Instructions:
+1. Keep the core structure and Swoop info.
+2. Focus on the business value and problem-solving aspects.
+3. Use verified club facilities information when available.
+4. Keep references to club specifics brief and relevant to the service.
+5. Use a helpful, positive tone.
+6. Write at a 6th-8th grade reading level.
+7. Keep paragraphs under 3 sentences each.
+8. Return in the format:
+    Subject: <subject>
+    Body: <body>
+2024-12-26 19:14:33,865 - utils.logging_setup - INFO - xAI response received: Subject: Modernize Short Hills Club with Swoop Golf
+
+Body: Hey Scotty,
+
+[ICEBREAKER]
+
+As you plan for the upcoming season, we've made our platform into a one-stop solution for your club. It handles everything from food and drinks on the golf course and by the pool, to easy to-go orders. This means better service for your members without extra work for your staff.
+
+We're looking for a few clubs like Short Hills to try our platform for free. This helps us make it even better for you. Our partners have seen more revenue and happier members.
+
+Would you like to chat briefly about how this could work for Short Hills Club?
+
+Cheers,
+Ty
+Swoop Golf
+480-225-9702
+swoopgolf.com
+2024-12-26 19:14:33,882 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 19:14:33,882 - utils.logging_setup - INFO - Email personalization completed successfully
+2024-12-26 19:14:33,882 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 19:14:33,882 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:14:33,882 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
+2024-12-26 19:14:33,882 - utils.logging_setup - INFO - xAI user message: Club: Short Hills Club
+News: No recent news found.
+
+Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
+2024-12-26 19:14:35,182 - utils.logging_setup - INFO - xAI response received: The tranquility at Short Hills Club is as ever-present as always, with no recent news to break the peace.
+2024-12-26 19:14:35,182 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 19:14:35,576 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Modernize Short Hills Club with Swoop Golf
+2024-12-26 19:14:35,576 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Modernize Short Hills Club with Swoop Golf
+2024-12-26 19:14:35,576 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-26 19:14:36,090 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r6910088190760139720
+2024-12-26 19:14:36,091 - utils.logging_setup - DEBUG - Gmail draft created: r6910088190760139720
+2024-12-26 19:18:24,149 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 19:18:24,149 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 19:18:25,630 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
+2024-12-26 19:18:27,845 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 19:18:27,845 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:27,845 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:18:27,845 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 19:18:28,732 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:18:28,732 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 19:18:29,698 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 19:18:29,698 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 19:18:29,698 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:29,698 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:18:29,698 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-26 19:18:30,547 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:18:30,547 - utils.logging_setup - INFO - Facilities check completed
+2024-12-26 19:18:30,547 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_191830.json
+2024-12-26 19:18:30,547 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
+2024-12-26 19:18:30,547 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
+2024-12-26 19:18:30,547 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
+2024-12-26 19:18:30,547 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-26 19:18:30,584 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-26 19:18:30,584 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-26 19:18:30,584 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org found (lead_id=1); updating record.
+2024-12-26 19:18:30,599 - utils.logging_setup - DEBUG - Company found (company_id=1); updating HS fields + season data if needed.
+2024-12-26 19:18:30,599 - utils.logging_setup - ERROR - Error in upsert_full_lead: No results.  Previous SQL was not a query.
+2024-12-26 19:18:30,599 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
+2024-12-26 19:18:30,599 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 19:18:30,599 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 19:18:30,599 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:18:30,599 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:18:30,599 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:30,599 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:18:30,599 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:18:31,865 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 19:18:31,865 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:18:31,865 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:31,865 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:18:31,865 - utils.logging_setup - INFO - xAI user message: Has Short Hills Club been in the news lately?
+2024-12-26 19:18:32,765 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 19:18:32,765 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 19:18:32,765 - utils.logging_setup - INFO - Starting email personalization with xAI
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:18:32,765 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:18:32,765 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:32,765 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:18:32,765 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:18:35,677 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 19:18:35,678 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:18:35,678 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:35,679 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
+2024-12-26 19:18:35,679 - utils.logging_setup - INFO - xAI user message: Original Subject: Enhancing Your Club's Efficiency with Swoop
+Original Body: Hey Scotty,
+
+[ICEBREAKER]
+
+As you look forward to the coming season, We’ve transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
+
+We’re seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you’re open to it, I can share how our current partners have grown revenue and improved the overall member experience.
+
+Would you be up for a brief conversation to see if this might fit Short Hills Club?
+
+Cheers,
+Ty
+Swoop Golf
+480-225-9702
 swoopgolf.com
 
 Lead Info:
@@ -108,276 +251,130 @@ Club Facilities:
 No recent news found.
 
 Instructions:
-1. Replace placeholders like [ClubName] with the actual name.
-2. Use the person's real first name if applicable.
-3. Keep the core structure and Swoop info.
-4. Focus on the business value and problem-solving aspects.
-5. Use verified club facilities information when available.
-6. Keep references to club specifics brief and relevant to the service.
-7. Return in the format:
-   Subject: <subject>
-   Body: <body>
-2024-12-26 14:29:02,345 - utils.logging_setup - INFO - xAI response received: Subject: Modernizing Operations at Short Hills Club
+1. Keep the core structure and Swoop info.
+2. Focus on the business value and problem-solving aspects.
+3. Use verified club facilities information when available.
+4. Keep references to club specifics brief and relevant to the service.
+5. Use a helpful, positive tone.
+6. Write at a 6th-8th grade reading level.
+7. Keep paragraphs under 3 sentences each.
+8. Return in the format:
+    Subject: <subject>
+    Body: <body>
+2024-12-26 19:18:39,664 - utils.logging_setup - INFO - xAI response received: Subject: Boost Your Club's Efficiency with Swoop
 
 Body: Hey Scotty,
 
-I hope you're enjoying the season at Short Hills Club. As you look forward to the coming season, we at Swoop specialize in helping clubs like yours modernize their operations without the burden of expensive overhead.
+I hope you're enjoying the season so far at Short Hills Club. 
 
-Here’s how Swoop can benefit Short Hills Club:
-- **Convenient On-Demand Ordering:** Members can order food, beverages, and more directly from their phones, enhancing their experience at the golf course, pool, or tennis courts.
-- **Improved Member Satisfaction:** By reducing wait times, members will enjoy their time at the club even more, leading to higher satisfaction and retention.
-- **Increased Revenue:** Capture extra revenue with minimal impact on staff workload, ensuring your operations run smoothly and efficiently.
+As you look forward to the coming season, we've transformed our platform into a comprehensive club concierge solution. It covers on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
 
-If that’s something you’d like to explore, let me know a good time for a quick chat.
+We’re seeking a few clubs to partner with at no cost for the upcoming season. This will help us refine a platform that truly meets your needs. If you’re open to it, I can share how our current partners have grown revenue and improved the overall member experience.
 
-Best,
+Would you be up for a brief conversation to see if this might fit Short Hills Club?
+
+Cheers,
 Ty
-
-Swoop Golf  
-480-225-9702  
+Swoop Golf
+480-225-9702
 swoopgolf.com
-2024-12-26 14:29:02,350 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
-2024-12-26 14:29:02,350 - utils.logging_setup - INFO - Email personalization completed successfully
-2024-12-26 14:29:02,350 - utils.logging_setup - DEBUG - Before final placeholders after xAI
-2024-12-26 14:29:02,350 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 14:29:02,350 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
-2024-12-26 14:29:02,351 - utils.logging_setup - INFO - xAI user message: Club: Short Hills Club
+2024-12-26 19:18:39,669 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 19:18:39,670 - utils.logging_setup - INFO - Email personalization completed successfully
+2024-12-26 19:18:39,670 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 19:18:39,670 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:18:39,670 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
+2024-12-26 19:18:39,671 - utils.logging_setup - INFO - xAI user message: Club: Short Hills Club
 News: No recent news found.
 
 Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
-2024-12-26 14:29:03,384 - utils.logging_setup - INFO - xAI response received: Even though the Short Hills Club hasn't made headlines lately, its timeless charm and exclusive member benefits continue to be the talk of the town.
-2024-12-26 14:29:03,386 - utils.logging_setup - DEBUG - Final content after xAI
-2024-12-26 14:29:03,735 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Modernizing Operations at Short Hills Club
-2024-12-26 14:29:03,738 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Modernizing Operations at Short Hills Club
-2024-12-26 14:29:03,740 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
-2024-12-26 14:29:04,209 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r3160711233551757376
-2024-12-26 14:29:04,210 - utils.logging_setup - DEBUG - Gmail draft created: r3160711233551757376
-2024-12-26 21:50:37,639 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 21:50:37,639 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 21:51:49,388 - utils.logging_setup - ERROR - Error connecting to SQL Server: ('01000', "[01000] [unixODBC][Driver Manager]Can't open lib 'ODBC Driver 17 for SQL Server' : file not found (0) (SQLDriverConnect)")
-2024-12-26 22:38:47,080 - utils.logging_setup - ERROR - Error connecting to SQL Server: ('01000', "[01000] [unixODBC][Driver Manager]Can't open lib 'ODBC Driver 17 for SQL Server' : file not found (0) (SQLDriverConnect)")
-2024-12-26 16:36:57,185 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 16:36:57,185 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 16:36:59,113 - utils.logging_setup - DEBUG - Fetching lead data for 'mlupton@starfiregolf.com'...
-2024-12-26 16:37:00,983 - utils.logging_setup - WARNING - No domain provided for competitor check
-2024-12-26 16:37:00,983 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:37:00,983 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 16:37:00,983 - utils.logging_setup - INFO - xAI user message: Has Has Starfire Golf Club been in the news lately? Provide a short summary. been in the news lately?
-2024-12-26 16:37:01,799 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 16:37:01,799 - utils.logging_setup - INFO - Market research completed successfully
-2024-12-26 16:37:01,799 - utils.logging_setup - ERROR - Unexpected error in main: name 'contact_id' is not defined
-2024-12-26 16:39:16,637 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 16:39:16,637 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 16:39:18,305 - utils.logging_setup - DEBUG - Fetching lead data for 'mlupton@starfiregolf.com'...
-2024-12-26 16:39:20,391 - utils.logging_setup - WARNING - No domain provided for competitor check
-2024-12-26 16:39:20,391 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:20,391 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 16:39:20,392 - utils.logging_setup - INFO - xAI user message: Has Has Starfire Golf Club been in the news lately? Provide a short summary. been in the news lately?
-2024-12-26 16:39:21,195 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 16:39:21,197 - utils.logging_setup - INFO - Market research completed successfully
-2024-12-26 16:39:22,077 - utils.logging_setup - INFO - Successfully retrieved interaction history
-2024-12-26 16:39:22,077 - utils.logging_setup - INFO - Successfully determined club season
-2024-12-26 16:39:22,077 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:22,077 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 16:39:22,092 - utils.logging_setup - INFO - xAI user message: Has Does Starfire Golf Club in Scottsdale, AZ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
-2024-12-26 16:39:22,991 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 16:39:22,991 - utils.logging_setup - INFO - Facilities check completed
-2024-12-26 16:39:23,002 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_mlupton_starfiregolf_com_20241226_163922.json
-2024-12-26 16:39:23,002 - utils.logging_setup - INFO - Data gathered successfully for email=mlupton@starfiregolf.com
-2024-12-26 16:39:23,002 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '6627439189', 'name': 'Starfire Golf Club', 'city': 'Scottsdale', 'state': 'AZ', 'domain': '', 'website': ''}
-2024-12-26 16:39:23,002 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
-2024-12-26 16:39:23,004 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Upserting lead with email=mlupton@starfiregolf.com
-2024-12-26 16:39:23,038 - utils.logging_setup - ERROR - Error in upsert_full_lead: ('42S22', "[42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Invalid column name 'company_hs_id'. (207) (SQLExecDirectW); [42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Statement(s) could not be prepared. (8180)")
-2024-12-26 16:39:23,038 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
-2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Lead data retrieved:
-2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Placeholders built
-2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
-2024-12-26 16:39:23,038 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
-2024-12-26 16:39:23,038 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:23,038 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
-2024-12-26 16:39:23,038 - utils.logging_setup - INFO - xAI user message: Does Starfire Golf Club in Scottsdale, AZ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
-2024-12-26 16:39:24,257 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+2024-12-26 19:18:40,874 - utils.logging_setup - INFO - xAI response received: It's been a while since we've had any exciting updates from Short Hills Club, but that just means we're due for some fresh news soon, right?
+2024-12-26 19:18:40,876 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 19:18:41,355 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Boost Your Club's Efficiency with Swoop
+2024-12-26 19:18:41,357 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Boost Your Club's Efficiency with Swoop
+2024-12-26 19:18:41,359 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-26 19:18:41,863 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r-5923807945801734232
+2024-12-26 19:18:41,863 - utils.logging_setup - DEBUG - Gmail draft created: r-5923807945801734232
+2024-12-26 19:19:02,786 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 19:19:02,787 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 19:19:04,638 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
+2024-12-26 19:19:06,665 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 19:19:06,668 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:06,668 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:19:06,668 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 19:19:07,537 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:19:07,553 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 19:19:08,627 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 19:19:08,627 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 19:19:08,627 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:08,638 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:19:08,639 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-26 19:19:09,268 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:19:09,268 - utils.logging_setup - INFO - Facilities check completed
+2024-12-26 19:19:09,268 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_191909.json
+2024-12-26 19:19:09,281 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
+2024-12-26 19:19:09,281 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
+2024-12-26 19:19:09,281 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
+2024-12-26 19:19:09,281 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-26 19:19:09,316 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-26 19:19:09,316 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-26 19:19:09,316 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
+2024-12-26 19:19:09,325 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
+2024-12-26 19:19:09,325 - utils.logging_setup - ERROR - Error in upsert_full_lead: local variable 'existing_company_id' referenced before assignment
+2024-12-26 19:19:09,325 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
+2024-12-26 19:19:09,325 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 19:19:09,325 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 19:19:09,325 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:19:09,325 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:19:09,325 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:09,325 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:19:09,325 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:19:10,632 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
 - **Pool:** Yes
 - **Tennis Courts:** Yes
 - **Membership Type:** Private
-2024-12-26 16:39:24,257 - utils.logging_setup - DEBUG - Facilities Search - Response:
-2024-12-26 16:39:24,257 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:24,257 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 16:39:24,257 - utils.logging_setup - INFO - xAI user message: Has Starfire Golf Club been in the news lately?
-2024-12-26 16:39:25,092 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
-2024-12-26 16:39:25,092 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Loaded email template
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Original text:
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [FirstName] with Matt
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [LastName] with Lupton
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [ClubName] with Starfire Golf Club
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
-2024-12-26 16:39:25,092 - utils.logging_setup - DEBUG - After replacement:
-2024-12-26 16:39:25,092 - utils.logging_setup - INFO - Starting email personalization with xAI
-2024-12-26 16:39:25,103 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
-2024-12-26 16:39:25,103 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
-2024-12-26 16:39:25,103 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:25,103 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
-2024-12-26 16:39:25,103 - utils.logging_setup - INFO - xAI user message: Does Starfire Golf Club in Scottsdale, AZ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
-2024-12-26 16:39:26,297 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+2024-12-26 19:19:10,648 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:19:10,648 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:10,648 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:19:10,648 - utils.logging_setup - INFO - xAI user message: Has Short Hills Club been in the news lately?
+2024-12-26 19:19:11,482 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 19:19:11,482 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 19:19:11,482 - utils.logging_setup - INFO - Starting email personalization with xAI
+2024-12-26 19:19:11,482 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:19:11,497 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:19:11,497 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:11,497 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:19:11,498 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:19:12,869 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
 - **Pool:** Yes
 - **Tennis Courts:** Yes
 - **Membership Type:** Private
-2024-12-26 16:39:26,297 - utils.logging_setup - DEBUG - Facilities Search - Response:
-2024-12-26 16:39:26,297 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:26,297 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
-2024-12-26 16:39:26,297 - utils.logging_setup - INFO - xAI user message: Original Subject: Enhancing Your Club's Efficiency with Swoop
-Original Body: Hey Matt,
+2024-12-26 19:19:12,871 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:19:12,871 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:12,871 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
+2024-12-26 19:19:12,871 - utils.logging_setup - INFO - xAI user message: Original Subject: Is Short Hills Club Looking to Modernize?
+Original Body: Hey Scotty,
 
 [ICEBREAKER]
 
-While planning for next season, We at Swoop specialize in helping clubs modernize their operations without expensive overhead.
-
-You’ll be able to:
-- Offer convenient on-demand ordering for food, beverage, and more
-- Improve member satisfaction by reducing wait times
-- Capture extra revenue while keeping staff workload in check
-
-If that’s something you’d like to explore, let me know a good time for a quick chat.
-
-Best,
-Ty
-
-Swoop Golf  
-480-225-9702  
-swoopgolf.com
-
-Lead Info:
-- First Name: 
-- Company: Starfire Golf Club
-- Role: 
-
-Additional Club Context:
-- **Golf Course:** Yes
-- **Pool:** Yes
-- **Tennis Courts:** Yes
-- **Membership Type:** Private
-
-Club Facilities:
-No recent news found.
-
-Instructions:
-1. Replace placeholders like [ClubName] with the actual name.
-2. Use the person's real first name if applicable.
-3. Keep the core structure and Swoop info.
-4. Focus on the business value and problem-solving aspects.
-5. Use verified club facilities information when available.
-6. Keep references to club specifics brief and relevant to the service.
-7. Return in the format:
-   Subject: <subject>
-   Body: <body>
-2024-12-26 16:39:30,353 - utils.logging_setup - ERROR - xAI API error (429): {"code":"Some resource has been exhausted","error":"h2 protocol error: http2 error"}
-2024-12-26 16:39:30,353 - utils.logging_setup - WARNING - No content returned from xAI. Falling back to original subject/body.
-2024-12-26 16:39:30,353 - utils.logging_setup - DEBUG - Before final placeholders after xAI
-2024-12-26 16:39:30,353 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 16:39:30,353 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
-2024-12-26 16:39:30,353 - utils.logging_setup - INFO - xAI user message: Club: Starfire Golf Club
-News: No recent news found.
-
-Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
-2024-12-26 16:39:31,533 - utils.logging_setup - INFO - xAI response received: Even though there hasn't been any new buzz around Starfire Golf Club lately, their commitment to providing an unmatched golfing experience remains as strong as ever.
-2024-12-26 16:39:31,533 - utils.logging_setup - DEBUG - Final content after xAI
-2024-12-26 16:39:32,976 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=mlupton@starfiregolf.com, Subject=Enhancing Your Club's Efficiency with Swoop
-2024-12-26 16:39:32,978 - utils.logging_setup - DEBUG - Building MIMEText email: to=mlupton@starfiregolf.com, subject=Enhancing Your Club's Efficiency with Swoop
-2024-12-26 16:39:32,979 - utils.logging_setup - DEBUG - Message built successfully for mlupton@starfiregolf.com
-2024-12-26 16:39:33,610 - utils.logging_setup - INFO - Draft created successfully for 'mlupton@starfiregolf.com' – ID=r-5239050077246973221
-2024-12-26 16:39:33,611 - utils.logging_setup - DEBUG - Gmail draft created: r-5239050077246973221
-2024-12-26 17:06:38,432 - utils.logging_setup - INFO - Successfully loaded golf season data
-2024-12-26 17:06:38,432 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
-2024-12-26 17:07:06,751 - utils.logging_setup - DEBUG - Fetching lead data for 'rcastillo@kamehamehagolf.com'...
-2024-12-26 17:07:08,750 - utils.logging_setup - WARNING - No domain provided for competitor check
-2024-12-26 17:07:08,750 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:08,750 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 17:07:08,750 - utils.logging_setup - INFO - xAI user message: Has Has The King Kamehameha Golf Club been in the news lately? Provide a short summary. been in the news lately?
-2024-12-26 17:07:09,666 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 17:07:09,666 - utils.logging_setup - INFO - Market research completed successfully
-2024-12-26 17:07:10,684 - utils.logging_setup - INFO - Successfully retrieved interaction history
-2024-12-26 17:07:10,684 - utils.logging_setup - INFO - Successfully determined club season
-2024-12-26 17:07:10,684 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:10,684 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 17:07:10,684 - utils.logging_setup - INFO - xAI user message: Has Does The King Kamehameha Golf Club in Wailuku, HI have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
-2024-12-26 17:07:11,517 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 17:07:11,517 - utils.logging_setup - INFO - Facilities check completed
-2024-12-26 17:07:11,517 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_rcastillo_kamehamehagolf_com_20241226_170711.json
-2024-12-26 17:07:11,517 - utils.logging_setup - INFO - Data gathered successfully for email=rcastillo@kamehamehagolf.com
-2024-12-26 17:07:11,517 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '15537386159', 'name': 'The King Kamehameha Golf Club', 'city': 'Wailuku', 'state': 'HI', 'domain': '', 'website': ''}
-2024-12-26 17:07:11,517 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
-2024-12-26 17:07:11,517 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
-2024-12-26 17:07:11,556 - utils.logging_setup - DEBUG - SQL connection established successfully.
-2024-12-26 17:07:11,556 - utils.logging_setup - DEBUG - Upserting lead with email=rcastillo@kamehamehagolf.com
-2024-12-26 17:07:11,556 - utils.logging_setup - ERROR - Error in upsert_full_lead: ('42S22', "[42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Invalid column name 'company_hs_id'. (207) (SQLExecDirectW); [42S22] [Microsoft][ODBC Driver 17 for SQL Server][SQL Server]Statement(s) could not be prepared. (8180)")
-2024-12-26 17:07:11,556 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
-2024-12-26 17:07:11,564 - utils.logging_setup - DEBUG - Lead data retrieved:
-2024-12-26 17:07:11,564 - utils.logging_setup - DEBUG - Placeholders built
-2024-12-26 17:07:11,564 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
-2024-12-26 17:07:11,564 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
-2024-12-26 17:07:11,564 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:11,564 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
-2024-12-26 17:07:11,565 - utils.logging_setup - INFO - xAI user message: Does The King Kamehameha Golf Club in Wailuku, HI have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
-2024-12-26 17:07:12,983 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
-- **Pool:** No
-- **Tennis Courts:** No
-- **Membership Type:** Private
-2024-12-26 17:07:12,983 - utils.logging_setup - DEBUG - Facilities Search - Response:
-2024-12-26 17:07:12,983 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:12,983 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
-2024-12-26 17:07:12,983 - utils.logging_setup - INFO - xAI user message: Has The King Kamehameha Golf Club been in the news lately?
-2024-12-26 17:07:13,805 - utils.logging_setup - INFO - xAI response received: No recent news found.
-2024-12-26 17:07:13,807 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
-2024-12-26 17:07:13,807 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Loaded email template
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Original text:
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [FirstName] with Rick
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [LastName] with Castillo
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [ClubName] with The King Kamehameha Golf Club
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - After replacement:
-2024-12-26 17:07:13,808 - utils.logging_setup - INFO - Starting email personalization with xAI
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
-2024-12-26 17:07:13,808 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
-2024-12-26 17:07:13,809 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:13,810 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
-2024-12-26 17:07:13,810 - utils.logging_setup - INFO - xAI user message: Does The King Kamehameha Golf Club in Wailuku, HI have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
-2024-12-26 17:07:15,159 - utils.logging_setup - INFO - xAI response received: - **Facilities:**
-  - Golf course
-  - Pool
-  - Tennis courts
-
-- **Membership Type:**
-  - Private club
-2024-12-26 17:07:15,159 - utils.logging_setup - DEBUG - Facilities Search - Response:
-2024-12-26 17:07:15,159 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:15,159 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
-2024-12-26 17:07:15,159 - utils.logging_setup - INFO - xAI user message: Original Subject: Enhancing Your Club's Efficiency with Swoop
-Original Body: Hey Rick,
-
-[ICEBREAKER]
-
-As you look forward to the coming season, We’ve transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
+As you prepare for the year ahead, We’ve transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
 
 We’re seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you’re open to it, I can share how our current partners have grown revenue and improved the overall member experience.
 
-Would you be up for a brief conversation to see if this might fit The King Kamehameha Golf Club?
+Would you be up for a brief conversation to see if this might fit Short Hills Club?
 
 Cheers,
 Ty
@@ -387,17 +384,14 @@ swoopgolf.com
 
 Lead Info:
 - First Name: 
-- Company: The King Kamehameha Golf Club
+- Company: Short Hills Club
 - Role: 
 
 Additional Club Context:
-- **Facilities:**
-  - Golf course
-  - Pool
-  - Tennis courts
-
-- **Membership Type:**
-  - Private club
+- **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
 
 Club Facilities:
 No recent news found.
@@ -413,36 +407,171 @@ Instructions:
 8. Return in the format:
     Subject: <subject>
     Body: <body>
-2024-12-26 17:07:18,940 - utils.logging_setup - INFO - xAI response received: Subject: Boost Your Club's Efficiency with Swoop
+2024-12-26 19:19:16,184 - utils.logging_setup - INFO - xAI response received: Subject: Modernize Short Hills Club with Swoop Golf
 
-Body: Hey Rick,
+Body: Hey Scotty,
 
 [ICEBREAKER]
 
-As you gear up for the new season, we've made our platform even better. It now handles everything from on-course and poolside food and drinks to to-go orders. This means your members get faster service without you needing more staff.
+As you plan for the new season, we've made our platform a one-stop solution for all your club's needs. From on-course dining to poolside service, we make everything easier for your members without extra work for your staff.
 
-We're looking for a few clubs to try our service for free this season. This will help us make sure our platform works perfectly for your club. I can show you how other clubs have increased their revenue and made their members happier.
+We're looking for a few clubs like Short Hills to try our service for free. This helps us perfect our platform to fit exactly what you need. Our partners have seen more revenue and happier members.
 
-Would you like to have a quick chat to see if Swoop could be a good match for The King Kamehameha Golf Club?
+Would you like to chat briefly about how this could work for Short Hills Club?
 
 Cheers,
 Ty
 Swoop Golf
 480-225-9702
 swoopgolf.com
-2024-12-26 17:07:18,955 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
-2024-12-26 17:07:18,955 - utils.logging_setup - INFO - Email personalization completed successfully
-2024-12-26 17:07:18,955 - utils.logging_setup - DEBUG - Before final placeholders after xAI
-2024-12-26 17:07:18,955 - utils.logging_setup - INFO - Initiating xAI API request
-2024-12-26 17:07:18,955 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
-2024-12-26 17:07:18,955 - utils.logging_setup - INFO - xAI user message: Club: The King Kamehameha Golf Club
+2024-12-26 19:19:16,200 - utils.logging_setup - DEBUG - Completed xAI personalization rewrite
+2024-12-26 19:19:16,200 - utils.logging_setup - INFO - Email personalization completed successfully
+2024-12-26 19:19:16,200 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 19:19:16,200 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:19:16,200 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
+2024-12-26 19:19:16,200 - utils.logging_setup - INFO - xAI user message: Club: Short Hills Club
 News: No recent news found.
 
 Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
-2024-12-26 17:07:20,212 - utils.logging_setup - INFO - xAI response received: At King Kamehameha Golf Club, we're excited to keep you updated, even when there's no recent news to report.
-2024-12-26 17:07:20,212 - utils.logging_setup - DEBUG - Final content after xAI
-2024-12-26 17:07:20,665 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=rcastillo@kamehamehagolf.com, Subject=Boost Your Club's Efficiency with Swoop
-2024-12-26 17:07:20,667 - utils.logging_setup - DEBUG - Building MIMEText email: to=rcastillo@kamehamehagolf.com, subject=Boost Your Club's Efficiency with Swoop
-2024-12-26 17:07:20,669 - utils.logging_setup - DEBUG - Message built successfully for rcastillo@kamehamehagolf.com
-2024-12-26 17:07:21,180 - utils.logging_setup - INFO - Draft created successfully for 'rcastillo@kamehamehagolf.com' – ID=r6420246151591589266
-2024-12-26 17:07:21,180 - utils.logging_setup - DEBUG - Gmail draft created: r6420246151591589266
+2024-12-26 19:19:17,523 - utils.logging_setup - INFO - xAI response received: It's been a quiet time at Short Hills Club recently, but that's just the calm before the storm of exciting events we have planned.
+2024-12-26 19:19:17,524 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 19:19:18,062 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Modernize Short Hills Club with Swoop Golf
+2024-12-26 19:19:18,065 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Modernize Short Hills Club with Swoop Golf
+2024-12-26 19:19:18,067 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-26 19:19:18,582 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r-5167508429397734699
+2024-12-26 19:19:18,583 - utils.logging_setup - DEBUG - Gmail draft created: r-5167508429397734699
+2024-12-26 19:21:37,893 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-26 19:21:37,893 - utils.logging_setup - DEBUG - Debug mode enabled in main workflow
+2024-12-26 19:21:39,006 - utils.logging_setup - DEBUG - Fetching lead data for 'smoran@shorthillsclub.org'...
+2024-12-26 19:21:41,382 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-26 19:21:41,382 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:41,382 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:21:41,382 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-26 19:21:42,181 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:21:42,181 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-26 19:21:43,265 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-26 19:21:43,265 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-26 19:21:43,265 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:43,265 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:21:43,265 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-26 19:21:43,998 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:21:43,998 - utils.logging_setup - INFO - Facilities check completed
+2024-12-26 19:21:43,998 - utils.logging_setup - INFO - Lead context saved at: C:\Python\GIT\sales-assistant\test_data\lead_contexts\lead_context_smoran_shorthillsclub_org_20241226_192143.json
+2024-12-26 19:21:43,998 - utils.logging_setup - INFO - Data gathered successfully for email=smoran@shorthillsclub.org
+2024-12-26 19:21:43,998 - utils.logging_setup - DEBUG - Company data received: {'hs_object_id': '10375053061', 'name': 'Short Hills Club', 'city': 'Millburn', 'state': 'NJ', 'domain': '', 'website': ''}
+2024-12-26 19:21:43,998 - utils.logging_setup - DEBUG - Attempting to save lead data to SQL database...
+2024-12-26 19:21:43,998 - utils.logging_setup - DEBUG - Connecting to SQL Server: SERVER=TY\SQLEXPRESS, DATABASE=SwoopSchedules, UID=admin, PWD=admin
+2024-12-26 19:21:44,050 - utils.logging_setup - DEBUG - SQL connection established successfully.
+2024-12-26 19:21:44,050 - utils.logging_setup - DEBUG - Upserting lead with email=smoran@shorthillsclub.org
+2024-12-26 19:21:44,052 - utils.logging_setup - DEBUG - Lead with email=smoran@shorthillsclub.org not found; inserting new record.
+2024-12-26 19:21:44,055 - utils.logging_setup - DEBUG - No matching company; inserting new row for name=Short Hills Club.
+2024-12-26 19:21:44,055 - utils.logging_setup - ERROR - Error in upsert_full_lead: local variable 'existing_company_id' referenced before assignment
+2024-12-26 19:21:44,055 - utils.logging_setup - INFO - Successfully saved lead data to SQL database
+2024-12-26 19:21:44,055 - utils.logging_setup - DEBUG - Lead data retrieved:
+2024-12-26 19:21:44,055 - utils.logging_setup - DEBUG - Placeholders built
+2024-12-26 19:21:44,055 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:21:44,055 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:21:44,055 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:44,055 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:21:44,055 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:21:45,265 - utils.logging_setup - INFO - xAI response received: - **Golf Course:** Yes
+- **Pool:** Yes
+- **Tennis Courts:** Yes
+- **Membership Type:** Private
+2024-12-26 19:21:45,265 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:21:45,265 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:45,265 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-26 19:21:45,265 - utils.logging_setup - INFO - xAI user message: Has Short Hills Club been in the news lately?
+2024-12-26 19:21:46,115 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Attempting to load markdown template: templates/fallback.md
+2024-12-26 19:21:46,115 - utils.logging_setup - INFO - Successfully read document: C:\Python\GIT\sales-assistant\docs\templates\fallback.md
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Markdown template loaded successfully.
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Loaded email template
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - After initial replacement (pre-xAI)
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Original text:
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [FirstName] with Scotty
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [LastName] with Moran
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [ClubName] with Short Hills Club
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [DeadlineDate] with Oct 15th
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [Role] with General Manager
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [Task] with Staff Onboarding
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [Topic] with On-Course Ordering Platform
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Replacing [YourName] with Ty
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - After replacement:
+2024-12-26 19:21:46,115 - utils.logging_setup - INFO - Starting email personalization with xAI
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Facilities Search - System Prompt:
+2024-12-26 19:21:46,115 - utils.logging_setup - DEBUG - Facilities Search - User Prompt:
+2024-12-26 19:21:46,115 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:46,115 - utils.logging_setup - INFO - xAI system message: You are a club facilities researcher. Your job is to provide factual information about the club's facilities and whether it's private. Focus ONLY on facilities and membership type. Do not include any news information.
+2024-12-26 19:21:46,115 - utils.logging_setup - INFO - xAI user message: Does Short Hills Club in Millburn, NJ have a golf course, pool, or tennis courts? Is it a private club? Format response as a bulleted list of facilities and membership type only.
+2024-12-26 19:21:47,526 - utils.logging_setup - INFO - xAI response received: - **Facilities:**
+  - Golf Course: Yes
+  - Pool: Yes
+  - Tennis Courts: Yes
+
+- **Membership Type:**
+  - Private Club
+2024-12-26 19:21:47,527 - utils.logging_setup - DEBUG - Facilities Search - Response:
+2024-12-26 19:21:47,527 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:47,527 - utils.logging_setup - INFO - xAI system message: You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions.
+2024-12-26 19:21:47,528 - utils.logging_setup - INFO - xAI user message: Original Subject: Is Short Hills Club Looking to Modernize?
+Original Body: Hey Scotty,
+
+[ICEBREAKER]
+
+As you prepare for the year ahead, We’ve transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
+
+We’re seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you’re open to it, I can share how our current partners have grown revenue and improved the overall member experience.
+
+Would you be up for a brief conversation to see if this might fit Short Hills Club?
+
+Cheers,
+Ty
+Swoop Golf
+480-225-9702
+swoopgolf.com
+
+Lead Info:
+- First Name: 
+- Company: Short Hills Club
+- Role: 
+
+Additional Club Context:
+- **Facilities:**
+  - Golf Course: Yes
+  - Pool: Yes
+  - Tennis Courts: Yes
+
+- **Membership Type:**
+  - Private Club
+
+Club Facilities:
+No recent news found.
+
+Instructions:
+1. Keep the core structure and Swoop info.
+2. Focus on the business value and problem-solving aspects.
+3. Use verified club facilities information when available.
+4. Keep references to club specifics brief and relevant to the service.
+5. Use a helpful, positive tone.
+6. Write at a 6th-8th grade reading level.
+7. Keep paragraphs under 3 sentences each.
+8. Return in the format:
+    Subject: <subject>
+    Body: <body>
+2024-12-26 19:21:49,182 - utils.logging_setup - ERROR - xAI API error (429): {"code":"Some resource has been exhausted","error":"h2 protocol error: http2 error"}
+2024-12-26 19:21:49,184 - utils.logging_setup - WARNING - No content returned from xAI. Falling back to original subject/body.
+2024-12-26 19:21:49,185 - utils.logging_setup - DEBUG - Before final placeholders after xAI
+2024-12-26 19:21:49,185 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-26 19:21:49,185 - utils.logging_setup - INFO - xAI system message: You are a sales copywriter. Create a natural, conversational one-sentence opener mentioning recent club news.
+2024-12-26 19:21:49,185 - utils.logging_setup - INFO - xAI user message: Club: Short Hills Club
+News: No recent news found.
+
+Write ONE engaging sentence that naturally references this news. Avoid starting with phrases like 'I saw' or 'I noticed'.
+2024-12-26 19:21:51,377 - utils.logging_setup - INFO - xAI response received: There hasn't been much buzz lately at Short Hills Club, but that just means it's the perfect time to introduce some exciting new events and activities!
+2024-12-26 19:21:51,380 - utils.logging_setup - DEBUG - Final content after xAI
+2024-12-26 19:21:51,785 - utils.logging_setup - DEBUG - Preparing to create draft. Sender=me, To=smoran@shorthillsclub.org, Subject=Is Short Hills Club Looking to Modernize?
+2024-12-26 19:21:51,786 - utils.logging_setup - DEBUG - Building MIMEText email: to=smoran@shorthillsclub.org, subject=Is Short Hills Club Looking to Modernize?
+2024-12-26 19:21:51,788 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
+2024-12-26 19:21:52,286 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r8496620249869130497
+2024-12-26 19:21:52,287 - utils.logging_setup - DEBUG - Gmail draft created: r8496620249869130497

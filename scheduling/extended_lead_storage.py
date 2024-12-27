@@ -168,8 +168,15 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 lead_hs_createdate,
                 lead_hs_lastmodified
             ))
-
-        conn.commit()
+            
+            # Capture the new lead_id
+            result = cursor.fetchone()
+            lead_id = result[0] if result else None
+            
+            if not lead_id:
+                raise ValueError("Failed to get lead_id after insertion")
+            
+            conn.commit()
 
         # ==========================================================
         # 2. Upsert into companies (static fields + HS fields + season data)
@@ -238,21 +245,28 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     end_month,
                     peak_season_start,
                     peak_season_end,
-                    facilities_info  # Save xai_facilities_info
+                    facilities_info
                 ))
-
-            conn.commit()
-
-        # If we have a company_id, ensure leads.company_id is updated
-        if company_id:
-            if not existing_company_id or existing_company_id != company_id:
-                logger.debug(f"Updating lead with lead_id={lead_id} to reference company_id={company_id}.")
-                cursor.execute("""
-                    UPDATE dbo.leads
-                    SET company_id = ?
-                    WHERE lead_id = ?
-                """, (company_id, lead_id))
+                
+                # Capture the new company_id
+                result = cursor.fetchone()
+                company_id = result[0] if result else None
+                
+                if not company_id:
+                    raise ValueError("Failed to get company_id after insertion")
+                
                 conn.commit()
+
+            # If we have a company_id, ensure leads.company_id is updated
+            if company_id:
+                if not existing_company_id or existing_company_id != company_id:
+                    logger.debug(f"Updating lead with lead_id={lead_id} to reference company_id={company_id}.")
+                    cursor.execute("""
+                        UPDATE dbo.leads
+                        SET company_id = ?
+                        WHERE lead_id = ?
+                    """, (company_id, lead_id))
+                    conn.commit()
 
         # ==========================================================
         # 3. Upsert into lead_properties (phone, lifecycle, competitor, etc.)
@@ -308,10 +322,6 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             """, (company_id,))
             cp_row = cursor.fetchone()
 
-            # competitor_analysis left blank
-            competitor_analysis = ""
-            # annualrevenue + company_overview are from above
-            # xai_facilities_news is the new item to store
             if cp_row:
                 cp_id = cp_row[0]
                 logger.debug(f"Updating existing company_properties (property_id={cp_id}) for company_id={company_id}.")
