@@ -72,7 +72,11 @@ class DataGathererService:
         # 4) Get the company data (including city/state)
         company_props = self._hubspot.get_company_data(company_id)
 
-        # 5) Combine them into a single JSON
+        # 5) Add calls to fetch emails and notes from HubSpot
+        emails = self._hubspot.get_all_emails_for_contact(contact_id)
+        notes = self._hubspot.get_all_notes_for_contact(contact_id)
+
+        # Build partial lead_sheet
         lead_sheet = {
             "metadata": {
                 "contact_id": contact_id,
@@ -90,7 +94,10 @@ class DataGathererService:
                     "state": company_props.get("state", ""),
                     "domain": company_props.get("domain", ""),
                     "website": company_props.get("website", "")
-                }
+                },
+                # Include the new fields here:
+                "emails": emails,
+                "notes": notes
             },
             "analysis": {
                 "competitor_analysis": self.check_competitor_on_website(company_props.get("website", "")),
@@ -328,12 +335,13 @@ class DataGathererService:
                     "status": "no_data"
                 }
 
-            query = f"Does {company_name} in {city}, {state} have a Golf Course, pool, or tennis courts? Is it a private club?"
+            location_str = f"{city}, {state}".strip(", ")
             logger.debug("Sending xAI facilities query", extra={
-                "query": query,
+                "club_name": company_name,
+                "location": location_str,
                 "correlation_id": correlation_id
             })
-            response = xai_news_search(query)
+            response = xai_club_info_search(company_name, location_str, amenities=["Golf Course", "Pool", "Tennis Courts"])
 
             if not response:
                 logger.warning(

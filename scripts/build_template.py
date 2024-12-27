@@ -5,6 +5,7 @@ import random
 from utils.doc_reader import DocReader
 from utils.logging_setup import logger
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
+from pathlib import Path
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY

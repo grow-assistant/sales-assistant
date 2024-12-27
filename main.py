@@ -8,7 +8,7 @@ from utils.xai_integration import (
     personalize_email_with_xai,
     _build_icebreaker_from_news
 )
-from utils.gmail_integration import create_draft, search_inbound_messages_for_email
+from utils.gmail_integration import create_draft
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
 from config.settings import DEBUG_MODE, HUBSPOT_API_KEY
@@ -17,69 +17,92 @@ from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
 from services.leads_service import LeadsService
 from services.data_gatherer_service import DataGathererService
+import openai
+from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
 
 # Initialize services
 data_gatherer = DataGathererService()
 leads_service = LeadsService(data_gatherer)
 
 ###############################################################################
-# Attempt to gather last inbound snippet from:
-#   1) Gmail
-#   2) lead_sheet["lead_data"]["emails"]
-#   3) lead_sheet["lead_data"]["notes"]   (if you store inbound text in notes)
+# Summarize lead interactions
 ###############################################################################
-def get_any_inbound_snippet(lead_email: str, lead_sheet: dict, max_chars=200) -> str:
+def summarize_lead_interactions(lead_sheet: dict) -> str:
     """
-    Returns a snippet from the most recent inbound message found in Gmail or lead data.
-    Searches through Gmail, lead_data["emails"], and lead_data["notes"] in that order.
-    
-    :param lead_email: str - Email address of the lead to search for
-    :param lead_sheet: dict - Dictionary containing lead data and history
-    :param max_chars: int - Maximum length of the returned snippet (default: 200)
-    :return: str - Most recent inbound message snippet or empty string if none found
-    """
-    # 1) Check Gmail
-    inbound_snippets = search_inbound_messages_for_email(lead_email, max_results=1)
-    if inbound_snippets:
-        snippet_gmail = inbound_snippets[0].strip()
-        if DEBUG_MODE:
-            logger.debug(f"Found inbound snippet from Gmail: {snippet_gmail[:50]}...")
-        return snippet_gmail[:max_chars] + "..." if len(snippet_gmail) > max_chars else snippet_gmail
+    Collects all prior emails and notes from the lead_sheet,
+    then sends them to OpenAI to request a concise summary.
 
-    # 2) Check lead_data["emails"]
+    The summary should identify:
+      - How many times the lead responded
+      - Where the conversation left off
+      - Overall tone and progress of the interactions
+
+    :param lead_sheet: dict containing 'lead_data', which has 'emails' and 'notes'
+    :return: str summary from OpenAI or an error message
+    """
+    import openai
+    from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
+
+    # 1) Grab prior emails and notes from the lead_sheet
     lead_data = lead_sheet.get("lead_data", {})
-    all_emails = lead_data.get("emails", [])
-    inbound_emails = [
-        e for e in all_emails
-        if e.get("direction", "").lower() in ("incoming_email", "inbound")
-    ]
-    if inbound_emails:
-        # Sort descending by timestamp if available
-        inbound_emails.sort(key=lambda x: x.get("timestamp", ""), reverse=True)
-        snippet_lead_email = inbound_emails[0].get("body_text", "").strip()
-        if DEBUG_MODE:
-            logger.debug(f"Found inbound snippet from lead_data['emails']: {snippet_lead_email[:50]}...")
-        return snippet_lead_email[:max_chars] + "..." if len(snippet_lead_email) > max_chars else snippet_lead_email
-
-    # 3) Check lead_data["notes"] if you store inbound text there
+    emails = lead_data.get("emails", [])
     notes = lead_data.get("notes", [])
-    if notes:
-        # Sort descending by lastmodifieddate or createdate
-        notes.sort(key=lambda n: n.get("lastmodifieddate", ""), reverse=True)
-        for note in notes:
-            body = note.get("body", "").strip()
-            # Heuristic: If the body references lead_email or says "inbound"
-            if lead_email.lower() in body.lower() or "inbound" in body.lower():
-                snippet_note = body
-                if DEBUG_MODE:
-                    logger.debug(f"Found inbound snippet in lead_data['notes']: {snippet_note[:50]}...")
-                return snippet_note[:max_chars] + "..." if len(snippet_note) > max_chars else snippet_note
 
-    # No inbound snippet found
-    if DEBUG_MODE:
-        logger.debug("No inbound snippet found in Gmail, lead_data['emails'], or lead_data['notes'].")
-    return ""
+    # If there's truly no data, return early
+    if not emails and not notes:
+        return "No prior emails or notes found."
 
+    # 2) Compile a single text block of the conversation history
+    compiled_history = "=== PRIOR EMAILS ===\n"
+    for e in emails:
+        subject = e.get("subject", "(No Subject)")
+        body_text = e.get("body_text", "(No Body)").strip()
+        timestamp = e.get("timestamp", "Unknown time")
+        direction = e.get("direction", "")
+        compiled_history += (
+            f"[{timestamp} | direction={direction.upper()}]\n"
+            f"Subject: {subject}\n"
+            f"{body_text}\n\n"
+        )
+
+    compiled_history += "=== NOTES ===\n"
+    for n in notes:
+        note_body = n.get("body", "").strip()
+        note_time = n.get("timestamp", "Unknown time")
+        compiled_history += (
+            f"[{note_time}]\n"
+            f"{note_body}\n\n"
+        )
+
+    # 3) Build the prompt for OpenAI
+    system_prompt = {
+        "role": "system",
+        "content": "You are a helpful assistant that summarizes a lead's interaction history."
+    }
+    user_prompt = {
+        "role": "user",
+        "content": (
+            "Below is all the historical emails and notes with a lead:\n\n"
+            f"{compiled_history}\n\n"
+            "Create a summary starting from the most recent interactions, moving backward. "
+            "One Paragraph max. Condense older details more than recent ones. "
+            "Exclude specific dates, but note the time elapsed since the lead's last response "
+            "in months or years if you can infer it."
+        )
+    }
+
+    # 4) Call OpenAI to get the summary
+    openai.api_key = OPENAI_API_KEY
+    try:
+        response = openai.ChatCompletion.create(
+            model=MODEL_FOR_GENERAL,  # e.g. "gpt-3.5-turbo" or "gpt-4"
+            temperature=DEFAULT_TEMPERATURE,
+            messages=[system_prompt, user_prompt]
+        )
+        summary_text = response["choices"][0]["message"]["content"].strip()
+        return summary_text
+    except Exception as e:
+        return f"Error summarizing lead interactions: {str(e)}"
 
 ###############################################################################
 # Main Workflow
@@ -94,8 +117,6 @@ def main():
     
     The function prompts for a lead's email address and orchestrates the entire
     process of generating and saving a personalized email draft.
-    
-    :return: None
     """
     import uuid
     correlation_id = str(uuid.uuid4())
@@ -120,7 +141,7 @@ def main():
             })
             return
 
-        # Gather data from external sources
+        # 2) Gather data from external sources
         if DEBUG_MODE:
             logger.debug(f"Fetching lead data for '{email}'...", extra={
                 "email": email,
@@ -129,7 +150,7 @@ def main():
         lead_sheet = data_gatherer.gather_lead_data(email, correlation_id=correlation_id)
         logger.debug(f"Company data received: {lead_sheet.get('lead_data', {}).get('company_data', {})}")
 
-        # Add this block here:
+        # 3) Save lead data to SQL
         try:
             logger.debug("Attempting to save lead data to SQL database...", extra={
                 "correlation_id": correlation_id,
@@ -155,19 +176,10 @@ def main():
             })
             return
 
-        # Log lead data for verification
-        if DEBUG_MODE:
-            logger.debug("Lead data retrieved:", extra={
-                "first_name": lead_sheet.get("lead_data", {}).get("firstname", ""),
-                "club_name": lead_sheet.get("lead_data", {}).get("company_data", {}).get("name", ""),
-                "correlation_id": correlation_id,
-                "email": email
-            })
-            
-        # Prepare lead context with correlation ID
+        # Prepare lead context with correlation ID (if needed by older code)
         lead_context = leads_service.prepare_lead_context(email, correlation_id=correlation_id)
 
-        # 5) Extract data for building the email
+        # 4) Extract relevant data
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_data.get("company_data", {})
 
@@ -177,7 +189,6 @@ def main():
         city = company_data.get("city", "").strip()
         state = company_data.get("state", "").strip()
 
-        # Build location string
         if city and state:
             location_str = f"{city}, {state}"
         elif city:
@@ -197,20 +208,20 @@ def main():
             "Topic": "On-Course Ordering Platform",
             "YourName": "Ty"
         }
-
-        # Log the placeholders to confirm they're valid
         logger.debug("Placeholders built", extra=placeholders)
 
-        # 6) Make two separate xAI calls: one for club info, one for club news
+        # 5) Additional data for personalization
         club_info_snippet = data_gatherer.gather_club_info(club_name, city, state)
         news_result = data_gatherer.gather_club_news(club_name)
         has_news = bool(news_result and "has not been" not in news_result.lower())
 
-        # 7) Determine job title category
         jobtitle_str = lead_data.get("jobtitle", "")
         profile_type = categorize_job_title(jobtitle_str)
 
-        # Calculate last interaction days
+        # 6) Summarize interactions
+        interaction_summary = summarize_lead_interactions(lead_sheet)
+        logger.info("Interaction Summary:\n" + interaction_summary)
+
         last_interaction = lead_data.get("properties", {}).get("hs_sales_email_last_replied", "")
         last_interaction_days = 0
         if last_interaction:
@@ -220,81 +231,54 @@ def main():
             except (ValueError, TypeError):
                 last_interaction_days = 0
 
-        # 8) Build initial outreach email
+        # 7) Build initial outreach email
         subject, body = build_outreach_email(
             profile_type=profile_type,
             last_interaction_days=last_interaction_days,
             placeholders=placeholders,
-            current_month=9,      # Example current month
-            start_peak_month=5,   # Example peak start
-            end_peak_month=8,     # Example peak end
+            current_month=9,      # Example
+            start_peak_month=5,
+            end_peak_month=8,
             use_markdown_template=True
         )
-
-        # Log the loaded template
         logger.debug("Loaded email template", extra={
             "subject_template": subject,
             "body_template": body
         })
 
-        # If no news, remove the ICEBREAKER
         if not has_news:
             body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
 
-        # 9) First placeholder replacement pass (pre-xAI)
         orig_subject, orig_body = subject, body
         for key, val in placeholders.items():
             subject = subject.replace(f"[{key}]", val)
-            body    = body.replace(f"[{key}]", val)
-
-        logger.debug("After initial replacement (pre-xAI)", extra={
-            "subject": subject,
-            "body": body
-        })
-
-        # Before replacement
-        logger.debug("Original text:", extra={"subject": subject, "body": body})
-
-        # After replacement
-        for key, val in placeholders.items():
-            subject = subject.replace(f"[{key}]", val)
             body = body.replace(f"[{key}]", val)
-            logger.debug(f"Replacing [{key}] with {val}")
 
-        logger.debug("After replacement:", extra={"subject": subject, "body": body})
-
-        # 10) Personalize with xAI
+        # 8) Personalize with xAI (passing summary, club info, and news)
         try:
-            subject, body = personalize_email_with_xai(lead_sheet, subject, body)
+            subject, body = personalize_email_with_xai(
+                lead_sheet=lead_sheet,
+                subject=subject,
+                body=body,
+                summary=interaction_summary,
+                news_summary=news_result,
+                club_info=club_info_snippet
+            )
             if not subject.strip():
                 subject = orig_subject
             if not body.strip():
                 body = orig_body
 
-            # Clean up leftover bold if any
-            body = body.replace("**", "")
+            body = body.replace("**", "")  # Cleanup leftover bold
 
-            # 11) Re-apply placeholders if xAI reintroduced them
-            logger.debug("Before final placeholders after xAI", extra={
-                "subject_before_final": subject,
-                "body_before_final": body
-            })
+            # Re-apply placeholders if xAI reintroduced them
             for key, val in placeholders.items():
                 subject = subject.replace(f"[{key}]", val)
-                body    = body.replace(f"[{key}]", val)
-
-            # Insert greeting if missing
-            if placeholders["FirstName"]:
-                if not body.lower().startswith("hey "):
-                    body = f"Hey {placeholders['FirstName']},\n\n{body}"
-            else:
-                if not body.lower().startswith("hey"):
-                    body = f"Hey there,\n\n{body}"
+                body = body.replace(f"[{key}]", val)
 
             # Insert ICEBREAKER if we have news
             if has_news:
                 try:
-                    from utils.xai_integration import _build_icebreaker_from_news
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
                     if icebreaker:
                         body = body.replace("[ICEBREAKER]", icebreaker)
@@ -311,12 +295,7 @@ def main():
             "body": body
         })
 
-        # 12) Optional: attach inbound snippet from Gmail
-        inbound_snippet = search_inbound_messages_for_email(email) or ""
-        if inbound_snippet:
-            body += f"\n\n---\nP.S. Here's the last inbound message you sent:\n\"{inbound_snippet}\""
-
-        # 13) Create Gmail draft
+        # 9) Create Gmail draft
         lead_email = lead_data.get("email", email)
         draft_result = create_draft(
             sender="me",
@@ -332,17 +311,11 @@ def main():
         else:
             logger.error("Failed to create Gmail draft.")
 
-        # (Optional) Possibly generate follow-ups
-        # generate_followup_email_xai(lead_id=..., sequence_num=2)
-
     except LeadContextError as e:
         logger.error(f"Failed to prepare lead context: {e}")
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}")
 
 
-###############################################################################
-# Entry point
-###############################################################################
 if __name__ == "__main__":
     main()

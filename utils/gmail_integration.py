@@ -127,7 +127,7 @@ def check_thread_for_reply(thread_id):
 #  Search your Gmail inbox for any messages from the specified email address.
 #  Return up to `max_results` message snippets (short preview text).
 #
-def search_inbound_messages_for_email(email_address: str, max_results: int = 5) -> list:
+def search_inbound_messages_for_email(email_address: str, max_results: int = 1) -> list:
     """
     Search for inbound messages sent from `email_address`.
     Returns a list of short snippets from the most recent matching messages.
