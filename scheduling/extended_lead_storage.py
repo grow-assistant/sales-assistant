@@ -117,6 +117,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # ==========================================================
         # 1. Upsert into leads (static fields + HS fields)
         # ==========================================================
+        logger.debug("Looking up lead by email (masked for privacy)")
         cursor.execute("SELECT hs_object_id, company_hs_id FROM dbo.leads WHERE email = ?", (email,))
         row = cursor.fetchone()
 
@@ -124,6 +125,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             lead_hs_id = row[0]
             existing_company_hs_id = row[1]
             logger.debug(f"Lead with email={email} found (hs_object_id={lead_hs_id}); updating record.")
+            logger.debug(f"Updating existing lead record with hs_object_id={lead_hs_id}")
             cursor.execute("""
                 UPDATE dbo.leads
                 SET first_name = ?,
@@ -141,8 +143,10 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 lead_hs_lastmodified,
                 lead_hs_id
             ))
+            logger.debug("Lead record update completed successfully")
         else:
             logger.debug(f"Lead with email={email} not found; inserting new record.")
+            logger.debug(f"Inserting new lead record with hs_object_id={lead_hs_id}")
             cursor.execute("""
                 INSERT INTO dbo.leads (
                     hs_object_id,
@@ -164,8 +168,11 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 lead_hs_createdate,
                 lead_hs_lastmodified
             ))
+            logger.debug("New lead record inserted successfully")
 
+        logger.debug("Committing lead record changes to database")
         conn.commit()
+        logger.debug("Lead record changes committed successfully")
 
         # ==========================================================
         # 2. Upsert into companies (static fields + HS fields + season data)
@@ -173,6 +180,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         if not static_company_name.strip():
             logger.debug("No company name found, skipping upsert for companies.")
         else:
+            logger.debug(f"Looking up company by name={static_company_name}, city={static_city}, state={static_state}")
             cursor.execute("""
                 SELECT hs_object_id 
                 FROM dbo.companies
@@ -183,6 +191,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             if existing_co:
                 company_hs_id = existing_co[0]
                 logger.debug(f"Company found (hs_object_id={company_hs_id}); updating HS fields + season data if needed.")
+                logger.debug(f"Updating existing company record with hs_object_id={company_hs_id}")
                 cursor.execute("""
                     UPDATE dbo.companies
                     SET city = ?,
@@ -211,6 +220,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 ))
             else:
                 logger.debug(f"No matching company; inserting new row for name={static_company_name}.")
+                logger.debug(f"Inserting new company record with name={static_company_name}")
                 cursor.execute("""
                     INSERT INTO dbo.companies (
                         name, city, state,
@@ -235,7 +245,9 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     facilities_info  # Save xai_facilities_info
                 ))
 
+            logger.debug("Committing company record changes to database")
             conn.commit()
+            logger.debug("Company record changes committed successfully")
 
         # If we have a company_hs_id, ensure leads.company_hs_id is updated
         if company_hs_id:
@@ -246,7 +258,9 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     SET company_hs_id = ?
                     WHERE hs_object_id = ?
                 """, (company_hs_id, lead_hs_id))
+                logger.debug("Committing company reference update to database")
                 conn.commit()
+                logger.debug("Company reference update committed successfully")
 
         # ==========================================================
         # 3. Upsert into lead_properties (phone, lifecycle, competitor, etc.)
@@ -289,7 +303,9 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 competitor_analysis,
                 last_response_date
             ))
+        logger.debug("Committing lead properties changes to database")
         conn.commit()
+        logger.debug("Lead properties changes committed successfully")
 
         # ==========================================================
         # 4. Upsert into company_properties (dynamic fields)
@@ -297,6 +313,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         #    Make sure xai_facilities_news is saved.
         # ==========================================================
         if company_hs_id:
+            logger.debug(f"Looking up company_properties for hs_object_id={company_hs_id}")
             cursor.execute("""
                 SELECT property_id FROM dbo.company_properties WHERE hs_object_id = ?
             """, (company_hs_id,))
@@ -309,6 +326,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             if cp_row:
                 cp_id = cp_row[0]
                 logger.debug(f"Updating existing company_properties (property_id={cp_id}) for hs_object_id={company_hs_id}.")
+                logger.debug(f"Updating existing company_properties with property_id={cp_id}")
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
@@ -322,6 +340,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 ))
             else:
                 logger.debug(f"No company_properties row found; inserting new one for hs_object_id={company_hs_id}.")
+                logger.debug(f"Inserting new company_properties record for hs_object_id={company_hs_id}")
                 cursor.execute("""
                     INSERT INTO dbo.company_properties (
                         hs_object_id,
@@ -335,7 +354,9 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     annualrevenue,
                     facilities_news
                 ))
+            logger.debug("Committing company properties changes to database")
             conn.commit()
+            logger.debug("Company properties changes committed successfully")
 
         logger.info(f"Successfully upserted lead + company info for email='{email}'.")
 

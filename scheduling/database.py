@@ -40,6 +40,7 @@ def init_db():
 
         # 1) Drop all foreign key constraints
         logger.info("Dropping foreign key constraints...")
+        logger.debug("About to drop foreign key constraints via T-SQL")
         cursor.execute("""
             DECLARE @SQL NVARCHAR(MAX) = '';
             SELECT @SQL += 'ALTER TABLE ' + QUOTENAME(OBJECT_SCHEMA_NAME(parent_object_id))
@@ -48,10 +49,13 @@ def init_db():
             FROM sys.foreign_keys;
             EXEC sp_executesql @SQL;
         """)
+        logger.debug("Foreign key constraints dropped successfully")
         conn.commit()
+        logger.debug("Changes committed after dropping foreign key constraints")
 
         # 2) Drop existing tables
         logger.info("Dropping existing tables if they exist...")
+        logger.debug("About to drop existing tables if they exist")
         cursor.execute("""
             IF OBJECT_ID('dbo.emails', 'U') IS NOT NULL
                 DROP TABLE dbo.emails;
@@ -68,11 +72,14 @@ def init_db():
             IF OBJECT_ID('dbo.companies', 'U') IS NOT NULL
                 DROP TABLE dbo.companies;
         """)
+        logger.debug("Existing tables dropped successfully")
         conn.commit()
+        logger.debug("Changes committed after dropping tables")
 
         ################################################################
         # companies (static) – with new season data columns
         ################################################################
+        logger.debug("About to create companies table")
         cursor.execute("""
         CREATE TABLE dbo.companies (
             hs_object_id         VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -96,11 +103,14 @@ def init_db():
             xai_facilities_info  VARCHAR(MAX)
         );
         """)
+        logger.debug("Companies table created successfully")
         conn.commit()
+        logger.debug("Changes committed after creating companies table")
 
         ################################################################
         # company_properties (other dynamic fields, without season data)
         ################################################################
+        logger.debug("About to create company_properties table")
         cursor.execute("""
         CREATE TABLE dbo.company_properties (
             property_id          INT IDENTITY(1,1) PRIMARY KEY,
@@ -113,11 +123,14 @@ def init_db():
                 FOREIGN KEY (hs_object_id) REFERENCES dbo.companies(hs_object_id)
         );
         """)
+        logger.debug("Company_properties table created successfully")
         conn.commit()
+        logger.debug("Changes committed after creating company_properties table")
 
         ################################################################
         # leads (static)
         ################################################################
+        logger.debug("About to create leads table")
         cursor.execute("""
         CREATE TABLE dbo.leads (
             hs_object_id           VARCHAR(50) NOT NULL PRIMARY KEY,
@@ -137,11 +150,14 @@ def init_db():
                 FOREIGN KEY (company_hs_id) REFERENCES dbo.companies(hs_object_id)
         );
         """)
+        logger.debug("Leads table created successfully")
         conn.commit()
+        logger.debug("Changes committed after creating leads table")
 
         ################################################################
         # lead_properties (dynamic/refreshable)
         ################################################################
+        logger.debug("About to create lead_properties table")
         cursor.execute("""
         CREATE TABLE dbo.lead_properties (
             property_id           INT IDENTITY(1,1) PRIMARY KEY,
@@ -156,11 +172,14 @@ def init_db():
                 FOREIGN KEY (hs_object_id) REFERENCES dbo.leads(hs_object_id)
         );
         """)
+        logger.debug("Lead_properties table created successfully")
         conn.commit()
+        logger.debug("Changes committed after creating lead_properties table")
 
         ################################################################
         # emails (tracking)
         ################################################################
+        logger.debug("About to create emails table")
         cursor.execute("""
         CREATE TABLE dbo.emails (
             email_id            INT IDENTITY(1,1) PRIMARY KEY,
@@ -176,7 +195,9 @@ def init_db():
                 FOREIGN KEY (hs_object_id) REFERENCES dbo.leads(hs_object_id)
         );
         """)
+        logger.debug("Emails table created successfully")
         conn.commit()
+        logger.debug("Changes committed after creating emails table")
 
         logger.info("init_db completed successfully. All tables dropped and recreated.")
     except Exception as e:
