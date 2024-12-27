@@ -121,9 +121,9 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         row = cursor.fetchone()
 
         if row:
-            existing_hs_id = row[0]
+            lead_hs_id = row[0]
             existing_company_hs_id = row[1]
-            logger.debug(f"Lead with email={email} found (hs_object_id={existing_hs_id}); updating record.")
+            logger.debug(f"Lead with email={email} found (hs_object_id={lead_hs_id}); updating record.")
             cursor.execute("""
                 UPDATE dbo.leads
                 SET first_name = ?,
@@ -181,8 +181,8 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             existing_co = cursor.fetchone()
 
             if existing_co:
-                existing_company_hs_id = existing_co[0]
-                logger.debug(f"Company found (hs_object_id={existing_company_hs_id}); updating fields + season data if needed.")
+                company_hs_id = existing_co[0]
+                logger.debug(f"Company found (hs_object_id={company_hs_id}); updating HS fields + season data if needed.")
                 cursor.execute("""
                     UPDATE dbo.companies
                     SET city = ?,
