@@ -18,14 +18,20 @@ def safe_parse_date(date_str):
     except Exception:
         return None
 
-def upsert_full_lead(lead_sheet: dict) -> None:
+def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
     """
     Upsert the lead and related company data into SQL:
       1) leads (incl. hs_object_id, hs_createdate, hs_lastmodifieddate)
       2) lead_properties (phone, lifecyclestage, competitor_analysis, etc.)
       3) companies (incl. hs_object_id, hs_createdate, hs_lastmodifieddate, plus season data)
       4) company_properties (annualrevenue, xai_facilities_news only)
+    
+    Args:
+        lead_sheet: Dictionary containing lead and company data
+        correlation_id: Optional correlation ID for tracing operations
     """
+    if correlation_id is None:
+        correlation_id = f"upsert_{lead_sheet.get('lead_data', {}).get('email', 'unknown')}"
     conn = get_db_connection()
     cursor = conn.cursor()
 
@@ -39,12 +45,19 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 1) Basic lead info
         email = lead_data.get("email") or metadata.get("lead_email", "")
         if not email:
-            logger.error("No email found in lead_sheet; cannot upsert lead.")
+            logger.error("No email found in lead_sheet; cannot upsert lead.", extra={
+                "correlation_id": correlation_id,
+                "status": "error"
+            })
             return
 
-        logger.debug(f"Upserting lead with email={email}")
+        logger.debug("Upserting lead", extra={
+            "email": email,
+            "correlation_id": correlation_id,
+            "operation": "upsert_lead"
+        })
 
-        # Fix: Access properties correctly from lead_data structure
+        # Access properties from lead_data structure
         lead_properties = lead_data.get("properties", {})
         first_name = lead_properties.get("firstname", "")
         last_name = lead_properties.get("lastname", "")
@@ -177,6 +190,11 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 raise ValueError("Failed to get lead_id after insertion")
             
             conn.commit()
+            logger.info("Successfully inserted new lead record", extra={
+                "email": email,
+                "lead_id": lead_id,
+                "hs_object_id": lead_hs_id
+            })
 
         # ==========================================================
         # 2. Upsert into companies (static fields + HS fields + season data)
@@ -256,8 +274,18 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     raise ValueError("Failed to get company_id after insertion")
                 
                 conn.commit()
+                logger.info("Successfully inserted new company record", extra={
+                    "company_name": static_company_name,
+                    "company_id": company_id,
+                    "hs_object_id": company_hs_id
+                })
 
             # If we have a company_id, ensure leads.company_id is updated
+            logger.debug("Updating lead's company_id", extra={
+                "lead_id": lead_id,
+                "company_id": company_id,
+                "email": email
+            })
             if company_id:
                 if not existing_company_id or existing_company_id != company_id:
                     logger.debug(f"Updating lead with lead_id={lead_id} to reference company_id={company_id}.")
@@ -278,7 +306,13 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
         if lp_row:
             prop_id = lp_row[0]
-            logger.debug(f"Updating existing lead_properties (property_id={prop_id}) for lead_id={lead_id}.")
+            logger.debug("Updating existing lead properties", extra={
+                "lead_id": lead_id,
+                "property_id": prop_id,
+                "phone": phone,
+                "lifecyclestage": lifecyclestage,
+                "last_response_date": last_response_date
+            })
             cursor.execute("""
                 UPDATE dbo.lead_properties
                 SET phone = ?,
@@ -324,7 +358,12 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
             if cp_row:
                 cp_id = cp_row[0]
-                logger.debug(f"Updating existing company_properties (property_id={cp_id}) for company_id={company_id}.")
+                logger.debug("Updating existing company properties", extra={
+                    "company_id": company_id,
+                    "property_id": cp_id,
+                    "annualrevenue": annualrevenue,
+                    "has_facilities_news": facilities_news is not None
+                })
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
@@ -353,10 +392,23 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 ))
             conn.commit()
 
-        logger.info(f"Successfully upserted lead + company info for email='{email}'.")
+        logger.info("Successfully completed lead and company upsert", extra={
+            "email": email,
+            "lead_id": lead_id,
+            "company_id": company_id if company_id else None,
+            "has_lead_properties": bool(lp_row),
+            "has_company_properties": bool(cp_row) if company_id else False
+        })
 
     except Exception as e:
-        logger.error(f"Error in upsert_full_lead: {e}")
+        logger.error("Error in upsert_full_lead", extra={
+            "error": str(e),
+            "email": email,
+            "lead_id": lead_id if 'lead_id' in locals() else None,
+            "company_id": company_id if 'company_id' in locals() else None
+        }, exc_info=True)
         conn.rollback()
+        logger.info("Transaction rolled back due to error")
     finally:
         conn.close()
+        logger.debug("Database connection closed")

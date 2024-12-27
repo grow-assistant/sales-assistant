@@ -40,15 +40,26 @@ class DataGathererService:
         """Gather all HubSpot data."""
         return self._hubspot.gather_lead_data(lead_email)
 
-    def gather_lead_data(self, lead_email: str) -> Dict[str, Any]:
+    def gather_lead_data(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
         """
         Main entry point for gathering lead data.
         Gathers all data sequentially using synchronous calls.
+        
+        Args:
+            lead_email: Email address of the lead
+            correlation_id: Optional correlation ID for tracing operations
         """
+        if correlation_id is None:
+            correlation_id = f"gather_{lead_email}"
         # 1) Lookup contact_id via email
         contact_data = self._hubspot.get_contact_by_email(lead_email)
         if not contact_data:
-            logger.error(f"Could not find contact ID for {lead_email}")
+            logger.error("Failed to find contact ID", extra={
+                "email": lead_email,
+                "operation": "gather_lead_data",
+                "correlation_id": f"gather_{lead_email}",
+                "status": "error"
+            })
             return {}
         contact_id = contact_data["id"]  # ID is directly on the contact object
 
@@ -97,14 +108,19 @@ class DataGathererService:
         # 7) Save the lead_sheet to disk so we can review the final context
         self._save_lead_context(lead_sheet, lead_email)
 
-        # Log data gathering success
+        # Log data gathering success with correlation ID
         logger.info(
-            f"Data gathered successfully for email={lead_email}",
+            "Data gathering completed successfully",
             extra={
+                "email": lead_email,
+                "contact_id": contact_id,
+                "company_id": company_id,
                 "contact_found": bool(contact_id),
                 "company_found": bool(company_id),
                 "has_research": bool(lead_sheet["analysis"]["research_data"]),
-                "has_season_info": bool(lead_sheet["analysis"]["season_data"])
+                "has_season_info": bool(lead_sheet["analysis"]["season_data"]),
+                "correlation_id": f"gather_{lead_email}",
+                "operation": "gather_lead_data"
             }
         )
         return lead_sheet
@@ -116,24 +132,69 @@ class DataGathererService:
         """
         Calls xai_club_info_search to get a short overview snippet about the club.
         """
+        correlation_id = f"club_info_{club_name}"
+        logger.debug("Starting club info search", extra={
+            "club_name": club_name,
+            "city": city,
+            "state": state,
+            "correlation_id": correlation_id
+        })
+        
         location_str = f"{city}, {state}".strip(", ")
-        return xai_club_info_search(club_name, location_str, amenities=None)
+        try:
+            info = xai_club_info_search(club_name, location_str, amenities=None)
+            logger.info("Club info search completed", extra={
+                "club_name": club_name,
+                "has_info": bool(info),
+                "correlation_id": correlation_id
+            })
+            return info
+        except Exception as e:
+            logger.error("Error searching club info", extra={
+                "club_name": club_name,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "correlation_id": correlation_id
+            }, exc_info=True)
+            return ""
 
     def gather_club_news(self, club_name: str) -> str:
         """
         Calls xai_news_search to get recent news about the club.
         """
-        return xai_news_search(club_name)
+        correlation_id = f"club_news_{club_name}"
+        logger.debug("Starting club news search", extra={
+            "club_name": club_name,
+            "correlation_id": correlation_id
+        })
+        
+        try:
+            news = xai_news_search(club_name)
+            logger.info("Club news search completed", extra={
+                "club_name": club_name,
+                "has_news": bool(news),
+                "correlation_id": correlation_id
+            })
+            return news
+        except Exception as e:
+            logger.error("Error searching club news", extra={
+                "club_name": club_name,
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "correlation_id": correlation_id
+            }, exc_info=True)
+            return ""
 
     # ------------------------------------------------------------------------
     # PRIVATE METHODS FOR SAVING THE LEAD CONTEXT LOCALLY
     # ------------------------------------------------------------------------
-    def check_competitor_on_website(self, domain: str) -> Dict[str, str]:
+    def check_competitor_on_website(self, domain: str, correlation_id: str = None) -> Dict[str, str]:
         """
         Check if Jonas Club Software is mentioned on the website.
         
         Args:
             domain (str): The domain to check (without http/https)
+            correlation_id: Optional correlation ID for tracing operations
             
         Returns:
             Dict containing:
@@ -141,9 +202,14 @@ class DataGathererService:
                 - status: str ("success", "error", or "no_data")
                 - error: str (error message if any)
         """
+        if correlation_id is None:
+            correlation_id = f"competitor_check_{domain}"
         try:
             if not domain:
-                logger.warning("No domain provided for competitor check")
+                logger.warning("No domain provided for competitor check", extra={
+                    "correlation_id": correlation_id,
+                    "operation": "check_competitor"
+                })
                 return {
                     "competitor": "",
                     "status": "no_data",
@@ -162,7 +228,9 @@ class DataGathererService:
                     extra={
                         "domain": domain,
                         "error": "Possible Cloudflare block",
-                        "status": "error"
+                        "status": "error",
+                        "correlation_id": correlation_id,
+                        "operation": "check_competitor"
                     }
                 )
                 return {
@@ -186,7 +254,9 @@ class DataGathererService:
                         extra={
                             "domain": domain,
                             "mention": mention,
-                            "status": "success"
+                            "status": "success",
+                            "correlation_id": correlation_id,
+                            "operation": "check_competitor"
                         }
                     )
                     return {
@@ -207,8 +277,11 @@ class DataGathererService:
                 extra={
                     "domain": domain,
                     "error_type": type(e).__name__,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                    "correlation_id": correlation_id,
+                    "operation": "check_competitor"
+                },
+                exc_info=True
             )
             return {
                 "competitor": "",
@@ -230,6 +303,14 @@ class DataGathererService:
                 - response: Full xAI response about facilities
                 - status: Status of the query ("success", "error", or "no_data")
         """
+        correlation_id = f"facilities_{company_name}"
+        logger.debug("Starting facilities check", extra={
+            "company": company_name,
+            "city": city,
+            "state": state,
+            "correlation_id": correlation_id
+        })
+        
         try:
             if not company_name or not city or not state:
                 logger.warning(
@@ -238,7 +319,8 @@ class DataGathererService:
                         "company": company_name,
                         "city": city,
                         "state": state,
-                        "status": "no_data"
+                        "status": "no_data",
+                        "correlation_id": correlation_id
                     }
                 )
                 return {
@@ -247,6 +329,10 @@ class DataGathererService:
                 }
 
             query = f"Does {company_name} in {city}, {state} have a Golf Course, pool, or tennis courts? Is it a private club?"
+            logger.debug("Sending xAI facilities query", extra={
+                "query": query,
+                "correlation_id": correlation_id
+            })
             response = xai_news_search(query)
 
             if not response:
@@ -256,7 +342,8 @@ class DataGathererService:
                         "company": company_name,
                         "city": city,
                         "state": state,
-                        "status": "error"
+                        "status": "error",
+                        "correlation_id": correlation_id
                     }
                 )
                 return {
@@ -270,7 +357,9 @@ class DataGathererService:
                     "company": company_name,
                     "city": city,
                     "state": state,
-                    "status": "success"
+                    "status": "success",
+                    "response_length": len(response) if response else 0,
+                    "correlation_id": correlation_id
                 }
             )
 
@@ -287,8 +376,10 @@ class DataGathererService:
                     "city": city,
                     "state": state,
                     "error_type": type(e).__name__,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                    "correlation_id": correlation_id
+                },
+                exc_info=True
             )
             return {
                 "response": "",
@@ -309,11 +400,20 @@ class DataGathererService:
                 - status: str ("success", "error", or "no_data")
                 - error: str (error message if any)
         """
+        correlation_id = f"research_{company_name}"
+        logger.debug("Starting market research", extra={
+            "company": company_name,
+            "correlation_id": correlation_id
+        })
+        
         try:
             if not company_name:
                 logger.warning(
                     "No company name provided for market research",
-                    extra={"status": "no_data"}
+                    extra={
+                        "status": "no_data",
+                        "correlation_id": correlation_id
+                    }
                 )
                 return {
                     "company_overview": "",
@@ -323,6 +423,11 @@ class DataGathererService:
                 }
 
             query = f"Has {company_name} been in the news lately? Provide a short summary."
+            logger.debug("Sending xAI news query", extra={
+                "query": query,
+                "company": company_name,
+                "correlation_id": correlation_id
+            })
             news_response = xai_news_search(query)
 
             if not news_response:
@@ -330,7 +435,8 @@ class DataGathererService:
                     "Failed to fetch news for company",
                     extra={
                         "company": company_name,
-                        "status": "error"
+                        "status": "error",
+                        "correlation_id": correlation_id
                     }
                 )
                 return {
@@ -345,7 +451,9 @@ class DataGathererService:
                 extra={
                     "company": company_name,
                     "has_news": bool(news_response),
-                    "status": "success"
+                    "status": "success",
+                    "response_length": len(news_response) if news_response else 0,
+                    "correlation_id": f"research_{company_name}"
                 }
             )
             return {
@@ -368,8 +476,10 @@ class DataGathererService:
                 extra={
                     "company": company_name,
                     "error_type": type(e).__name__,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                    "correlation_id": correlation_id
+                },
+                exc_info=True
             )
             return {
                 "company_overview": "",
@@ -383,6 +493,12 @@ class DataGathererService:
         Save the lead_sheet dictionary to 'test_data/lead_contexts' as a JSON file.
         Masks sensitive data before saving.
         """
+        correlation_id = f"save_context_{lead_email}"
+        logger.debug("Starting lead context save", extra={
+            "email": lead_email,
+            "correlation_id": correlation_id
+        })
+        
         try:
             context_dir = self._create_context_directory()
             filename = self._generate_context_filename(lead_email)
@@ -391,14 +507,20 @@ class DataGathererService:
             with file_path.open("w", encoding="utf-8") as f:
                 json.dump(lead_sheet, f, indent=2, ensure_ascii=False)
 
-            logger.info(f"Lead context saved at: {file_path.resolve()}")
+            logger.info("Lead context saved successfully", extra={
+                "email": lead_email,
+                "file_path": str(file_path.resolve()),
+                "correlation_id": correlation_id
+            })
         except Exception as e:
             logger.warning(
                 "Failed to save lead context (non-critical)",
                 extra={
+                    "email": lead_email,
                     "error_type": type(e).__name__,
                     "error": str(e),
-                    "context_dir": str(context_dir)
+                    "context_dir": str(context_dir),
+                    "correlation_id": correlation_id
                 }
             )
 
@@ -565,9 +687,14 @@ class DataGathererService:
             "July": ("07", "31"), "August": ("08", "31"), "September": ("09", "30"),
             "October": ("10", "31"), "November": ("11", "30"), "December": ("12", "31")
         }
+        logger.debug("Converting month to first day", extra={
+            "month_name": month_name,
+            "valid_month": month_name in month_map
+        })
         if month_name in month_map:
-            return f"{month_map[month_name][0]}-01"
-        return "05-01"
+            result = f"{month_map[month_name][0]}-01"
+            return result
+        return "05-01"  # Default to May 1st
 
     def _month_to_last_day(self, month_name: str) -> str:
         """Convert month name to last day of month in MM-DD format."""
@@ -626,10 +753,16 @@ class DataGathererService:
 
             # Count meetings from notes
             meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
-            meetings_held = sum(
-                1 for note in notes
-                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords)
-            )
+            meetings_held = 0
+            for note in notes:
+                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords):
+                    meetings_held += 1
+                    logger.debug("Found meeting note", extra={
+                        "contact_id": contact_id,
+                        "note_id": note.get("id"),
+                        "meeting_count": meetings_held,
+                        "correlation_id": f"interactions_{contact_id}"
+                    })
 
             # Determine last response status
             last_reply = lead_data.get("hs_sales_email_last_replied")
@@ -656,7 +789,9 @@ class DataGathererService:
                     "emails_opened": emails_opened,
                     "emails_sent": emails_sent,
                     "meetings_held": meetings_held,
-                    "status": "success"
+                    "status": "success",
+                    "has_last_reply": bool(last_reply),
+                    "correlation_id": f"interactions_{contact_id}"
                 }
             )
             return {
@@ -698,8 +833,24 @@ class DataGathererService:
             int: Converted value or default
         """
         if value is None:
+            logger.debug("Received None value in safe_int conversion", extra={
+                "value": "None",
+                "default": default
+            })
             return default
         try:
-            return int(float(str(value)))
-        except (TypeError, ValueError):
+            result = int(float(str(value)))
+            logger.debug("Successfully converted value to int", extra={
+                "original_value": str(value),
+                "result": result,
+                "type": str(type(value))
+            })
+            return result
+        except (TypeError, ValueError) as e:
+            logger.debug("Failed to convert value to int", extra={
+                "value": str(value),
+                "default": default,
+                "error": str(e),
+                "type": str(type(value))
+            })
             return default

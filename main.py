@@ -97,45 +97,75 @@ def main():
     
     :return: None
     """
+    import uuid
+    correlation_id = str(uuid.uuid4())
+    
     # Set up logging level
     if DEBUG_MODE:
         logger.setLevel(logging.DEBUG)
-        logger.debug("Debug mode enabled in main workflow")
+        logger.debug("Debug mode enabled in main workflow", extra={
+            "correlation_id": correlation_id
+        })
     else:
-        logger.info("Starting main workflow...")
+        logger.info("Starting main workflow...", extra={
+            "correlation_id": correlation_id
+        })
 
     try:
         # 1) Prompt for lead email
         email = input("Please enter a lead's email address: ").strip()
         if not email:
-            logger.error("No email entered; exiting.")
+            logger.error("No email entered; exiting.", extra={
+                "correlation_id": correlation_id
+            })
             return
 
         # Gather data from external sources
         if DEBUG_MODE:
-            logger.debug(f"Fetching lead data for '{email}'...")
-        lead_sheet = data_gatherer.gather_lead_data(email)
+            logger.debug(f"Fetching lead data for '{email}'...", extra={
+                "email": email,
+                "correlation_id": correlation_id
+            })
+        lead_sheet = data_gatherer.gather_lead_data(email, correlation_id=correlation_id)
         logger.debug(f"Company data received: {lead_sheet.get('lead_data', {}).get('company_data', {})}")
 
         # Add this block here:
         try:
-            logger.debug("Attempting to save lead data to SQL database...")
+            logger.debug("Attempting to save lead data to SQL database...", extra={
+                "correlation_id": correlation_id,
+                "email": email
+            })
             upsert_full_lead(lead_sheet)
-            logger.info("Successfully saved lead data to SQL database")
+            logger.info("Successfully saved lead data to SQL database", extra={
+                "correlation_id": correlation_id,
+                "email": email
+            })
         except Exception as e:
-            logger.error(f"Failed to save lead data to SQL: {str(e)}")
+            logger.error(f"Failed to save lead data to SQL: {str(e)}", extra={
+                "correlation_id": correlation_id,
+                "email": email,
+                "error": str(e)
+            }, exc_info=True)
 
         # Verify lead_sheet success
         if lead_sheet.get("metadata", {}).get("status") != "success":
-            logger.error("Failed to prepare or retrieve lead context. Exiting.")
+            logger.error("Failed to prepare or retrieve lead context. Exiting.", extra={
+                "email": email,
+                "correlation_id": correlation_id
+            })
             return
 
         # Log lead data for verification
         if DEBUG_MODE:
             logger.debug("Lead data retrieved:", extra={
                 "first_name": lead_sheet.get("lead_data", {}).get("firstname", ""),
-                "club_name": lead_sheet.get("lead_data", {}).get("company_data", {}).get("name", "")
+                "club_name": lead_sheet.get("lead_data", {}).get("company_data", {}).get("name", ""),
+                "correlation_id": correlation_id,
+                "email": email
             })
+            
+        # Prepare lead context with correlation ID
+        lead_context = leads_service.prepare_lead_context(email, correlation_id=correlation_id)
 
         # 5) Extract data for building the email
         lead_data = lead_sheet.get("lead_data", {})
