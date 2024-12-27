@@ -117,13 +117,13 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # ==========================================================
         # 1. Upsert into leads (static fields + HS fields)
         # ==========================================================
-        cursor.execute("SELECT lead_id, company_id FROM dbo.leads WHERE email = ?", (email,))
+        cursor.execute("SELECT hs_object_id, company_hs_id FROM dbo.leads WHERE email = ?", (email,))
         row = cursor.fetchone()
 
         if row:
-            lead_id = row[0]
-            existing_company_id = row[1]
-            logger.debug(f"Lead with email={email} found (lead_id={lead_id}); updating record.")
+            lead_hs_id = row[0]
+            existing_company_hs_id = row[1]
+            logger.debug(f"Lead with email={email} found (hs_object_id={lead_hs_id}); updating record.")
             cursor.execute("""
                 UPDATE dbo.leads
                 SET first_name = ?,
@@ -133,7 +133,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     hs_createdate = ?,
                     hs_lastmodifieddate = ?,
                     status = 'active'
-                WHERE lead_id = ?
+                WHERE hs_object_id = ?
             """, (
                 first_name,
                 last_name,
@@ -141,7 +141,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 lead_hs_id,
                 lead_hs_createdate,
                 lead_hs_lastmodified,
-                lead_id
+                lead_hs_id
             ))
         else:
             logger.debug(f"Lead with email={email} not found; inserting new record.")
@@ -181,15 +181,15 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             logger.debug("No company name found, skipping upsert for companies.")
         else:
             cursor.execute("""
-                SELECT company_id 
+                SELECT hs_object_id 
                 FROM dbo.companies
                 WHERE name = ? AND city = ? AND state = ?
             """, (static_company_name, static_city, static_state))
             existing_co = cursor.fetchone()
 
             if existing_co:
-                company_id = existing_co[0]
-                logger.debug(f"Company found (company_id={company_id}); updating HS fields + season data if needed.")
+                company_hs_id = existing_co[0]
+                logger.debug(f"Company found (hs_object_id={company_hs_id}); updating HS fields + season data if needed.")
                 cursor.execute("""
                     UPDATE dbo.companies
                     SET city = ?,
@@ -203,7 +203,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                         peak_season_start = ?,
                         peak_season_end = ?,
                         xai_facilities_info = ?
-                    WHERE company_id = ?
+                    WHERE hs_object_id = ?
                 """, (
                     static_city,
                     static_state,
@@ -216,7 +216,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     peak_season_start,
                     peak_season_end,
                     facilities_info,  # Save xai_facilities_info into dbo.companies
-                    company_id
+                    company_hs_id
                 ))
             else:
                 logger.debug(f"No matching company; inserting new row for name={static_company_name}.")
@@ -250,14 +250,14 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             conn.commit()
 
         # If we have a company_hs_id, ensure leads.company_hs_id is updated
-        if company_id:
-            if not existing_company_id or existing_company_id != company_id:
-                logger.debug(f"Updating hs_object_id={lead_id} to reference company_hs_id={company_id}.")
+        if company_hs_id:
+            if not existing_company_hs_id or existing_company_hs_id != company_hs_id:
+                logger.debug(f"Updating lead with hs_object_id={lead_hs_id} to reference company_hs_id={company_hs_id}.")
                 cursor.execute("""
                     UPDATE dbo.leads
                     SET company_hs_id = ?
                     WHERE hs_object_id = ?
-                """, (company_id, lead_id))
+                """, (company_hs_id, lead_hs_id))
                 conn.commit()
 
         # ==========================================================

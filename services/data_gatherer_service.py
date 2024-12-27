@@ -601,12 +601,12 @@ class DataGathererService:
         """
         try:
             # Get contact properties from HubSpot
-            lead_data = self._hubspot.get_contact_properties(contact_id)
+            lead_data = self._hubspot.get_contact_properties(hs_object_id)
             if not lead_data:
                 logger.warning(
                     "No lead data found for contact",
                     extra={
-                        "contact_id": contact_id,
+                        "hs_object_id": hs_object_id,
                         "status": "no_data"
                     }
                 )
@@ -624,7 +624,7 @@ class DataGathererService:
             emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
 
             # Get all notes for contact
-            notes = self._hubspot.get_all_notes_for_contact(contact_id)
+            notes = self._hubspot.get_all_notes_for_contact(hs_object_id)
 
             # Count meetings from notes
             meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
@@ -654,7 +654,7 @@ class DataGathererService:
             logger.info(
                 "Successfully retrieved interaction history",
                 extra={
-                    "contact_id": contact_id,
+                    "hs_object_id": hs_object_id,
                     "emails_opened": emails_opened,
                     "emails_sent": emails_sent,
                     "meetings_held": meetings_held,
@@ -674,7 +674,7 @@ class DataGathererService:
             logger.error(
                 "Failed to review contact interactions",
                 extra={
-                    "contact_id": contact_id,
+                    "hs_object_id": hs_object_id,
                     "error_type": type(e).__name__,
                     "error": str(e)
                 }
