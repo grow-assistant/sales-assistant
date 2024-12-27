@@ -57,19 +57,12 @@ class LeadsService:
         # Get comprehensive lead data from DataGathererService
         lead_sheet = self.data_gatherer.gather_lead_data(lead_email, correlation_id=correlation_id)
         if not lead_sheet: 
-            logger.warning(
-                "No lead data found for lead summary generation",
-                extra={
-                    "email": lead_email,
-                    "correlation_id": correlation_id
-                }
-            )
+            logger.warning("No lead data found", extra={"email": lead_email})
             return {}
 
         # Extract relevant data
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_data.get("company_data", {})
-        analysis = lead_sheet.get("analysis", {})
         
         # Get job title for template selection
         props = lead_data.get("properties", {})
@@ -86,56 +79,34 @@ class LeadsService:
         template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
         try:
             template_content = read_doc(template_path)
+            if isinstance(template_content, str):
+                template_content = {
+                    "subject": "Default Subject",
+                    "body": template_content
+                }
             subject = template_content.get("subject", "Default Subject")
-            body = template_content.get("body", "Default Body")
+            body = template_content.get("body", template_content.get("content", ""))
         except Exception as e:
             logger.warning(
                 "Template read failed, using fallback content",
                 extra={
                     "template": template_path,
-                    "error_type": type(e).__name__,
                     "error": str(e),
-                    "correlation_id": correlation_id,
-                    "email": lead_email
-                },
-                exc_info=True
+                    "correlation_id": correlation_id
+                }
             )
             subject = "Fallback Subject"
             body = "Fallback Body..."
 
-        # Extract season and research data from analysis
-        season_data = analysis.get("season_data", {})
-        research_data = analysis.get("research_data", {})
-        industry_trends = research_data.get("recent_news", [])
-        
-        top_trend_title = (
-            industry_trends[0]["title"]
-            if (industry_trends and "title" in industry_trends[0])
-            else "N/A"
-        )
-
-        # Build summary
-        lead_care_about = [f"- Potential interest in: {top_trend_title}"]
-        club_context = [
-            f"- Club Name: {company_data.get('name', 'N/A')}",
-            f"- Location: {company_data.get('city', 'N/A')}, {company_data.get('state', 'N/A')}",
-            f"- Peak Season: {season_data.get('peak_season_start', 'Unknown')} to {season_data.get('peak_season_end', 'Unknown')}"
-        ]
-
-        # Add metadata about the lead context generation
-        metadata = {
-            "status": "success",
-            "timestamp": datetime.utcnow().isoformat(),
-            "email": lead_email,
-            "job_title": job_title
-        }
-
+        # Rest of your existing code...
         return {
-            "metadata": metadata,
+            "metadata": {
+                "status": "success",
+                "timestamp": datetime.utcnow().isoformat(),
+                "email": lead_email,
+                "job_title": job_title
+            },
             "lead_data": lead_data,
-            "analysis": analysis,
-            "lead_summary": lead_care_about,
-            "club_context": club_context,
             "subject": subject,
             "body": body
         }
