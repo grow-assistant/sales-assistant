@@ -6,6 +6,18 @@ import re
 from bs4 import BeautifulSoup
 from typing import Optional
 
+def clean_phone_number(raw_phone: str) -> str:
+    """
+    Example phone cleaning logic:
+    1) Remove non-digit chars
+    2) Format as needed (e.g., ###-###-####)
+    """
+    digits = "".join(char for char in raw_phone if char.isdigit())
+    if len(digits) == 10:
+        # e.g. (123) 456-7890
+        return f"{digits[:3]}-{digits[3:6]}-{digits[6:]}"
+    else:
+        return digits
 
 def clean_html(raw_html: str, strip_tags: bool = True, remove_scripts: bool = True) -> str:
     """

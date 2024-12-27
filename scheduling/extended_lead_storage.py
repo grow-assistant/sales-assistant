@@ -5,6 +5,7 @@ import json
 from dateutil.parser import parse as parse_date
 from utils.logging_setup import logger
 from scheduling.database import get_db_connection
+from utils.formatting_utils import clean_phone_number
 
 def safe_parse_date(date_str):
     """
@@ -86,6 +87,7 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
 
         # 5) lead_properties (dynamic)
         phone = lead_properties.get("phone", "")
+        phone = clean_phone_number(phone)
         lifecyclestage = lead_properties.get("lifecyclestage", "")
 
         competitor_analysis = analysis_data.get("competitor_analysis", "")
