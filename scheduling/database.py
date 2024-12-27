@@ -75,13 +75,14 @@ def init_db():
         ################################################################
         cursor.execute("""
         CREATE TABLE dbo.companies (
-            hs_object_id         VARCHAR(50) NOT NULL PRIMARY KEY,
+            company_id           INT IDENTITY(1,1) PRIMARY KEY,
             name                 VARCHAR(255) NOT NULL,
             city                 VARCHAR(255),
             state                VARCHAR(255),
             created_at           DATETIME DEFAULT GETDATE(),
 
             -- HubSpot data:
+            hs_object_id         VARCHAR(50) NULL,
             hs_createdate        DATETIME NULL,
             hs_lastmodifieddate  DATETIME NULL,
 
@@ -104,13 +105,13 @@ def init_db():
         cursor.execute("""
         CREATE TABLE dbo.company_properties (
             property_id          INT IDENTITY(1,1) PRIMARY KEY,
-            hs_object_id         VARCHAR(50) NOT NULL,
+            company_id           INT NOT NULL,
             annualrevenue        VARCHAR(50),
             xai_facilities_news  VARCHAR(MAX),
             last_modified        DATETIME DEFAULT GETDATE(),
 
             CONSTRAINT FK_company_props
-                FOREIGN KEY (hs_object_id) REFERENCES dbo.companies(hs_object_id)
+                FOREIGN KEY (company_id) REFERENCES dbo.companies(company_id)
         );
         """)
         conn.commit()
@@ -120,21 +121,23 @@ def init_db():
         ################################################################
         cursor.execute("""
         CREATE TABLE dbo.leads (
-            hs_object_id           VARCHAR(50) NOT NULL PRIMARY KEY,
+            lead_id                INT IDENTITY(1,1) PRIMARY KEY,
             email                  VARCHAR(255) NOT NULL,
             first_name             VARCHAR(255),
             last_name              VARCHAR(255),
             role                   VARCHAR(255),
             status                 VARCHAR(50) DEFAULT 'active',
             created_at             DATETIME DEFAULT GETDATE(),
-            company_hs_id          VARCHAR(50) NULL,
+            company_id             INT NULL,
 
+            -- HubSpot data:
+            hs_object_id           VARCHAR(50) NULL,
             hs_createdate          DATETIME NULL,
             hs_lastmodifieddate    DATETIME NULL,
 
             CONSTRAINT UQ_leads_email UNIQUE (email),
             CONSTRAINT FK_leads_companies
-                FOREIGN KEY (company_hs_id) REFERENCES dbo.companies(hs_object_id)
+                FOREIGN KEY (company_id) REFERENCES dbo.companies(company_id)
         );
         """)
         conn.commit()
@@ -145,7 +148,7 @@ def init_db():
         cursor.execute("""
         CREATE TABLE dbo.lead_properties (
             property_id           INT IDENTITY(1,1) PRIMARY KEY,
-            hs_object_id          VARCHAR(50) NOT NULL,
+            lead_id               INT NOT NULL,
             phone                 VARCHAR(50),
             lifecyclestage        VARCHAR(50),
             competitor_analysis   VARCHAR(MAX),
@@ -153,7 +156,7 @@ def init_db():
             last_modified         DATETIME DEFAULT GETDATE(),
 
             CONSTRAINT FK_lead_properties
-                FOREIGN KEY (hs_object_id) REFERENCES dbo.leads(hs_object_id)
+                FOREIGN KEY (lead_id) REFERENCES dbo.leads(lead_id)
         );
         """)
         conn.commit()
@@ -164,7 +167,7 @@ def init_db():
         cursor.execute("""
         CREATE TABLE dbo.emails (
             email_id            INT IDENTITY(1,1) PRIMARY KEY,
-            hs_object_id        VARCHAR(50) NOT NULL,    -- references leads
+            lead_id             INT NOT NULL,    -- references leads
             subject             VARCHAR(500),
             body                VARCHAR(MAX),
             status              VARCHAR(50) DEFAULT 'pending',
@@ -173,7 +176,7 @@ def init_db():
             created_at          DATETIME DEFAULT GETDATE(),
 
             CONSTRAINT FK_emails_leads
-                FOREIGN KEY (hs_object_id) REFERENCES dbo.leads(hs_object_id)
+                FOREIGN KEY (lead_id) REFERENCES dbo.leads(lead_id)
         );
         """)
         conn.commit()
