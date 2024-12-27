@@ -120,7 +120,6 @@ def main():
     """
     import uuid
     correlation_id = str(uuid.uuid4())
-    
     # Set up logging level
     if DEBUG_MODE:
         logger.setLevel(logging.DEBUG)
@@ -133,15 +132,16 @@ def main():
         })
 
     try:
-        # 1) Prompt for lead email
+        # Step 1: Get lead email input
         email = input("Please enter a lead's email address: ").strip()
         if not email:
             logger.error("No email entered; exiting.", extra={
                 "correlation_id": correlation_id
             })
             return
+        print("✓ Step 1: Got lead email:", email, "\n")
 
-        # 2) Gather data from external sources
+        # Step 2: Gather data from external sources
         if DEBUG_MODE:
             logger.debug(f"Fetching lead data for '{email}'...", extra={
                 "email": email,
@@ -149,8 +149,9 @@ def main():
             })
         lead_sheet = data_gatherer.gather_lead_data(email, correlation_id=correlation_id)
         logger.debug(f"Company data received: {lead_sheet.get('lead_data', {}).get('company_data', {})}")
+        print("✓ Step 2: Gathered external data for lead\n")
 
-        # 3) Save lead data to SQL
+        # Step 3: Save lead data to SQL
         try:
             logger.debug("Attempting to save lead data to SQL database...", extra={
                 "correlation_id": correlation_id,
@@ -161,6 +162,7 @@ def main():
                 "correlation_id": correlation_id,
                 "email": email
             })
+            print("✓ Step 3: Saved lead data to SQL database\n")
         except Exception as e:
             logger.error(f"Failed to save lead data to SQL: {str(e)}", extra={
                 "correlation_id": correlation_id,
@@ -176,10 +178,11 @@ def main():
             })
             return
 
-        # Prepare lead context with correlation ID (if needed by older code)
+        # Step 4: Prepare lead context
         lead_context = leads_service.prepare_lead_context(email, correlation_id=correlation_id)
+        print("✓ Step 4: Prepared lead context\n")
 
-        # 4) Extract relevant data
+        # Step 5: Extract relevant data
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_data.get("company_data", {})
 
@@ -209,16 +212,18 @@ def main():
             "YourName": "Ty"
         }
         logger.debug("Placeholders built", extra=placeholders)
+        print("✓ Step 5: Extracted and processed lead data\n")
 
-        # 5) Additional data for personalization
+        # Step 6: Gather additional personalization data
         club_info_snippet = data_gatherer.gather_club_info(club_name, city, state)
         news_result = data_gatherer.gather_club_news(club_name)
         has_news = bool(news_result and "has not been" not in news_result.lower())
 
         jobtitle_str = lead_data.get("jobtitle", "")
         profile_type = categorize_job_title(jobtitle_str)
+        print("✓ Step 6: Gathered additional personalization data\n")
 
-        # 6) Summarize interactions
+        # Step 7: Summarize interactions
         interaction_summary = summarize_lead_interactions(lead_sheet)
         logger.info("Interaction Summary:\n" + interaction_summary)
 
@@ -230,8 +235,9 @@ def main():
                 last_interaction_days = (datetime.datetime.now() - last_date).days
             except (ValueError, TypeError):
                 last_interaction_days = 0
+        print("✓ Step 7: Summarized previous interactions\n")
 
-        # 7) Build initial outreach email
+        # Step 8: Build initial outreach email
         subject, body = build_outreach_email(
             profile_type=profile_type,
             last_interaction_days=last_interaction_days,
@@ -253,8 +259,9 @@ def main():
         for key, val in placeholders.items():
             subject = subject.replace(f"[{key}]", val)
             body = body.replace(f"[{key}]", val)
+        print("✓ Step 8: Built initial email draft\n")
 
-        # 8) Personalize with xAI (passing summary, club info, and news)
+        # Step 9: Personalize with xAI
         try:
             subject, body = personalize_email_with_xai(
                 lead_sheet=lead_sheet,
@@ -294,8 +301,9 @@ def main():
             "subject": subject,
             "body": body
         })
+        print("✓ Step 9: Personalized email with xAI\n")
 
-        # 9) Create Gmail draft
+        # Step 10: Create Gmail draft
         lead_email = lead_data.get("email", email)
         draft_result = create_draft(
             sender="me",
@@ -308,6 +316,7 @@ def main():
                 logger.debug(f"Gmail draft created: {draft_result.get('draft_id')}")
             else:
                 logger.info("Gmail draft created successfully")
+            print("✓ Step 10: Created Gmail draft\n")
         else:
             logger.error("Failed to create Gmail draft.")
 
@@ -315,7 +324,6 @@ def main():
         logger.error(f"Failed to prepare lead context: {e}")
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}")
-
 
 if __name__ == "__main__":
     main()

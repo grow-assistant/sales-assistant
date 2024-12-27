@@ -69,7 +69,7 @@ XAI_TOKEN=your_xai_token
 
 # Optional Configuration
 XAI_API_URL=https://api.x.ai/v1/chat/completions
-XAI_MODEL=grok-beta
+XAI_MODEL=grok-2-1212
 DEV_MODE=false
 DEBUG_MODE=false
 ```

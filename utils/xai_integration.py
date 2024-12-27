@@ -10,7 +10,7 @@ load_dotenv()
 
 XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
 XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
-MODEL_NAME = os.getenv("XAI_MODEL", "grok-beta")
+MODEL_NAME = os.getenv("XAI_MODEL", "grok-2-1212")
 
 def _send_xai_request(payload: dict) -> str:
     """
@@ -212,12 +212,16 @@ def personalize_email_with_xai(
             f"Original Body: {body}\n\n"
             f"Context:\n{context}\n"
             "Instructions:\n"
-            "1. Rewrite the subject and body to be more personalized based on the context.\n"
-            "2. If there's a previous message, reference it naturally.\n"
-            "3. Maintain the core value proposition about the club concierge platform.\n"
-            "4. Keep the tone professional but conversational.\n"
-            "5. Include specific facility references only if confirmed.\n"
-            "6. Consider the summarized interaction history.\n"
+            "1. Personalize based on verified club context and history.\n"
+            "2. Focus on business value and problem-solving.\n" 
+            "3. Keep core Swoop platform value proposition.\n"
+            "4. Use brief, relevant facility references only if confirmed.\n"
+            "5. Write at 6th-8th grade reading level.\n"
+            "6. Keep paragraphs under 3 sentences.\n"
+            "7. Maintain professional but helpful tone.\n"
+            "8. Reference previous interactions naturally.\n"
+            "9. If lead has replied to previous email, reference it naturally without direct acknowledgment.\n"
+            "10. If lead expressed specific interests/concerns in reply, address them.\n"
             "Format the response as:\n"
             "Subject: [new subject]\n\n"
             "Body:\n[new body]"

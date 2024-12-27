@@ -69,7 +69,7 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
             {"role": "system", "content": "You are a sales copywriter for the golf industry."},
             {"role": "user", "content": user_prompt}
         ],
-        "model": "grok-beta",   # Example model name
+        "model": "grok-2-1212",   # Example model name
         "stream": False,
         "temperature": 0.7
     }
