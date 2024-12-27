@@ -575,3 +575,70 @@ Write ONE engaging sentence that naturally references this news. Avoid starting 
 2024-12-26 19:21:51,788 - utils.logging_setup - DEBUG - Message built successfully for smoran@shorthillsclub.org
 2024-12-26 19:21:52,286 - utils.logging_setup - INFO - Draft created successfully for 'smoran@shorthillsclub.org' – ID=r8496620249869130497
 2024-12-26 19:21:52,287 - utils.logging_setup - DEBUG - Gmail draft created: r8496620249869130497
+2024-12-27 04:24:34,850 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-27 04:24:34,850 - utils.logging_setup - INFO - Testing with email: smoran@shorthillsclub.org
+2024-12-27 04:24:35,747 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-27 04:24:35,747 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-27 04:24:35,747 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-27 04:24:35,747 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-27 04:24:36,225 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-27 04:24:36,226 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-27 04:24:36,750 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-27 04:24:36,750 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-27 04:24:36,750 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-27 04:24:36,750 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-27 04:24:36,750 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-27 04:24:37,168 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-27 04:24:37,169 - utils.logging_setup - INFO - Facilities check completed
+2024-12-27 04:24:37,170 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-27 04:24:37,170 - utils.logging_setup - INFO - Data gathering completed successfully
+2024-12-27 04:24:37,171 - utils.logging_setup - WARNING - Could not read document 'docs/templates/clubhouse_manager_initial_outreach.md'; using fallback content.
+2024-12-27 04:24:37,171 - utils.logging_setup - WARNING - Template read failed, using fallback content
+Traceback (most recent call last):
+  File "/home/ubuntu/sales-assistant/services/leads_service.py", line 89, in prepare_lead_context
+    subject = template_content.get("subject", "Default Subject")
+              ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2024-12-27 04:24:37,171 - utils.logging_setup - INFO - Lead context prepared successfully
+2024-12-27 04:24:38,001 - utils.logging_setup - WARNING - No domain provided for competitor check
+2024-12-27 04:24:38,001 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-27 04:24:38,001 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-27 04:24:38,001 - utils.logging_setup - INFO - xAI user message: Has Has Short Hills Club been in the news lately? Provide a short summary. been in the news lately?
+2024-12-27 04:24:38,486 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-27 04:24:38,487 - utils.logging_setup - INFO - Market research completed successfully
+2024-12-27 04:24:38,967 - utils.logging_setup - INFO - Successfully retrieved interaction history
+2024-12-27 04:24:38,967 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-27 04:24:38,967 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-27 04:24:38,967 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-27 04:24:38,967 - utils.logging_setup - INFO - xAI user message: Has Does Short Hills Club in Millburn, NJ have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-27 04:24:39,431 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-27 04:24:39,432 - utils.logging_setup - INFO - Facilities check completed
+2024-12-27 04:24:39,432 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-27 04:24:39,433 - utils.logging_setup - INFO - Data gathering completed successfully
+2024-12-27 04:24:39,433 - utils.logging_setup - WARNING - Could not read document 'docs/templates/clubhouse_manager_initial_outreach.md'; using fallback content.
+2024-12-27 04:24:39,433 - utils.logging_setup - WARNING - Template read failed, using fallback content
+Traceback (most recent call last):
+  File "/home/ubuntu/sales-assistant/services/leads_service.py", line 89, in prepare_lead_context
+    subject = template_content.get("subject", "Default Subject")
+              ^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'str' object has no attribute 'get'
+2024-12-27 04:24:39,433 - utils.logging_setup - INFO - Message personalization successful
+2024-12-27 04:24:39,441 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-27 04:24:39,443 - utils.logging_setup - INFO - Initiating xAI API request
+2024-12-27 04:24:39,443 - utils.logging_setup - INFO - xAI system message: You are a news research assistant. Your task is to ONLY report if the club has been in recent news. Do not mention facilities or club information. If no news is found, respond exactly with: 'No recent news found.'
+2024-12-27 04:24:39,443 - utils.logging_setup - INFO - xAI user message: Has Does Test Company in Test City, TS have a Golf Course, pool, or tennis courts? Is it a private club? been in the news lately?
+2024-12-27 04:24:39,926 - utils.logging_setup - INFO - xAI response received: No recent news found.
+2024-12-27 04:24:39,927 - utils.logging_setup - INFO - Facilities check completed
+2024-12-27 04:24:39,928 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-27 04:24:39,928 - utils.logging_setup - INFO - Data gathering completed successfully
+2024-12-27 04:24:39,931 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-27 04:24:39,933 - utils.logging_setup - WARNING - Missing location data for facilities check
+2024-12-27 04:24:39,933 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-27 04:24:39,934 - utils.logging_setup - INFO - Data gathering completed successfully
+2024-12-27 04:24:39,936 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-27 04:24:39,936 - utils.logging_setup - INFO - Successfully determined club season
+2024-12-27 04:24:39,939 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-27 04:24:39,939 - utils.logging_setup - WARNING - No city or state provided for season lookup
+2024-12-27 04:24:39,941 - utils.logging_setup - INFO - Successfully loaded golf season data
+2024-12-27 04:24:39,944 - utils.logging_setup - INFO - Lead context saved successfully
+2024-12-27 04:24:39,947 - utils.logging_setup - INFO - Successfully loaded golf season data

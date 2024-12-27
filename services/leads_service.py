@@ -37,18 +37,31 @@ class LeadsService:
         """
         self.data_gatherer = data_gatherer_service
 
-    def prepare_lead_context(self, lead_email: str) -> Dict[str, Any]:
+    def prepare_lead_context(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
         """
         Prepare lead context for personalization (subject/body).
         Uses DataGathererService for data retrieval.
+        
+        Args:
+            lead_email: Email address of the lead
+            correlation_id: Optional correlation ID for tracing operations
         """
+        if correlation_id is None:
+            correlation_id = f"prepare_context_{lead_email}"
+            
+        logger.debug("Starting lead context preparation", extra={
+            "email": lead_email,
+            "correlation_id": correlation_id
+        })
+        
         # Get comprehensive lead data from DataGathererService
-        lead_sheet = self.data_gatherer.gather_lead_data(lead_email)
+        lead_sheet = self.data_gatherer.gather_lead_data(lead_email, correlation_id=correlation_id)
         if not lead_sheet: 
             logger.warning(
                 "No lead data found for lead summary generation",
                 extra={
-                    "email": lead_email
+                    "email": lead_email,
+                    "correlation_id": correlation_id
                 }
             )
             return {}
@@ -81,8 +94,11 @@ class LeadsService:
                 extra={
                     "template": template_path,
                     "error_type": type(e).__name__,
-                    "error": str(e)
-                }
+                    "error": str(e),
+                    "correlation_id": correlation_id,
+                    "email": lead_email
+                },
+                exc_info=True
             )
             subject = "Fallback Subject"
             body = "Fallback Body..."

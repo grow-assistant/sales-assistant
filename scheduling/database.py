@@ -10,7 +10,11 @@ UID = DB_USER
 PWD = DB_PASSWORD
 
 def get_db_connection():
-    logger.debug(f"Connecting to SQL Server: SERVER={SERVER}, DATABASE={DATABASE}, UID={UID}, PWD={PWD}")
+    logger.debug("Connecting to SQL Server", extra={
+        "database": DATABASE,
+        "server": SERVER,
+        "masked_credentials": True
+    })
     conn_str = (
         f"DRIVER={{ODBC Driver 17 for SQL Server}};"
         f"SERVER={SERVER};"
@@ -23,7 +27,12 @@ def get_db_connection():
         logger.debug("SQL connection established successfully.")
         return conn
     except pyodbc.Error as ex:
-        logger.error(f"Error connecting to SQL Server: {ex}")
+        logger.error("Error connecting to SQL Server", extra={
+            "error": str(ex),
+            "error_type": type(ex).__name__,
+            "database": DATABASE,
+            "server": SERVER
+        }, exc_info=True)
         raise
 
 def init_db():
@@ -183,7 +192,11 @@ def init_db():
 
         logger.info("init_db completed successfully. All tables dropped and recreated.")
     except Exception as e:
-        logger.error(f"Error in init_db: {str(e)}")
+        logger.error("Error in init_db", extra={
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "database": DATABASE
+        }, exc_info=True)
         conn.rollback()
         raise
     finally:

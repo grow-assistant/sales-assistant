@@ -111,18 +111,35 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 # Club Info Search (Used ONLY for Final Email Rewriting)
 ##############################################################################
 
-def xai_club_info_search(club_name: str, location_str: str = "", amenities: list = None) -> str:
+def xai_club_info_search(club_name: str, location_str: str = "", amenities: list = None, correlation_id: str = None) -> str:
     """
     Searches for club facilities and amenities information.
     Returns only facilities-related information.
+    
+    Args:
+        club_name: Name of the club to search for
+        location_str: Optional location string
+        amenities: Optional list of amenities to check
+        correlation_id: Optional correlation ID for tracing operations
     """
+    if correlation_id is None:
+        correlation_id = f"club_info_{club_name}"
+        
     if not club_name.strip():
-        if DEBUG_MODE:
-            logger.debug("Empty club_name passed to xai_club_info_search; returning blank.")
+        logger.debug("Empty club_name passed to xai_club_info_search", extra={
+            "correlation_id": correlation_id
+        })
         return ""
 
     loc_str = f" in {location_str}" if location_str else ""
     am_str = ", ".join(amenities) if amenities else "golf course, pool, or tennis courts"
+    
+    logger.debug("Starting club info search", extra={
+        "club_name": club_name,
+        "location": location_str,
+        "amenities": amenities,
+        "correlation_id": correlation_id
+    })
 
     payload = {
         "messages": [
@@ -149,27 +166,32 @@ def xai_club_info_search(club_name: str, location_str: str = "", amenities: list
         "temperature": 0.5
     }
 
-    # Log the exact prompts being sent
-    logger.debug("Facilities Search - System Prompt:", extra={
-        "prompt": payload["messages"][0]["content"]
-    })
-    logger.debug("Facilities Search - User Prompt:", extra={
-        "prompt": payload["messages"][1]["content"]
-    })
-
-    response = _send_xai_request(payload)
-    logger.debug("Facilities Search - Response:", extra={
-        "response": response
+    # Send request with correlation ID
+    response = _send_xai_request(payload, correlation_id=correlation_id)
+    
+    logger.debug("Club info search completed", extra={
+        "response_length": len(response) if response else 0,
+        "correlation_id": correlation_id
     })
     return response
 
-def xai_facilities_search(club_name: str, location_str: str = "") -> str:
+def xai_facilities_search(club_name: str, location_str: str = "", correlation_id: str = None) -> str:
     """
     Searches for club facilities information.
     Returns only facilities-related information.
+    
+    Args:
+        club_name: Name of the club to search for
+        location_str: Optional location string
+        correlation_id: Optional correlation ID for tracing operations
     """
+    if correlation_id is None:
+        correlation_id = f"facilities_{club_name}"
+        
     if not club_name.strip():
-        logger.debug("Empty club_name passed to xai_facilities_search; returning blank.")
+        logger.debug("Empty club_name passed to xai_facilities_search", extra={
+            "correlation_id": correlation_id
+        })
         return ""
 
     loc_str = f" in {location_str}" if location_str else ""
@@ -197,18 +219,21 @@ def xai_facilities_search(club_name: str, location_str: str = "") -> str:
         "temperature": 0
     }
 
-    # Log the exact prompts and response
-    logger.debug("Facilities Search - System Prompt:", extra={"content": payload["messages"][0]["content"]})
-    logger.debug("Facilities Search - User Prompt:", extra={"content": payload["messages"][1]["content"]})
-    
-    response = _send_xai_request(payload)
-    
-    logger.debug("Facilities Search - Response:", extra={"content": response})
+    # Send request with correlation ID
+    response = _send_xai_request(payload, correlation_id=correlation_id)
     
     # Validate response format
     if not any(marker in response.lower() for marker in ["golf course", "pool", "tennis", "club type"]):
-        logger.warning(f"Invalid facilities response format: {response}")
+        logger.warning("Invalid facilities response format", extra={
+            "response": response,
+            "correlation_id": correlation_id
+        })
         return "Facilities information not available."
+        
+    logger.debug("Facilities search completed", extra={
+        "response_length": len(response) if response else 0,
+        "correlation_id": correlation_id
+    })
         
     return response
 
@@ -216,13 +241,26 @@ def xai_facilities_search(club_name: str, location_str: str = "") -> str:
 # Personalize Email with xAI
 ##############################################################################
 
-def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tuple[str, str]:
+def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str, correlation_id: str = None) -> Tuple[str, str]:
     """
     1) Fetch a short 'club info' snippet from xai_club_info_search.
     2) Incorporate that snippet into user_content for final rewriting.
     3) Use the result to rewrite subject and body.
+    
+    Args:
+        lead_sheet: Dictionary containing lead and company data
+        subject: Original email subject
+        body: Original email body
+        correlation_id: Optional correlation ID for tracing operations
     """
-    logger.info("Starting email personalization with xAI")
+    if correlation_id is None:
+        correlation_id = f"personalize_{lead_sheet.get('lead_data', {}).get('email', 'unknown')}"
+        
+    logger.info("Starting email personalization with xAI", extra={
+        "correlation_id": correlation_id,
+        "lead_email": lead_sheet.get("lead_data", {}).get("email"),
+        "company": lead_sheet.get("lead_data", {}).get("company_data", {}).get("name")
+    })
     lead_data = lead_sheet.get("lead_data", {})
     company_data = lead_data.get("company_data", {})
 
@@ -233,7 +271,7 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
     amenities = lead_sheet.get("analysis", {}).get("amenities", [])
 
     # 1) Use xai_club_info_search to gather context
-    club_info_snippet = xai_club_info_search(club_name, location_str, amenities)
+    club_info_snippet = xai_club_info_search(club_name, location_str, amenities, correlation_id=correlation_id)
 
     # 2) Build user_content for rewriting
     facilities_info = lead_sheet.get("analysis", {}).get("facilities", {}).get("response", "")
@@ -282,9 +320,11 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
     }
 
     # 3) Send to xAI for rewriting
-    result = _send_xai_request(payload)
+    result = _send_xai_request(payload, correlation_id=correlation_id)
     if not result:
-        logger.warning("No content returned from xAI. Falling back to original subject/body.")
+        logger.warning("No content returned from xAI. Falling back to original subject/body.", extra={
+            "correlation_id": correlation_id
+        })
         return subject, body
 
     lines = result.splitlines()
@@ -305,8 +345,13 @@ def personalize_email_with_xai(lead_sheet: dict, subject: str, body: str) -> Tup
     if DEBUG_MODE:
         logger.debug("Completed xAI personalization rewrite", extra={
             "new_subject": new_subject,
-            "new_body_preview": final_body[:150] + "..." if len(final_body) > 150 else final_body
+            "new_body_preview": final_body[:150] + "..." if len(final_body) > 150 else final_body,
+            "correlation_id": correlation_id
         })
 
-    logger.info("Email personalization completed successfully")
+    logger.info("Email personalization completed successfully", extra={
+        "correlation_id": correlation_id,
+        "subject_changed": bool(new_subject.strip()),
+        "body_length": len(final_body)
+    })
     return (new_subject if new_subject.strip() else subject), final_body
