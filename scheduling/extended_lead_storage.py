@@ -24,7 +24,7 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
       1) leads (incl. hs_object_id, hs_createdate, hs_lastmodifieddate)
       2) lead_properties (phone, lifecyclestage, competitor_analysis, etc.)
       3) companies (incl. hs_object_id, hs_createdate, hs_lastmodifieddate, plus season data)
-      4) company_properties (annualrevenue, xai_facilities_news only)
+      4) company_properties (annualrevenue, xai_facilities_news)
     
     Args:
         lead_sheet: Dictionary containing lead and company data
@@ -130,12 +130,13 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
         # ==========================================================
         # 1. Upsert into leads (static fields + HS fields)
         # ==========================================================
+        existing_company_id = None  # Initialize before the query
         cursor.execute("SELECT lead_id, company_id, hs_object_id FROM dbo.leads WHERE email = ?", (email,))
         row = cursor.fetchone()
 
         if row:
             lead_id = row[0]
-            existing_company_id = row[1]
+            existing_company_id = row[1]  # Will update if found
             lead_hs_id = row[2]
             logger.debug(f"Lead with email={email} found (lead_id={lead_id}); updating record.")
             cursor.execute("""

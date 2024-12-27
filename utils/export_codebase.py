@@ -4,6 +4,9 @@ from pathlib import Path
 
 def should_include_file(filepath):
     """Determine if a file should be included in the export."""
+    # Normalize path separators
+    filepath = filepath.replace('\\', '/')
+    
     # Exclude patterns
     exclude_patterns = [
         '*/__pycache__/*',
@@ -34,8 +37,9 @@ def should_include_file(filepath):
         'scheduling'
     ]
     
+    # More flexible directory matching
     for dir_name in include_dirs:
-        if f'/{dir_name}/' in filepath:
+        if f'/{dir_name}/' in filepath or filepath.startswith(f'{dir_name}/'):
             return True
             
     # Include main.py
@@ -46,8 +50,19 @@ def should_include_file(filepath):
 
 def get_file_content(filepath):
     """Read and return file content with proper markdown formatting."""
-    with open(filepath, 'r') as f:
-        content = f.read()
+    try:
+        # Try UTF-8 first
+        with open(filepath, 'r', encoding='utf-8') as f:
+            content = f.read()
+    except UnicodeDecodeError:
+        try:
+            # Fallback to cp1252 if UTF-8 fails
+            with open(filepath, 'r', encoding='cp1252') as f:
+                content = f.read()
+        except UnicodeDecodeError:
+            # If both fail, try with errors='ignore'
+            with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
+                content = f.read()
     
     filename = os.path.basename(filepath)
     rel_path = os.path.relpath(filepath, start=os.path.dirname(os.path.dirname(__file__)))
@@ -90,8 +105,8 @@ This document contains the core functionality of the Sales Assistant project.
     for filepath in all_files:
         content += get_file_content(filepath)
     
-    # Write output file
-    with open(output_file, 'w') as f:
+    # Write output file with UTF-8 encoding
+    with open(output_file, 'w', encoding='utf-8') as f:
         f.write(content)
 
 if __name__ == '__main__':
