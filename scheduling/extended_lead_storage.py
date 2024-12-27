@@ -249,14 +249,14 @@ def upsert_full_lead(lead_sheet: dict) -> None:
 
             conn.commit()
 
-        # If we have a company_id, ensure leads.company_id is updated
+        # If we have a company_hs_id, ensure leads.company_hs_id is updated
         if company_id:
             if not existing_company_id or existing_company_id != company_id:
-                logger.debug(f"Updating lead_id={lead_id} to reference company_id={company_id}.")
+                logger.debug(f"Updating hs_object_id={lead_id} to reference company_hs_id={company_id}.")
                 cursor.execute("""
                     UPDATE dbo.leads
-                    SET company_id = ?
-                    WHERE lead_id = ?
+                    SET company_hs_id = ?
+                    WHERE hs_object_id = ?
                 """, (company_id, lead_id))
                 conn.commit()
 
@@ -264,13 +264,13 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # 3. Upsert into lead_properties (phone, lifecycle, competitor, etc.)
         # ==========================================================
         cursor.execute("""
-            SELECT property_id FROM dbo.lead_properties WHERE lead_id = ?
+            SELECT property_id FROM dbo.lead_properties WHERE hs_object_id = ?
         """, (lead_id,))
         lp_row = cursor.fetchone()
 
         if lp_row:
             prop_id = lp_row[0]
-            logger.debug(f"Updating existing lead_properties (property_id={prop_id}) for lead_id={lead_id}.")
+            logger.debug(f"Updating existing lead_properties (property_id={prop_id}) for hs_object_id={lead_id}.")
             cursor.execute("""
                 UPDATE dbo.lead_properties
                 SET phone = ?,
@@ -287,10 +287,10 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                 prop_id
             ))
         else:
-            logger.debug(f"No lead_properties row found; inserting new one for lead_id={lead_id}.")
+            logger.debug(f"No lead_properties row found; inserting new one for hs_object_id={lead_id}.")
             cursor.execute("""
                 INSERT INTO dbo.lead_properties (
-                    lead_id, phone, lifecyclestage, competitor_analysis,
+                    hs_object_id, phone, lifecyclestage, competitor_analysis,
                     last_response_date, last_modified
                 )
                 VALUES (?, ?, ?, ?, ?, GETDATE())
@@ -310,7 +310,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
         # ==========================================================
         if company_id:
             cursor.execute("""
-                SELECT property_id FROM dbo.company_properties WHERE company_id = ?
+                SELECT property_id FROM dbo.company_properties WHERE hs_object_id = ?
             """, (company_id,))
             cp_row = cursor.fetchone()
 
@@ -320,7 +320,7 @@ def upsert_full_lead(lead_sheet: dict) -> None:
             # xai_facilities_news is the new item to store
             if cp_row:
                 cp_id = cp_row[0]
-                logger.debug(f"Updating existing company_properties (property_id={cp_id}) for company_id={company_id}.")
+                logger.debug(f"Updating existing company_properties (property_id={cp_id}) for hs_object_id={company_id}.")
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
@@ -333,10 +333,10 @@ def upsert_full_lead(lead_sheet: dict) -> None:
                     cp_id
                 ))
             else:
-                logger.debug(f"No company_properties row found; inserting new one for company_id={company_id}.")
+                logger.debug(f"No company_properties row found; inserting new one for hs_object_id={company_id}.")
                 cursor.execute("""
                     INSERT INTO dbo.company_properties (
-                        company_id,
+                        hs_object_id,
                         annualrevenue,
                         xai_facilities_news,
                         last_modified
