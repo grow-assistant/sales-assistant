@@ -2,6 +2,7 @@
 
 from scheduling.database import get_db_connection
 from utils.xai_integration import _send_xai_request
+from utils.logging_setup import logger
 import re
 
 def parse_subject_and_body(raw_text: str) -> tuple[str, str]:
@@ -29,7 +30,11 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
     """
     For a given lead and sequence number (e.g., 2 or 3),
     calls xAI to generate a personalized follow-up email,
-    then updates the followups table with the resulting subject & body.
+    then creates a new email record with the resulting subject & body.
+    
+    Args:
+        lead_id (int): The ID of the lead to generate follow-up for
+        sequence_num (int): The sequence number (1=day3, 2=day7, 3=day14)
     """
     conn = get_db_connection()
     lead = conn.execute("SELECT * FROM leads WHERE lead_id = ?", (lead_id,)).fetchone()
@@ -77,10 +82,34 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
     xai_response = _send_xai_request(payload)
     subject, body = parse_subject_and_body(xai_response)
 
-    conn.execute("""
-        UPDATE followups
-        SET subject = ?, body = ?
-        WHERE lead_id = ? AND sequence_num = ?
-    """, (subject, body, lead_id, sequence_num))
-    conn.commit()
-    conn.close()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO emails (lead_id, subject, body, sequence_num, status)
+            VALUES (?, ?, ?, ?, 'pending')
+        """, (lead_id, subject, body, sequence_num))
+        
+        # Get the inserted email_id
+        email_id = cursor.execute("SELECT @@IDENTITY").fetchval()
+        conn.commit()
+
+        logger.info("Successfully inserted follow-up email", extra={
+            "email_id": email_id,
+            "lead_id": lead_id,
+            "sequence_num": sequence_num,
+            "status": "pending",
+            "operation": "INSERT",
+            "table": "emails"
+        })
+    except Exception as e:
+        logger.error("Failed to insert follow-up email", extra={
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "lead_id": lead_id,
+            "sequence_num": sequence_num,
+            "operation": "INSERT",
+            "table": "emails"
+        })
+        raise
+    finally:
+        conn.close()
