@@ -25,11 +25,8 @@ This document contains the core functionality of the Sales Assistant project.
 - [scheduling\sql_lookup.py](#scheduling\sql_lookup.py)
 - [scripts\__init__.py](#scripts\__init__.py)
 - [scripts\build_template.py](#scripts\build_template.py)
-- [scripts\create_templates.py](#scripts\create_templates.py)
-- [scripts\initialize_templates.py](#scripts\initialize_templates.py)
 - [scripts\job_title_categories.py](#scripts\job_title_categories.py)
 - [scripts\schedule_outreach.py](#scripts\schedule_outreach.py)
-- [scripts\verify_templates.py](#scripts\verify_templates.py)
 - [services\__init__.py](#services\__init__.py)
 - [services\data_gatherer_service.py](#services\data_gatherer_service.py)
 - [services\hubspot_integration.py](#services\hubspot_integration.py)
@@ -848,7 +845,8 @@ from utils.logging_setup import logger
 from utils.exceptions import LeadContextError
 from utils.xai_integration import (
     personalize_email_with_xai,
-    _build_icebreaker_from_news
+    _build_icebreaker_from_news,
+    get_default_icebreaker
 )
 from utils.gmail_integration import create_draft
 from scripts.build_template import build_outreach_email
@@ -861,7 +859,7 @@ from services.leads_service import LeadsService
 from services.data_gatherer_service import DataGathererService
 import openai
 from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
-from scripts.create_templates import create_default_templates
+
 
 # Initialize services
 data_gatherer = DataGathererService()
@@ -884,62 +882,76 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         # 2) Format the interactions for OpenAI
         interactions = []
         
-        # Add emails with proper encoding handling
-        for email in emails:
+        # Add emails with proper encoding handling and sort by timestamp
+        for email in sorted(emails, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(email, dict):
-                date = email.get('date', '')
+                date = email.get('timestamp', '').split('T')[0]  # Extract just the date
                 subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
-                body = email.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
-                sender = email.get('from', '').encode('utf-8', errors='ignore').decode('utf-8')
+                body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')  # Changed from 'body' to 'body_text'
+                direction = email.get('direction', '')
                 
-                # Replace old company name
-                subject = subject.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
-                body = body.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
+                # Only include relevant parts of the email thread
+                body = body.split('On ')[0].strip()  # Take only the most recent part
                 
-                # Clean up newlines and special characters
-                body = body.replace('\r\n', '\n').replace('\r', '\n')
-                
-                interaction = f"Date: {date}\nFrom: {sender}\nSubject: {subject}\nBody: {body}"
+                interaction = {
+                    'date': date,
+                    'type': 'email',
+                    'direction': direction,
+                    'subject': subject,
+                    'notes': body[:500]  # Limit length to prevent token overflow
+                }
                 interactions.append(interaction)
         
         # Add notes with proper encoding handling
-        for note in notes:
+        for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(note, dict):
-                date = note.get('date', '')
-                content = note.get('content', '').encode('utf-8', errors='ignore').decode('utf-8')
+                date = note.get('timestamp', '').split('T')[0]
+                content = note.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
                 
-                # Replace old company name
-                content = content.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
-                
-                # Clean up newlines and special characters
-                content = content.replace('\r\n', '\n').replace('\r', '\n')
-                
-                interaction = f"Note Date: {date}\nContent: {content}"
+                interaction = {
+                    'date': date,
+                    'type': 'note',
+                    'direction': 'internal',
+                    'subject': 'Internal Note',
+                    'notes': content[:500]  # Limit length to prevent token overflow
+                }
                 interactions.append(interaction)
         
         if not interactions:
             return "No prior interactions found."
+
+        # Sort all interactions by date
+        interactions.sort(key=lambda x: x['date'], reverse=True)
         
-        # 3) Create the prompt for OpenAI
+        # Take only the last 3 interactions to keep the context focused
+        recent_interactions = interactions[:5]
+        
         prompt = (
             "Please summarize these interactions, focusing on:\n"
-            "- The most recent interaction and its outcome\n"
-            "- Any key points of interest or next steps discussed\n"
-            "- The overall progression of the conversation\n"
-            "- How long it's been since the last interaction\n\n"
-            "Interactions:\n" + "\n\n".join(interactions)
+            "1. Most recent email from the lead if there is one\n"
+            "2. Key points of interest or next steps discussed\n"
+            "3. Overall progression of the conversation\n\n"
+            "Recent Interactions:\n"
         )
         
-        # 4) Get summary from OpenAI
+        for interaction in recent_interactions:
+            prompt += f"\nDate: {interaction['date']}\n"
+            prompt += f"Type: {interaction['type']}\n"
+            prompt += f"Direction: {interaction['direction']}\n"
+            prompt += f"Subject: {interaction['subject']}\n"
+            prompt += f"Content: {interaction['notes']}\n"
+            prompt += "-" * 50 + "\n"
+        
+        # Get summary from OpenAI
         try:
             openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(
-                model=MODEL_FOR_GENERAL,
+                model=MODEL_FOR_GENERAL,  # Use your configured model
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that summarizes business interactions."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=DEFAULT_TEMPERATURE
+                temperature=0.2
             )
             
             summary = response.choices[0].message.content.strip()
@@ -949,9 +961,6 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
             logger.error(f"Error getting summary from OpenAI: {str(e)}")
             return "Error summarizing interactions."
             
-    except UnicodeEncodeError as e:
-        logger.error(f"Unicode encoding error: {str(e)}")
-        return "Error processing interaction text encoding."
     except Exception as e:
         logger.error(f"Error in summarize_lead_interactions: {str(e)}")
         return "Error processing interactions."
@@ -1031,7 +1040,11 @@ def main():
             return
 
         # Step 4: Prepare lead context
-        lead_context = leads_service.prepare_lead_context(email, correlation_id=correlation_id)
+        lead_context = leads_service.prepare_lead_context(
+            email, 
+            lead_sheet=lead_sheet,
+            correlation_id=correlation_id
+        )
         print("✓ Step 4: Prepared lead context\n")
 
         # Step 5: Extract relevant data
@@ -1104,7 +1117,15 @@ def main():
             "body_template": body
         })
 
-        if not has_news:
+        try:
+            if has_news and news_result and "has not been in the news" not in news_result.lower():
+                icebreaker = _build_icebreaker_from_news(club_name, news_result)
+                if icebreaker:
+                    body = body.replace("[ICEBREAKER]", icebreaker)
+            else:
+                body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
+        except Exception as e:
+            logger.error(f"Icebreaker generation error: {e}")
             body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
 
         orig_subject, orig_body = subject, body
@@ -1193,7 +1214,7 @@ def verify_templates():
     
     if missing_templates:
         logger.warning(f"Missing templates: {missing_templates}")
-        create_default_templates()
+
 
 if __name__ == "__main__":
     verify_templates()
@@ -2203,8 +2224,8 @@ from utils.doc_reader import DocReader
 from utils.logging_setup import logger
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).parent.parent
+from config.settings import PROJECT_ROOT
+from utils.xai_integration import _send_xai_request
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -2309,158 +2330,104 @@ def build_outreach_email(
     profile_type: str,
     last_interaction_days: int,
     placeholders: dict,
-    current_month: int = 3,
-    start_peak_month: int = 4,
-    end_peak_month: int = 7,
-    use_markdown_template: bool = False
+    current_month: int,
+    start_peak_month: int,
+    end_peak_month: int,
+    use_markdown_template: bool = True
 ) -> tuple[str, str]:
     """
-    1) Conditionally pick a subject line
-    2) Optionally load a .md template for the email body
-    3) Insert a season snippet into the body if desired
-    4) Return (subject, body)
+    Builds an outreach email with enhanced error handling and debugging
     """
-    # Define template paths
-    template_dir = PROJECT_ROOT / 'docs' / 'templates'
-    
-    # Add extensive debug logging
-    logger.debug("Template Directory Details:")
-    logger.debug(f"PROJECT_ROOT absolute path: {PROJECT_ROOT.absolute()}")
-    logger.debug(f"Template directory absolute path: {template_dir.absolute()}")
-    logger.debug(f"Template directory exists: {template_dir.exists()}")
-    logger.debug(f"Template directory is directory: {template_dir.is_dir()}")
-    
-    # Create template directory if it doesn't exist
-    template_dir.mkdir(parents=True, exist_ok=True)
-    
-    # Map profile types to template files
-    template_map = {
-        'general_manager': 'general_manager_initial_outreach.md',
-        'food_beverage': 'fb_manager_initial_outreach.md',
-        'golf_professional': 'golf_pro_initial_outreach.md',
-        'owner': 'owner_initial_outreach.md',
-        'membership': 'membership_director_initial_outreach.md'
-    }
-    
-    template_file = template_map.get(profile_type, 'general_manager_initial_outreach.md')
-    template_path = template_dir / template_file
-    
-    logger.debug("Template File Details:")
-    logger.debug(f"Template file absolute path: {template_path.absolute()}")
-    logger.debug(f"Template file exists: {template_path.exists()}")
-    if template_path.exists():
-        logger.debug(f"Template file is file: {template_path.is_file()}")
-        logger.debug(f"Template file readable: {os.access(template_path, os.R_OK)}")
-        
     try:
-        # Attempt to read the role-specific template
+        # Log input parameters for debugging
+        logger.debug(
+            "Building outreach email",
+            extra={
+                'profile_type': profile_type,
+                'placeholders': placeholders,
+                'template_used': use_markdown_template
+            }
+        )
+        
+        template_dir = PROJECT_ROOT / 'docs' / 'templates'
+        template_map = {
+            'general_manager': 'general_manager_initial_outreach.md',
+            'food_beverage': 'fb_manager_initial_outreach.md',
+            'golf_professional': 'golf_ops_initial_outreach.md',
+            'owner': 'owner_initial_outreach.md',
+            'membership': 'membership_director_initial_outreach.md'
+        }
+        
+        template_file = template_map.get(profile_type, 'general_manager_initial_outreach.md')
+        template_path = template_dir / template_file
+        
+        # Log template selection
+        logger.debug(f"Selected template: {template_path}")
+        
         if template_path.exists():
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
-                logger.debug(f"Successfully read template content (length: {len(template_content)})")
-                if len(template_content.strip()) == 0:
-                    logger.warning("Template file exists but is empty")
-                    raise FileNotFoundError("Template file is empty")
+                logger.debug(f"Template loaded, length: {len(template_content)}")
         else:
-            logger.warning(f"Template file not found: {template_path}")
-            raise FileNotFoundError(f"Template file not found: {template_path}")
-            
-    except Exception as e:
-        logger.error(f"Error reading template: {str(e)}")
-        # Use fallback template
-        template_content = get_fallback_template()
+            logger.warning(f"Template not found: {template_path}, using fallback")
+            template_content = get_fallback_template()
         
-        # Split template into subject and body
-        template_parts = template_content.split('---\n')
-        if len(template_parts) >= 2:
-            subject = template_parts[0].strip()
-            body = '---\n'.join(template_parts[1:]).strip()
-        else:
-            logger.warning("Template format incorrect; using fallback content")
-            subject, body = get_fallback_template().split('---\n')
+        # Parse template with error tracking
+        try:
+            template_data = parse_template(template_content)
+            subject = template_data['subject']
+            body = template_data['body']
+        except Exception as e:
+            logger.error(f"Template parsing failed: {str(e)}")
+            raise
+        
+        # Track placeholder replacements
+        replacement_log = []
+        
+        # Replace placeholders with logging
+        for key, value in placeholders.items():
+            if value is None:
+                logger.warning(f"Missing value for placeholder: {key}")
+                value = ''
             
+            # Track replacements for debugging
+            if f'[{key}]' in subject or f'[{key}]' in body:
+                replacement_log.append(f"Replaced [{key}] with '{value}'")
+            
+            subject = subject.replace(f'[{key}]', str(value))
+            body = body.replace(f'[{key}]', str(value))
+            
+            if key == 'SEASON_VARIATION':
+                body = body.replace('{SEASON_VARIATION}', str(value))
+                body = body.replace('[SEASON_VARIATION]', str(value))
+        
+        # Log all replacements made
+        if replacement_log:
+            logger.debug("Placeholder replacements: " + "; ".join(replacement_log))
+
+        # Leave [ICEBREAKER] placeholder for later personalization
+        # Remove the icebreaker generation from here
+
         return subject, body
+
+    except Exception as e:
+        logger.error(
+            "Email building failed",
+            extra={
+                'error': str(e),
+                'profile_type': profile_type,
+                'template_file': template_file if 'template_file' in locals() else None
+            }
+        )
+        return get_fallback_template().split('---\n', 1)
 
 def get_fallback_template() -> str:
     """Returns a basic fallback template if all other templates fail."""
-    return """Enhancing [ClubName]'s Efficiency with Swoop
----
-Hey [FirstName],
-
-While planning for next season, We've transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It's all about making member service faster and more convenient, without adding extra overhead.
-
-We're seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you're open to it, I can share how our current partners have grown revenue and improved the overall member experience.
-
-Would you be up for a brief conversation to see if this might fit [ClubName]?
-
-Cheers,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com"""
-
-```
-
-## scripts\create_templates.py
-```python
-from pathlib import Path
-from config.settings import PROJECT_ROOT
-import logging
-
-logger = logging.getLogger(__name__)
-
-def create_default_templates():
-    """Create default email templates if they don't exist."""
-    template_dir = PROJECT_ROOT / 'docs' / 'templates'
-    
-    # Add debug logging
-    logger.debug(f"Creating templates in directory: {template_dir.absolute()}")
-    
-    try:
-        template_dir.mkdir(parents=True, exist_ok=True)
-        logger.debug(f"Template directory created/verified: {template_dir.exists()}")
-    except Exception as e:
-        logger.error(f"Error creating template directory: {str(e)}")
-        return
-        
-    templates = {
-        'general_manager_initial_outreach.md': """Enhancing [ClubName]'s Efficiency with Swoop
----
-Hey [FirstName],
-
-While planning for next season, We've transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It's all about making member service faster and more convenient, without adding extra overhead.
-
-We're seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you're open to it, I can share how our current partners have grown revenue and improved the overall member experience.
-
-Would you be up for a brief conversation to see if this might fit [ClubName]?
-
-Cheers,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com""",
-        
-        'fb_manager_initial_outreach.md': """Streamlining F&B Operations at [ClubName]
+    return """Connecting About Club Services
 ---
 Hi [FirstName],
 
-I noticed you manage F&B operations at [ClubName]. We've developed a platform that's helping clubs modernize their F&B service while maintaining the personal touch members expect.
-
-Our solution streamlines ordering across your entire operation—from the course to the clubhouse. The best part? It integrates seamlessly with your existing workflow.
-
-Would you be open to a quick chat about how we're helping other clubs boost F&B revenue and improve service efficiency?
-
-Best regards,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com""",
-
-        'fallback.md': """Enhancing [ClubName] with Swoop
----
-Hi [FirstName],
-
-I wanted to reach out about how we're helping clubs like [ClubName] enhance their member experience through our comprehensive club management platform.
+I wanted to reach out about how we're helping clubs like [ClubName] enhance their member experience through our comprehensive platform.
 
 Would you be open to a brief conversation to explore if our solution might be a good fit for your needs?
 
@@ -2469,113 +2436,135 @@ Best regards,
 Swoop Golf
 480-225-9702
 swoopgolf.com"""
-    }
+
+def validate_template(template_content):
+    """Validate template format and structure"""
+    if not template_content:
+        raise ValueError("Template content cannot be empty")
     
-    for filename, content in templates.items():
-        template_path = template_dir / filename
-        try:
-            if not template_path.exists():
-                with open(template_path, 'w', encoding='utf-8') as f:
-                    f.write(content)
-                logger.debug(f"Created template: {template_path}")
-            else:
-                # Verify the content of existing file
-                with open(template_path, 'r', encoding='utf-8') as f:
-                    existing_content = f.read()
-                if not existing_content.strip():
-                    logger.warning(f"Existing template is empty, recreating: {template_path}")
-                    with open(template_path, 'w', encoding='utf-8') as f:
-                        f.write(content)
-                logger.debug(f"Template exists and has content: {template_path}")
-        except Exception as e:
-            logger.error(f"Error handling template {filename}: {str(e)}")
-
-if __name__ == "__main__":
-    create_default_templates()
-
-```
-
-## scripts\initialize_templates.py
-```python
-from pathlib import Path
-import os
-from config.settings import PROJECT_ROOT
-from utils.logging_setup import logger
-
-def initialize_templates():
-    """Initialize all required template files with proper encoding."""
-    template_dir = PROJECT_ROOT / 'docs' / 'templates'
+    # Basic validation that template has some content
+    lines = template_content.strip().split('\n')
+    if len(lines) < 2:  # At least need greeting and body
+        raise ValueError("Template must have sufficient content")
     
-    # Ensure directory exists
-    template_dir.mkdir(parents=True, exist_ok=True)
-    
-    templates = {
-        'general_manager_initial_outreach.md': """Subject: Enhancing [ClubName]'s Operations with Swoop
----
-Hi [FirstName],
-
-I noticed [ClubName] has been focusing on operational excellence, and I wanted to share how we're helping clubs enhance their member experience through our comprehensive platform.
-
-Our solution streamlines operations across your entire facility - from on-course service to clubhouse dining. We're currently partnering with select clubs at no cost to refine our platform based on real-world feedback.
-
-Would you be open to a brief conversation about how this might benefit [ClubName]?
-
-Best regards,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com""",
-
-        'fb_manager_initial_outreach.md': """Subject: Streamlining F&B at [ClubName]
----
-Hi [FirstName],
-
-I noticed you manage F&B operations at [ClubName]. We've developed a platform that's helping clubs modernize their F&B service while maintaining the personal touch members expect.
-
-Our solution streamlines ordering across your entire operation - from the course to the clubhouse. The best part? It integrates seamlessly with your existing workflow.
-
-Would you be open to a quick chat about how we're helping other clubs boost F&B revenue and improve service efficiency?
-
-Best regards,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com""",
-
-        'fallback.md': """Subject: Enhancing [ClubName] with Swoop
----
-Hi [FirstName],
-
-I wanted to reach out about how we're helping clubs like [ClubName] enhance their member experience through our comprehensive club management platform.
-
-Would you be open to a brief conversation to explore if our solution might be a good fit for your needs?
-
-Best regards,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com"""
-    }
-    
-    for filename, content in templates.items():
-        template_path = template_dir / filename
-        try:
-            # Always write with UTF-8 encoding
-            with open(template_path, 'w', encoding='utf-8', newline='\n') as f:
-                f.write(content)
-            logger.info(f"Successfully created/updated template: {filename}")
-        except Exception as e:
-            logger.error(f"Error creating template {filename}: {str(e)}")
-            
     return True
 
-if __name__ == "__main__":
-    print("Initializing templates...")
-    if initialize_templates():
-        print("Templates initialized successfully!")
-    else:
-        print("Template initialization failed. Check the logs for details.")
+def build_template(template_path):
+    try:
+        with open(template_path, 'r') as f:
+            template_content = f.read()
+            
+        # Validate template before processing
+        validate_template(template_content)
+        
+        # Rest of the template building logic...
+        # ...
+    except Exception as e:
+        logger.error(f"Error building template from {template_path}: {str(e)}")
+        raise
 
+def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
+    """
+    Get personalized icebreaker from xAI with proper error handling and debugging
+    """
+    try:
+        # Log the request parameters
+        logger.debug(f"Requesting xAI icebreaker for club: {club_name}, recipient: {recipient_name}")
+        
+        # Create the payload for xAI request
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
+                },
+                {
+                    "role": "user",
+                    "content": f"Create a brief, professional icebreaker for {club_name}. Focus on improving their operations and member experience. Keep it concise."
+                }
+            ],
+            "model": "grok-2-1212",
+            "stream": False,
+            "temperature": 0.1
+        }
+        
+        # Use _send_xai_request directly
+        response = _send_xai_request(payload, timeout=10)
+        
+        # Rest of validation and processing...
+        if not response:
+            raise ValueError("Empty response from xAI service")
+            
+        cleaned_response = response.strip()
+        
+        if len(cleaned_response) < 10:
+            raise ValueError(f"Response too short ({len(cleaned_response)} chars)")
+            
+        if '[' in cleaned_response or ']' in cleaned_response:
+            logger.warning("Response contains unresolved template variables")
+        
+        if cleaned_response.lower().startswith(('hi', 'hello', 'dear')):
+            logger.warning("Response appears to be a full greeting instead of an icebreaker")
+            
+        return cleaned_response
+        
+    except Exception as e:
+        logger.warning(
+            "Failed to get xAI icebreaker",
+            extra={
+                'error': str(e),
+                'club_name': club_name,
+                'recipient_name': recipient_name
+            }
+        )
+        return None
+
+def parse_template(template_content):
+    """Parse template content without requiring YAML frontmatter"""
+    lines = template_content.strip().split('\n')
+    
+    # Initialize template parts
+    template_body = []
+    subject = None
+    
+    for line in lines:
+        # Look for subject in first few lines if not found yet
+        if not subject and line.startswith('subject:'):
+            subject = line.replace('subject:', '').strip()
+            continue
+        template_body.append(line)
+    
+    # If no explicit subject found, use a default or first line
+    if not subject:
+        subject = "Quick update from Swoop Golf"
+    
+    return {
+        'subject': subject,
+        'body': '\n'.join(template_body)
+    }
+
+def build_email(template_path, parameters):
+    """Build email from template and parameters"""
+    with open(template_path, 'r') as f:
+        template_content = f.read()
+    
+    template_data = parse_template(template_content)
+    
+    # Replace parameters in both subject and body
+    subject = template_data['subject']
+    body = template_data['body']
+    
+    for key, value in parameters.items():
+        subject = subject.replace(f'[{key}]', str(value))
+        body = body.replace(f'[{key}]', str(value))
+        # Handle season variation differently since it uses curly braces
+        if key == 'SEASON_VARIATION':
+            body = body.replace('{SEASON_VARIATION}', str(value))
+    
+    return {
+        'subject': subject,
+        'body': body
+    }
 ```
 
 ## scripts\job_title_categories.py
@@ -2713,66 +2702,6 @@ if __name__ == "__main__":
 
 ```
 
-## scripts\verify_templates.py
-```python
-from pathlib import Path
-import os
-from config.settings import PROJECT_ROOT, DEBUG_MODE
-from utils.logging_setup import logger
-
-def verify_template_setup():
-    """Verify template directory and files are properly set up."""
-    template_dir = PROJECT_ROOT / 'docs' / 'templates'
-    
-    # Debug information
-    logger.debug("Template Verification:")
-    logger.debug(f"Current working directory: {os.getcwd()}")
-    logger.debug(f"PROJECT_ROOT: {PROJECT_ROOT}")
-    logger.debug(f"Template directory: {template_dir}")
-    
-    if not template_dir.exists():
-        logger.error(f"Template directory does not exist: {template_dir}")
-        return False
-        
-    required_templates = [
-        'general_manager_initial_outreach.md',
-        'fb_manager_initial_outreach.md',
-        'fallback.md'
-    ]
-    
-    for template in required_templates:
-        template_path = template_dir / template
-        if not template_path.exists():
-            logger.error(f"Required template missing: {template}")
-            return False
-        if not template_path.is_file():
-            logger.error(f"Template path exists but is not a file: {template}")
-            return False
-        if not os.access(template_path, os.R_OK):
-            logger.error(f"Template file exists but is not readable: {template}")
-            return False
-        
-        # Try reading the file
-        try:
-            with open(template_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-                if not content.strip():
-                    logger.error(f"Template file is empty: {template}")
-                    return False
-        except Exception as e:
-            logger.error(f"Error reading template {template}: {str(e)}")
-            return False
-            
-    return True
-
-if __name__ == "__main__":
-    if verify_template_setup():
-        print("All templates verified successfully!")
-    else:
-        print("Template verification failed. Check the logs for details.")
-
-```
-
 ## services\__init__.py
 ```python
 """
@@ -2864,6 +2793,10 @@ class DataGathererService:
         emails = self._hubspot.get_all_emails_for_contact(contact_id)
         notes = self._hubspot.get_all_notes_for_contact(contact_id)
 
+        # Modify this section to avoid duplicate news calls
+        club_name = company_props.get("name", "")
+        news_result = self.gather_club_news(club_name)  # Get news once
+        
         # Build partial lead_sheet
         lead_sheet = {
             "metadata": {
@@ -2889,11 +2822,21 @@ class DataGathererService:
             },
             "analysis": {
                 "competitor_analysis": self.check_competitor_on_website(company_props.get("website", "")),
-                "research_data": self.market_research(company_props.get("name", "")),
+                "research_data": {  # Modified to use existing news result
+                    "company_overview": news_result,
+                    "recent_news": [{
+                        "title": "Recent News",
+                        "snippet": news_result,
+                        "link": "",
+                        "date": ""
+                    }] if news_result else [],
+                    "status": "success",
+                    "error": ""
+                },
                 "previous_interactions": self.review_previous_interactions(contact_id),
                 "season_data": self.determine_club_season(company_props.get("city", ""), company_props.get("state", "")),
                 "facilities": self.check_facilities(
-                    company_props.get("name", ""),
+                    club_name,
                     company_props.get("city", ""),
                     company_props.get("state", "")
                 )
@@ -3184,105 +3127,20 @@ class DataGathererService:
 
     def market_research(self, company_name: str) -> Dict[str, Any]:
         """
-        Perform market research for a company using xAI news search.
-        
-        Args:
-            company_name: Name of the company to research
-            
-        Returns:
-            Dictionary containing:
-                - company_overview: str (summary of company news)
-                - recent_news: List[Dict] (list of news articles)
-                - status: str ("success", "error", or "no_data")
-                - error: str (error message if any)
+        This method is now just a wrapper around gather_club_news for backward compatibility
         """
-        correlation_id = f"research_{company_name}"
-        logger.debug("Starting market research", extra={
-            "company": company_name,
-            "correlation_id": correlation_id
-        })
-        
-        try:
-            if not company_name:
-                logger.warning(
-                    "No company name provided for market research",
-                    extra={
-                        "status": "no_data",
-                        "correlation_id": correlation_id
-                    }
-                )
-                return {
-                    "company_overview": "",
-                    "recent_news": [],
-                    "status": "no_data",
-                    "error": "No company name provided"
-                }
-
-            query = f"Has {company_name} been in the news lately? Provide a short summary."
-            logger.debug("Sending xAI news query", extra={
-                "query": query,
-                "company": company_name,
-                "correlation_id": correlation_id
-            })
-            news_response = xai_news_search(query)
-
-            if not news_response:
-                logger.warning(
-                    "Failed to fetch news for company",
-                    extra={
-                        "company": company_name,
-                        "status": "error",
-                        "correlation_id": correlation_id
-                    }
-                )
-                return {
-                    "company_overview": f"Could not fetch recent events for {company_name}",
-                    "recent_news": [],
-                    "status": "error",
-                    "error": "No news data available"
-                }
-
-            logger.info(
-                "Market research completed successfully",
-                extra={
-                    "company": company_name,
-                    "has_news": bool(news_response),
-                    "status": "success",
-                    "response_length": len(news_response) if news_response else 0,
-                    "correlation_id": f"research_{company_name}"
-                }
-            )
-            return {
-                "company_overview": news_response,
-                "recent_news": [
-                    {
-                        "title": "Recent News",
-                        "snippet": news_response,
-                        "link": "",
-                        "date": ""
-                    }
-                ],
-                "status": "success",
-                "error": ""
-            }
-
-        except Exception as e:
-            logger.error(
-                "Error performing market research",
-                extra={
-                    "company": company_name,
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                    "correlation_id": correlation_id
-                },
-                exc_info=True
-            )
-            return {
-                "company_overview": "",
-                "recent_news": [],
-                "status": "error",
-                "error": f"Error performing market research: {str(e)}"
-            }
+        news_response = self.gather_club_news(company_name)
+        return {
+            "company_overview": news_response,
+            "recent_news": [{
+                "title": "Recent News",
+                "snippet": news_response,
+                "link": "",
+                "date": ""
+            }] if news_response else [],
+            "status": "success",
+            "error": ""
+        }
 
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
@@ -3920,13 +3778,13 @@ class LeadsService:
         """
         self.data_gatherer = data_gatherer_service
 
-    def prepare_lead_context(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
+    def prepare_lead_context(self, lead_email: str, lead_sheet: Dict = None, correlation_id: str = None) -> Dict[str, Any]:
         """
         Prepare lead context for personalization (subject/body).
-        Uses DataGathererService for data retrieval.
         
         Args:
             lead_email: Email address of the lead
+            lead_sheet: Optional pre-gathered lead data
             correlation_id: Optional correlation ID for tracing operations
         """
         if correlation_id is None:
@@ -3937,12 +3795,14 @@ class LeadsService:
             "correlation_id": correlation_id
         })
         
-        # Get comprehensive lead data from DataGathererService
-        lead_sheet = self.data_gatherer.gather_lead_data(lead_email, correlation_id=correlation_id)
-        if not lead_sheet: 
+        # Use provided lead_sheet or gather new data if none provided
+        if not lead_sheet:
+            lead_sheet = self.data_gatherer.gather_lead_data(lead_email, correlation_id=correlation_id)
+        
+        if not lead_sheet:
             logger.warning("No lead data found", extra={"email": lead_email})
             return {}
-
+        
         # Extract relevant data
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_data.get("company_data", {})
@@ -3959,7 +3819,7 @@ class LeadsService:
         )
 
         # Get template content
-        template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
+        template_path = f"templates/{filename_job_title}_initial_outreach.md"
         try:
             template_content = read_doc(template_path)
             if isinstance(template_content, str):
@@ -4548,27 +4408,50 @@ def get_gmail_service():
 def create_message(sender, to, subject, message_text):
     """Create a MIMEText email message."""
     logger.debug(f"Building MIMEText email: to={to}, subject={subject}")
-    message = MIMEText(message_text)
+    
+    # Normalize line endings and clean up any extra spaces
+    message_text = message_text.replace('\r\n', '\n')
+    message_text = message_text.replace('\n\n\n', '\n\n')
+    
+    # Create message with explicit content type and encoding
+    message = MIMEText(message_text, _subtype='plain', _charset='utf-8')
     message['to'] = to
     message['from'] = sender
     message['subject'] = subject
+    
+    # Set content type with format=flowed to preserve line breaks
+    message.replace_header('Content-Type', 'text/plain; charset=utf-8; format=flowed; delsp=yes')
+    
+    # Convert to bytes, encode, and create raw message
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
+    
     logger.debug(f"Message built successfully for {to}")
-    return {'message': {'raw': raw}}
+    logger.debug(f"Final message text (first 100 chars): {message_text[:100]}")
+    
+    return {'raw': raw}
 
-def create_draft(sender, to, subject, message_text):
+def create_draft(sender: str, to: str, subject: str, message_text: str) -> dict:
     """Create a draft in the user's Gmail Drafts folder."""
-    logger.debug(f"Preparing to create draft. Sender={sender}, To={to}, Subject={subject}")
-    service = get_gmail_service()
-    message_body = create_message(sender, to, subject, message_text)
     try:
-        draft = service.users().drafts().create(userId='me', body=message_body).execute()
+        logger.debug(f"Preparing to create draft. Sender={sender}, To={to}, Subject={subject}")
+        service = get_gmail_service()
+        
+        # Create the message first
+        message = create_message(sender, to, subject, message_text)
+        
+        # Create the draft with proper structure
+        draft = service.users().drafts().create(
+            userId='me',
+            body={'message': message}  # Wrap the message in the required structure
+        ).execute()
+        
         if draft.get('id'):
             logger.info(f"Draft created successfully for '{to}' – ID={draft['id']}")
             return {"status": "ok", "draft_id": draft['id']}
         else:
             logger.error(f"No draft ID returned for '{to}' – possibly an API error.")
             return {"status": "error", "error": "No draft ID returned"}
+            
     except Exception as e:
         logger.error(
             f"Failed to create draft for recipient='{to}' with subject='{subject}'. "
@@ -4667,7 +4550,6 @@ def search_inbound_messages_for_email(email_address: str, max_results: int = 1) 
             logger.error(f"Error fetching message {m['id']} from {email_address}: {e}")
 
     return snippets
-
 ```
 
 ## utils\logger_base.py
@@ -4898,6 +4780,12 @@ load_dotenv()
 XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
 XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
 MODEL_NAME = os.getenv("XAI_MODEL", "grok-2-1212")
+ANALYSIS_TEMPERATURE = float(os.getenv("ANALYSIS_TEMPERATURE", "0.2"))
+
+# Add a simple cache
+_news_cache = {}
+# Add at top with other caches
+_club_info_cache = {}
 
 def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1) -> str:
     """
@@ -4948,13 +4836,16 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
 
 def xai_news_search(club_name: str) -> str:
     """
-    Checks if a club is in the news; returns a summary or 
-    indicates 'has not been in the news.'
+    Checks if a club is in the news with caching
     """
     if not club_name.strip():
-        if DEBUG_MODE:
-            logger.debug("Empty club_name passed to xai_news_search; returning blank.")
         return ""
+        
+    # Check cache first
+    if club_name in _news_cache:
+        if DEBUG_MODE:
+            logger.debug(f"Using cached news result for {club_name}")
+        return _news_cache[club_name]
 
     payload = {
         "messages": [
@@ -4978,6 +4869,9 @@ def xai_news_search(club_name: str) -> str:
     # Get the raw response from xAI
     response = _send_xai_request(payload)
     
+    # Cache the response
+    _news_cache[club_name] = response
+    
     # Clean up awkward grammar in the response
     if response:
         # Fix the "Has [club] has not been" pattern
@@ -4991,36 +4885,52 @@ def xai_news_search(club_name: str) -> str:
 
 def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
     """
-    Build a single-sentence icebreaker referencing recent news.
+    Build a single-sentence icebreaker for Swoop outreach.
+    Only used when there IS news to reference.
     """
-    if not club_name.strip() or not news_summary.strip():
-        if DEBUG_MODE:
-            logger.debug("Empty input passed to _build_icebreaker_from_news; returning blank.")
+    # Only generate news-based icebreaker if we have actual news
+    if not club_name.strip() or not news_summary.strip() or "has not been in the news" in news_summary.lower():
         return ""
 
     payload = {
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are a sales copywriter. Create a natural, conversational "
-                    "one-sentence opener mentioning recent club news."
-                )
+                "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
             },
             {
                 "role": "user",
-                "content": (
-                    f"Club: {club_name}\n"
-                    f"News: {news_summary}\n\n"
-                    "Write ONE engaging sentence that naturally references this news. "
-                    "Avoid starting with phrases like 'I saw' or 'I noticed'."
-                )
+                "content": f"Create a brief, natural-sounding icebreaker about {club_name} based on this news: {news_summary}. Keep it concise and professional."
             }
         ],
         "model": MODEL_NAME,
         "stream": False,
-        "temperature": 0.7
+        "temperature": 0.1
     }
+
+    return _send_xai_request(payload)
+
+def get_default_icebreaker(club_name: str) -> str:
+    """
+    Generate a generic icebreaker when no news is available.
+    Used as the default approach.
+    """
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
+            },
+            {
+                "role": "user",
+                "content": f"Create a brief, professional icebreaker for {club_name}. Focus on improving their operations and member experience. Keep it concise."
+            }
+        ],
+        "model": MODEL_NAME,
+        "stream": False,
+        "temperature": 0.1
+    }
+
     return _send_xai_request(payload)
 
 ##############################################################################
@@ -5030,9 +4940,15 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
     """
     Returns a short overview about the club's location and amenities.
-    This is NOT used for icebreakers. We only use its result 
-    to enhance context for final email rewriting.
     """
+    cache_key = f"{club_name}:{location}"
+    
+    # Check cache first
+    if cache_key in _club_info_cache:
+        if DEBUG_MODE:
+            logger.debug(f"Using cached club info for {club_name}")
+        return _club_info_cache[cache_key]
+
     if not club_name.strip():
         if DEBUG_MODE:
             logger.debug("Empty club_name passed to xai_club_info_search; returning blank.")
@@ -5046,24 +4962,28 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant that provides a brief overview "
-                    "of a club's location and amenities."
+                    "You are a helpful assistant that provides a brief overview of a club's location and amenities."
                 )
             },
             {
                 "role": "user",
                 "content": (
-                    f"Please provide a concise overview about {club_name} in {loc_str}, "
-                    f"highlighting amenities like {am_str}. Only provide one short paragraph."
+                    f"Please provide a concise overview about {club_name} in {loc_str}. "
+                    f"Is it private or public? Keep it to under 3 sentences."
                 )
             }
         ],
         "model": MODEL_NAME,
         "stream": False,
-        "temperature": 0.5
+        "temperature": 0.0
     }
-    return _send_xai_request(payload)
-
+    response = _send_xai_request(payload)
+    
+    # Cache the response
+    _club_info_cache[cache_key] = response
+    
+    return response
+    
 ##############################################################################
 # Personalize Email with Additional Club Info
 ##############################################################################
@@ -5128,14 +5048,12 @@ def personalize_email_with_xai(
             f"Context:\n{context}\n"
             "Instructions:\n"
             "1. Personalize based on verified club context and history.\n"
-            "2. Focus on business value and problem-solving.\n" 
-            "3. Keep core Swoop platform value proposition.\n"
-            "4. Use brief, relevant facility references only if confirmed.\n"
-            "5. Write at 6th-8th grade reading level.\n"
-            "6. Keep paragraphs under 3 sentences.\n"
-            "7. Maintain professional but helpful tone.\n"
-            "8. Reference previous interactions naturally.\n"
-            "9. If lead has replied to previous email, reference it naturally without direct acknowledgment.\n"
+            "2. Use brief, relevant facility references only if confirmed.\n"
+            "3. Write at 6th-8th grade reading level.\n"
+            "4. Keep paragraphs under 3 sentences.\n"
+            "5. Maintain professional but helpful tone.\n"
+            "6. Reference previous interactions naturally.\n"
+            "7. If lead has replied to previous email, reference it naturally without direct acknowledgment.\n"
             "10. If lead expressed specific interests/concerns in reply, address them.\n"
             "Format the response as:\n"
             "Subject: [new subject]\n\n"
@@ -5196,91 +5114,96 @@ def personalize_email_with_xai(
 
 def _parse_xai_response(response: str) -> Tuple[str, str]:
     """
-    Parses the xAI response into subject and body.
-    
-    Args:
-        response: Raw response from xAI
-        
-    Returns:
-        Tuple[str, str]: Parsed subject and body
+    Parses the xAI response into subject and body with improved robustness.
     """
     try:
+        # Split response into lines
         lines = response.split('\n')
-        new_subject = ""
-        new_body = []
-        in_subject = False
+        subject = ""
+        body_lines = []
         in_body = False
         
-        for line in lines:
+        # Find subject line and body
+        for i, line in enumerate(lines):
+            line = line.strip()
             if line.lower().startswith('subject:'):
-                in_subject = True
-                in_body = False
-                new_subject = line.split(':', 1)[1].strip()
-            elif line.lower().startswith('body:'):
-                in_subject = False
+                subject = line.split(':', 1)[1].strip()
+                continue
+            
+            # Skip the "Body:" line
+            if line.lower() == 'body:':
                 in_body = True
-            elif in_body:
-                new_body.append(line)
-                
-        return new_subject, '\n'.join(new_body).strip()
+                continue
+            
+            if in_body:
+                # Skip empty lines at the start of body
+                if not line and not body_lines:
+                    continue
+                body_lines.append(lines[i])
+        
+        # If no explicit subject found, try to find it in the first non-empty line
+        if not subject:
+            for line in lines:
+                if line.strip():
+                    subject = line.strip()
+                    break
+        
+        # Join body lines, removing signature if present
+        body = '\n'.join(body_lines)
+        
+        # Clean up common signatures
+        signatures = ['Cheers,', 'Best,', 'Swoop Golf', '480-225-9702', 'swoopgolf.com']
+        for sig in signatures:
+            if sig in body:
+                body = body.split(sig)[0].strip()
+        
+        # Final cleanup
+        body = body.strip()
+        subject = subject.strip()
+        
+        if not subject or not body:
+            raise ValueError("Failed to parse subject or body")
+            
+        return subject, body
         
     except Exception as e:
-        logger.error(f"Error parsing xAI response: {str(e)}")
+        logger.error(f"Error parsing xAI response: {str(e)}", extra={
+            "raw_response": response
+        })
         return "", ""
 
-##############################################################################
-# Facilities Check
-##############################################################################
-
-def xai_facilities_check(club_name: str, city: str, state: str) -> str:
+def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -> str:
     """
-    Checks what facilities a club has with improved accuracy.
+    Get personalized icebreaker from xAI service
     """
-    if not club_name.strip():
-        logger.debug("Empty club_name passed to xai_facilities_check")
-        return ""
+    cache_key = f"icebreaker:{club_name}:{recipient_name}"
+    
+    # Check cache first
+    if cache_key in _news_cache:
+        if DEBUG_MODE:
+            logger.debug(f"Using cached icebreaker for {club_name}")
+        return _news_cache[cache_key]
 
     payload = {
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are a helpful assistant that provides accurate facility information "
-                    "for golf clubs and country clubs. Only confirm facilities that you are certain exist."
-                    "If you are unsure about any facility, do not mention it."
-                )
+                "content": "You are an expert at creating personalized icebreakers for golf club outreach."
             },
             {
                 "role": "user",
-                "content": (
-                    f"Please provide a concise sentence about {club_name} in {city}, {state}, "
-                    "mentioning only confirmed facilities like the number of holes for the golf course and "
-                    "whether it's public, private, or semi-private. Omit any unconfirmed facilities."
-                )
+                "content": f"Create a brief, natural-sounding icebreaker for {club_name}. Keep it concise and professional."
             }
         ],
         "model": MODEL_NAME,
         "stream": False,
-        "temperature": 0
+        "temperature": ANALYSIS_TEMPERATURE
     }
     
-    try:
-        response = _send_xai_request(payload)
-        if not response:
-            logger.error("Empty response from xAI facilities check", extra={
-                "club_name": club_name,
-                "city": city,
-                "state": state
-            })
-            return "Facility information unavailable"
-            
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error in facilities check: {str(e)}", extra={
-            "club_name": club_name,
-            "city": city,
-            "state": state
-        })
-        return "Facility information unavailable"
+    response = _send_xai_request(payload)
+    
+    # Cache the response
+    _news_cache[cache_key] = response
+    
+    return response
 ```

@@ -44,62 +44,76 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         # 2) Format the interactions for OpenAI
         interactions = []
         
-        # Add emails with proper encoding handling
-        for email in emails:
+        # Add emails with proper encoding handling and sort by timestamp
+        for email in sorted(emails, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(email, dict):
-                date = email.get('date', '')
+                date = email.get('timestamp', '').split('T')[0]  # Extract just the date
                 subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
-                body = email.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
-                sender = email.get('from', '').encode('utf-8', errors='ignore').decode('utf-8')
+                body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')  # Changed from 'body' to 'body_text'
+                direction = email.get('direction', '')
                 
-                # Replace old company name
-                subject = subject.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
-                body = body.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
+                # Only include relevant parts of the email thread
+                body = body.split('On ')[0].strip()  # Take only the most recent part
                 
-                # Clean up newlines and special characters
-                body = body.replace('\r\n', '\n').replace('\r', '\n')
-                
-                interaction = f"Date: {date}\nFrom: {sender}\nSubject: {subject}\nBody: {body}"
+                interaction = {
+                    'date': date,
+                    'type': 'email',
+                    'direction': direction,
+                    'subject': subject,
+                    'notes': body[:500]  # Limit length to prevent token overflow
+                }
                 interactions.append(interaction)
         
         # Add notes with proper encoding handling
-        for note in notes:
+        for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(note, dict):
-                date = note.get('date', '')
-                content = note.get('content', '').encode('utf-8', errors='ignore').decode('utf-8')
+                date = note.get('timestamp', '').split('T')[0]
+                content = note.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
                 
-                # Replace old company name
-                content = content.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
-                
-                # Clean up newlines and special characters
-                content = content.replace('\r\n', '\n').replace('\r', '\n')
-                
-                interaction = f"Note Date: {date}\nContent: {content}"
+                interaction = {
+                    'date': date,
+                    'type': 'note',
+                    'direction': 'internal',
+                    'subject': 'Internal Note',
+                    'notes': content[:500]  # Limit length to prevent token overflow
+                }
                 interactions.append(interaction)
         
         if not interactions:
             return "No prior interactions found."
+
+        # Sort all interactions by date
+        interactions.sort(key=lambda x: x['date'], reverse=True)
         
-        # 3) Create the prompt for OpenAI
+        # Take only the last 3 interactions to keep the context focused
+        recent_interactions = interactions[:5]
+        
         prompt = (
             "Please summarize these interactions, focusing on:\n"
-            "- The most recent interaction and its outcome\n"
-            "- Any key points of interest or next steps discussed\n"
-            "- The overall progression of the conversation\n"
-            "- How long it's been since the last interaction\n\n"
-            "Interactions:\n" + "\n\n".join(interactions)
+            "1. Most recent email from the lead if there is one\n"
+            "2. Key points of interest or next steps discussed\n"
+            "3. Overall progression of the conversation\n\n"
+            "Recent Interactions:\n"
         )
         
-        # 4) Get summary from OpenAI
+        for interaction in recent_interactions:
+            prompt += f"\nDate: {interaction['date']}\n"
+            prompt += f"Type: {interaction['type']}\n"
+            prompt += f"Direction: {interaction['direction']}\n"
+            prompt += f"Subject: {interaction['subject']}\n"
+            prompt += f"Content: {interaction['notes']}\n"
+            prompt += "-" * 50 + "\n"
+        
+        # Get summary from OpenAI
         try:
             openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(
-                model=MODEL_FOR_GENERAL,
+                model=MODEL_FOR_GENERAL,  # Use your configured model
                 messages=[
                     {"role": "system", "content": "You are a helpful assistant that summarizes business interactions."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=DEFAULT_TEMPERATURE
+                temperature=0.2
             )
             
             summary = response.choices[0].message.content.strip()
@@ -109,9 +123,6 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
             logger.error(f"Error getting summary from OpenAI: {str(e)}")
             return "Error summarizing interactions."
             
-    except UnicodeEncodeError as e:
-        logger.error(f"Unicode encoding error: {str(e)}")
-        return "Error processing interaction text encoding."
     except Exception as e:
         logger.error(f"Error in summarize_lead_interactions: {str(e)}")
         return "Error processing interactions."
@@ -287,6 +298,9 @@ def main():
 
         # Step 9: Personalize with xAI
         try:
+            # Get lead email first to avoid reference error
+            lead_email = lead_data.get("email", email)
+            
             subject, body = personalize_email_with_xai(
                 lead_sheet=lead_sheet,
                 subject=subject,
@@ -295,6 +309,11 @@ def main():
                 news_summary=news_result,
                 club_info=club_info_snippet
             )
+            
+            logger.debug("xAI response received:")
+            logger.debug(f"Subject: {subject}")
+            logger.debug(f"Full body:\n{body}")
+            
             if not subject.strip():
                 subject = orig_subject
             if not body.strip():
@@ -317,6 +336,27 @@ def main():
                     logger.error(f"Icebreaker generation error: {e}")
                     body = body.replace("[ICEBREAKER]", "")
 
+            logger.debug("Final email content before creating draft:")
+            logger.debug(f"To: {lead_email}")
+            logger.debug(f"Subject: {subject}")
+            logger.debug(f"Body:\n{body}")
+            
+            # Step 10: Create Gmail draft
+            draft_result = create_draft(
+                sender="me",
+                to=lead_email,
+                subject=subject,
+                message_text=body
+            )
+            if draft_result["status"] == "ok":
+                if DEBUG_MODE:
+                    logger.debug(f"Gmail draft created: {draft_result.get('draft_id')}")
+                else:
+                    logger.info("Gmail draft created successfully")
+                print("✓ Step 10: Created Gmail draft\n")
+            else:
+                logger.error("Failed to create Gmail draft.")
+
         except Exception as e:
             logger.error(f"xAI personalization error: {e}")
             subject, body = orig_subject, orig_body
@@ -326,23 +366,6 @@ def main():
             "body": body
         })
         print("✓ Step 9: Personalized email with xAI\n")
-
-        # Step 10: Create Gmail draft
-        lead_email = lead_data.get("email", email)
-        draft_result = create_draft(
-            sender="me",
-            to=lead_email,
-            subject=subject,
-            message_text=body
-        )
-        if draft_result["status"] == "ok":
-            if DEBUG_MODE:
-                logger.debug(f"Gmail draft created: {draft_result.get('draft_id')}")
-            else:
-                logger.info("Gmail draft created successfully")
-            print("✓ Step 10: Created Gmail draft\n")
-        else:
-            logger.error("Failed to create Gmail draft.")
 
     except LeadContextError as e:
         logger.error(f"Failed to prepare lead context: {e}")

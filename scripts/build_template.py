@@ -270,10 +270,9 @@ def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
             "temperature": 0.1
         }
         
-        # Use _send_xai_request directly
+        # Use _send_xai_request directly with recipient email
         response = _send_xai_request(payload, timeout=10)
         
-        # Rest of validation and processing...
         if not response:
             raise ValueError("Empty response from xAI service")
             
@@ -299,7 +298,7 @@ def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
                 'recipient_name': recipient_name
             }
         )
-        return None
+        return "I wanted to reach out about enhancing your club's operations"  # Fallback icebreaker
 
 def parse_template(template_content):
     """Parse template content without requiring YAML frontmatter"""

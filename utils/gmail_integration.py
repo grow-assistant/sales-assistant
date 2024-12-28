@@ -34,36 +34,70 @@ def get_gmail_service():
             token.write(creds.to_json())
     return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
+
 def create_message(sender, to, subject, message_text):
     """Create a MIMEText email message."""
-    logger.debug(f"Building MIMEText email: to={to}, subject={subject}")
-    message = MIMEText(message_text)
+    logger.debug("=== START CREATE MESSAGE DEBUG ===")
+    logger.debug(f"Original message text:\n{message_text}")
+    logger.debug(f"Original message length: {len(message_text)}")
+    
+    # Normalize line endings and clean up any extra spaces
+    message_text = message_text.replace('\r\n', '\n')
+    message_text = message_text.replace('\n\n\n', '\n\n')
+    
+    logger.debug(f"After normalization:\n{message_text}")
+    logger.debug(f"Normalized length: {len(message_text)}")
+    
+    # Create message with explicit content type and encoding
+    message = MIMEText(message_text, _subtype='plain', _charset='utf-8')
     message['to'] = to
     message['from'] = sender
     message['subject'] = subject
+    
+    # Set content type with format=flowed to preserve line breaks
+    message.replace_header('Content-Type', 'text/plain; charset=utf-8; format=flowed; delsp=yes')
+    
+    # Log the raw message before encoding
+    raw_message = message.as_string()
+    logger.debug(f"Raw MIME message:\n{raw_message}")
+    
+    # Convert to bytes, encode, and create raw message
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    logger.debug(f"Message built successfully for {to}")
-    return {'message': {'raw': raw}}
+    
+    logger.debug("=== END CREATE MESSAGE DEBUG ===")
+    return {'raw': raw}
 
-def create_draft(sender, to, subject, message_text):
+
+def create_draft(sender: str, to: str, subject: str, message_text: str) -> dict:
     """Create a draft in the user's Gmail Drafts folder."""
-    logger.debug(f"Preparing to create draft. Sender={sender}, To={to}, Subject={subject}")
-    service = get_gmail_service()
-    message_body = create_message(sender, to, subject, message_text)
     try:
-        draft = service.users().drafts().create(userId='me', body=message_body).execute()
+        logger.debug("=== START CREATE DRAFT DEBUG ===")
+        logger.debug(f"Input message text:\n{message_text}")
+        
+        service = get_gmail_service()
+        message = create_message(sender, to, subject, message_text)
+        
+        # Log the draft request body
+        draft_body = {'message': message}
+        logger.debug(f"Draft request body: {draft_body}")
+        
+        draft = service.users().drafts().create(
+            userId='me',
+            body=draft_body
+        ).execute()
+        
         if draft.get('id'):
-            logger.info(f"Draft created successfully for '{to}' – ID={draft['id']}")
+            logger.debug(f"Draft created with ID: {draft['id']}")
+            logger.debug("=== END CREATE DRAFT DEBUG ===")
             return {"status": "ok", "draft_id": draft['id']}
         else:
-            logger.error(f"No draft ID returned for '{to}' – possibly an API error.")
+            logger.error("No draft ID returned")
             return {"status": "error", "error": "No draft ID returned"}
+            
     except Exception as e:
-        logger.error(
-            f"Failed to create draft for recipient='{to}' with subject='{subject}'. "
-            f"Error: {e}"
-        )
+        logger.error(f"Draft creation error: {str(e)}")
         return {"status": "error", "error": str(e)}
+
 
 def send_message(sender, to, subject, message_text):
     """
@@ -90,11 +124,12 @@ def send_message(sender, to, subject, message_text):
         )
         return {"status": "error", "error": str(e)}
 
+
 def search_messages(query=""):
     """
     Search for messages in the Gmail inbox using the specified `query`.
     For example:
-      - 'from:kowen@capitalcityclub.org'
+      - 'from:someone@example.com'
       - 'subject:Testing'
       - 'to:me newer_than:7d'
     Returns a list of message dicts.
@@ -108,10 +143,11 @@ def search_messages(query=""):
         logger.error(f"Error searching messages with query '{query}': {e}")
         return []
 
+
 def check_thread_for_reply(thread_id):
     """
     Checks if there's more than one message in a given thread, indicating a reply.
-    This approach is more precise than searching by 'from:' and date alone.
+    More precise than searching by 'from:' or date alone.
     """
     service = get_gmail_service()
     try:
@@ -122,25 +158,17 @@ def check_thread_for_reply(thread_id):
         logger.error(f"Error retrieving thread {thread_id}: {e}")
         return False
 
-#
-#  NEW FUNCTION:
-#  Search your Gmail inbox for any messages from the specified email address.
-#  Return up to `max_results` message snippets (short preview text).
-#
+
 def search_inbound_messages_for_email(email_address: str, max_results: int = 1) -> list:
     """
     Search for inbound messages sent from `email_address`.
     Returns a list of short snippets from the most recent matching messages.
     """
-    # 1) Build a Gmail search query
     query = f"from:{email_address}"
-
-    # 2) Find message IDs matching the query
     message_ids = search_messages(query=query)
     if not message_ids:
-        return []  # None found
+        return []
 
-    # 3) Retrieve each message snippet up to max_results
     service = get_gmail_service()
     snippets = []
     for m in message_ids[:max_results]:
