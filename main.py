@@ -22,6 +22,8 @@ from services.data_gatherer_service import DataGathererService
 import openai
 from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
 
+# NEW: Import the database connection so we can insert into emails table
+from scheduling.database import get_db_connection
 
 # Initialize services
 data_gatherer = DataGathererService()
@@ -88,7 +90,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         # Sort all interactions by date
         interactions.sort(key=lambda x: x['date'], reverse=True)
         
-        # Take only the last 3 interactions to keep the context focused
+        # Take only the last 3–5 interactions to keep the context focused
         recent_interactions = interactions[:5]
         
         prompt = (
@@ -140,9 +142,7 @@ def main():
     2. Retrieving or creating lead context from SQL/external sources
     3. Building personalized email content with AI assistance
     4. Creating Gmail drafts with the generated content
-    
-    The function prompts for a lead's email address and orchestrates the entire
-    process of generating and saving a personalized email draft.
+    5. Now also inserts a record into the dbo.emails table for each created draft
     """
     import uuid
     correlation_id = str(uuid.uuid4())
@@ -249,7 +249,7 @@ def main():
         news_result = data_gatherer.gather_club_news(club_name)
         has_news = bool(news_result and "has not been" not in news_result.lower())
 
-        jobtitle_str = lead_data.get("jobtitle", "")
+        jobtitle_str = lead_data.get("properties", {}).get("jobtitle", "")
         profile_type = categorize_job_title(jobtitle_str)
         print("✓ Step 6: Gathered additional personalization data\n")
 
@@ -361,6 +361,36 @@ def main():
                 else:
                     logger.info("Gmail draft created successfully")
                 print("✓ Step 10: Created Gmail draft\n")
+
+                # NEW: Insert into emails table
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    # Look up lead_id from the leads table
+                    cursor.execute("SELECT lead_id FROM dbo.leads WHERE email = ?", (lead_email,))
+                    row = cursor.fetchone()
+                    lead_id = row[0] if row else None
+
+                    if lead_id:
+                        cursor.execute("""
+                            INSERT INTO dbo.emails
+                                (lead_id, subject, body, status, created_at, draft_id, sequence_num)
+                            VALUES
+                                (?, ?, ?, 'draft_created', GETDATE(), ?, 0)
+                        """, (lead_id, subject, body, draft_result.get("draft_id")))
+                        conn.commit()
+                        logger.info("Inserted email draft record into dbo.emails", extra={
+                            "lead_id": lead_id,
+                            "draft_id": draft_result.get("draft_id")
+                        })
+                    else:
+                        logger.warning(f"No lead_id found for email={lead_email}; skipping emails insert.")
+                except Exception as e:
+                    logger.error(f"Failed to insert email draft into emails table: {e}")
+                    conn.rollback()
+                finally:
+                    conn.close()
+
             else:
                 logger.error("Failed to create Gmail draft.")
 

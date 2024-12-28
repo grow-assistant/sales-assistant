@@ -415,3 +415,44 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
     finally:
         conn.close()
         logger.debug("Database connection closed")
+
+def insert_email_draft(cursor, lead_id: int, subject: str, body: str, sequence_num: int = None):
+    logger.debug("Inserting email draft", extra={
+        "lead_id": lead_id,
+        "sequence_num": sequence_num,
+        "has_subject": bool(subject),
+        "body_length": len(body) if body else 0
+    })
+    
+    # Calculate scheduled send time (e.g., next business day at 10am)
+    scheduled_time = calculate_next_send_time()
+    
+    logger.debug("Calculated scheduled send time", extra={
+        "scheduled_time": scheduled_time
+    })
+
+    cursor.execute("""
+        INSERT INTO dbo.emails (
+            lead_id,
+            subject,
+            body,
+            status,
+            scheduled_send_date,
+            sequence_num
+        )
+        VALUES (?, ?, ?, 'pending', ?, ?)
+    """, (lead_id, subject, body, scheduled_time, sequence_num))
+    
+    logger.info("Inserted email draft record", extra={
+        "lead_id": lead_id,
+        "scheduled_send_date": scheduled_time,
+        "sequence_num": sequence_num
+    })
+
+def calculate_next_send_time():
+    """Calculate next business day at 10am"""
+    next_day = datetime.datetime.now() + datetime.timedelta(days=1)
+    # Set to 10am
+    next_day = next_day.replace(hour=10, minute=0, second=0, microsecond=0)
+    logger.debug(f"Calculated next send time: {next_day}")
+    return next_day

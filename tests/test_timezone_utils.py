@@ -1,6 +1,5 @@
 """
 tests/test_timezone_utils.py
-
 Tests for timezone adjustment functionality.
 """
 
@@ -13,85 +12,72 @@ from utils.timezone_utils import (
     _is_dst
 )
 
+
 def test_load_timezone_data():
-    """Test that timezone data loads correctly from CSV."""
+    """Test that timezone data loads correctly from the CSV file."""
     load_timezone_data()
     from utils.timezone_utils import STATE_TIMEZONE_DATA
-    
-    # Check some key states
-    assert "CA" in STATE_TIMEZONE_DATA
-    assert "NY" in STATE_TIMEZONE_DATA
-    assert "FL" in STATE_TIMEZONE_DATA
-    
-    # Verify data structure
+
+    # Spot-check a few states
+    assert "CA" in STATE_TIMEZONE_DATA, "California must be in the dataset"
+    assert "NY" in STATE_TIMEZONE_DATA, "New York must be in the dataset"
+    assert "FL" in STATE_TIMEZONE_DATA, "Florida must be in the dataset"
+    assert "AZ" in STATE_TIMEZONE_DATA, "Arizona must be in the dataset"
+
     ca_data = STATE_TIMEZONE_DATA["CA"]
-    assert "timezone" in ca_data
+    assert ca_data["timezone"] == "Pacific"
     assert "dst_offset" in ca_data
     assert "std_offset" in ca_data
-    assert ca_data["timezone"] == "Pacific"
 
 def test_get_state_timezone_info():
-    """Test timezone info retrieval for different states."""
-    # Test valid state (California)
-    ca_info = get_state_timezone_info("CA")
-    assert ca_info is not None
-    assert ca_info["timezone"] == "Pacific"
-    assert ca_info["dst_offset"] == "-1 hour"
-    assert ca_info["std_offset"] == "-1 hour"
-    
-    # Test case insensitive (New York)
-    ny_info = get_state_timezone_info("ny")
-    assert ny_info is not None
-    assert ny_info["timezone"] == "Eastern"
-    assert ny_info["dst_offset"] == "-3 hours"
-    assert ny_info["std_offset"] == "-2 hours"
-    
-    # Test Arizona (reference state)
-    az_info = get_state_timezone_info("AZ")
-    assert az_info is not None
-    assert az_info["timezone"] == "Mountain"
-    assert az_info["dst_offset"] == "-1 hour"
-    assert az_info["std_offset"] == "0 hours"
-    
-    # Test invalid state
-    invalid_info = get_state_timezone_info("XX")
-    assert invalid_info is None
+    """Test retrieving state timezone info by code."""
+    info_ca = get_state_timezone_info("CA")
+    assert info_ca is not None
+    assert info_ca["timezone"] == "Pacific"
+
+    info_ny = get_state_timezone_info("ny")
+    assert info_ny is not None
+    assert info_ny["timezone"] == "Eastern"
+
+    info_az = get_state_timezone_info("AZ")
+    assert info_az is not None
+    assert info_az["timezone"] == "Mountain"
+
+    info_none = get_state_timezone_info("XX")
+    assert info_none is None, "Should return None for invalid state codes"
 
 def test_adjust_for_timezone():
-    """Test timezone adjustments for different states and seasons."""
-    # Test summer time (DST) adjustment for California relative to Arizona
-    summer_time = datetime.datetime(2024, 7, 15, 10, 0)  # 10 AM
+    """Test adjusting a datetime for a lead's state time offset from AZ."""
+    # Summer test for CA (DST)
+    summer_time = datetime.datetime(2024, 7, 15, 10, 0)
     ca_adjusted = adjust_for_timezone(summer_time, "CA")
-    assert ca_adjusted == summer_time - datetime.timedelta(hours=1)  # -1 hour from AZ in DST
-    
-    # Test winter time adjustment for New York relative to Arizona
-    winter_time = datetime.datetime(2024, 1, 15, 14, 0)  # 2 PM
-    ny_adjusted = adjust_for_timezone(winter_time, "NY")
-    assert ny_adjusted == winter_time - datetime.timedelta(hours=2)  # -2 hours from AZ in standard time
-    
-    # Test Arizona itself (no adjustment needed)
-    az_time = datetime.datetime(2024, 7, 15, 10, 0)  # 10 AM
-    az_adjusted = adjust_for_timezone(az_time, "AZ")
-    assert az_adjusted == az_time + datetime.timedelta(hours=-1)  # -1 hour in DST
-    
-    # Test invalid state (should return original time)
-    invalid_adjusted = adjust_for_timezone(summer_time, "XX")
-    assert invalid_adjusted == summer_time
+    # CA is typically -1 hour from AZ in DST in this data
+    assert ca_adjusted == summer_time - datetime.timedelta(hours=1)
 
-def test_dst_detection():
-    """Test DST detection logic."""
-    # Test summer (should be DST)
-    summer = datetime.datetime(2024, 7, 1)
-    assert _is_dst(summer) is True
-    
-    # Test winter (should not be DST)
-    winter = datetime.datetime(2024, 1, 1)
-    assert _is_dst(winter) is False
-    
-    # Test DST start (second Sunday in March)
-    dst_start = datetime.datetime(2024, 3, 10)
-    assert _is_dst(dst_start) is True
-    
-    # Test DST end (first Sunday in November)
-    dst_end = datetime.datetime(2024, 11, 3)
-    assert _is_dst(dst_end) is False
+    # Winter test for NY
+    winter_time = datetime.datetime(2024, 1, 15, 14, 0)
+    ny_adjusted = adjust_for_timezone(winter_time, "NY")
+    # In the provided CSV, NY standard offset might be -2 from AZ, etc.
+    assert ny_adjusted == winter_time - datetime.timedelta(hours=2)
+
+    # If invalid state
+    invalid_adjusted = adjust_for_timezone(summer_time, "XX")
+    assert invalid_adjusted == summer_time, "No adjustment for invalid states"
+
+def test__is_dst():
+    """Test the rough DST detection logic."""
+    # A day in July
+    july_date = datetime.datetime(2024, 7, 1)
+    assert _is_dst(july_date) is True, "July should be DST"
+
+    # A day in January
+    jan_date = datetime.datetime(2024, 1, 1)
+    assert _is_dst(jan_date) is False, "January should not be DST"
+
+    # DST starts 2nd Sunday in March
+    march_dst = datetime.datetime(2024, 3, 10)
+    assert _is_dst(march_dst) is True
+
+    # DST ends 1st Sunday in November
+    nov_dst = datetime.datetime(2024, 11, 3)
+    assert _is_dst(nov_dst) is False

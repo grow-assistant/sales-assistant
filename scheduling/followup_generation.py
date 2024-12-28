@@ -1,4 +1,4 @@
-# followup_generation.py
+# scheduling/followup_generation.py
 
 from scheduling.database import get_db_connection
 from utils.xai_integration import _send_xai_request
@@ -9,14 +9,15 @@ def parse_subject_and_body(raw_text: str) -> tuple[str, str]:
     """
     Basic parser to extract the subject and body from the xAI response.
     This can be expanded depending on how xAI responds.
+    Expected format:
+      Subject: ...
+      Body: ...
+    If the response doesn't contain these exact labels,
+    we do our best to parse them or fall back.
     """
     subject = "Follow-Up Email"
     body = raw_text.strip()
 
-    # If we expect a structure like:
-    # Subject: ...
-    # Body: ...
-    # we can parse with regex:
     sub_match = re.search(r"(?i)^subject:\s*(.*)", raw_text)
     bod_match = re.search(r"(?i)^body:\s*(.*)", raw_text, flags=re.DOTALL)
     if sub_match:
@@ -26,24 +27,31 @@ def parse_subject_and_body(raw_text: str) -> tuple[str, str]:
 
     return subject, body
 
+
 def generate_followup_email_xai(lead_id: int, sequence_num: int):
     """
     For a given lead and sequence number (0=initial, 1=day3, 2=day7, 3=day14),
     calls xAI to generate a personalized follow-up email based on lead role and club type,
     then updates the followups table with the resulting subject & body.
+
+    Steps:
+      1) Fetch the lead from dbo.leads by lead_id.
+      2) Build the user_prompt referencing lead name, club_type, sequence_num, etc.
+      3) Use xAI to generate the email content (subject + body).
+      4) Insert or update the record in followups table.
     """
     conn = get_db_connection()
     lead = conn.execute("SELECT * FROM leads WHERE lead_id = ?", (lead_id,)).fetchone()
 
     if not lead:
         conn.close()
+        logger.warning(f"No lead found with lead_id={lead_id} for follow-up generation.")
         return
 
-    # Customize prompt based on sequence number and follow-up stage
     follow_up_context = {
-        1: "This is the first follow-up (Day 3). Keep it short, friendly, and focused on checking if they've had a chance to review the initial email.",
-        2: "This is the value-add follow-up (Day 7). Share a relevant success story about member satisfaction and revenue improvements. Focus on concrete metrics and results.",
-        3: "This is the final follow-up (Day 14). Be polite but create urgency, emphasizing the opportunity while maintaining professionalism."
+        1: "This is the first follow-up (Day 3). Keep it short, friendly, and see if they've had a chance to review.",
+        2: "This is the value-add follow-up (Day 7). Focus on a success story about how clubs have increased revenue.",
+        3: "This is the final follow-up (Day 14). Be polite but create urgency."
     }.get(sequence_num, "This is a follow-up email. Be professional and concise.")
 
     user_prompt = f"""
@@ -78,18 +86,19 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
         "temperature": 0.7
     }
 
+    # Call xAI
     xai_response = _send_xai_request(payload)
     subject, body = parse_subject_and_body(xai_response)
 
-    # Update email content and status
+    # Update followups table
     conn.execute("""
-        UPDATE dbo.emails
+        UPDATE followups
         SET subject = ?, body = ?, status = 'generated'
         WHERE lead_id = ? AND sequence_num = ?
     """, (subject, body, lead_id, sequence_num))
     conn.commit()
 
-    logger.info("Updated email content", extra={
+    logger.info("Updated followup email with xAI content", extra={
         "lead_id": lead_id,
         "sequence_num": sequence_num,
         "status": "generated"

@@ -16,7 +16,7 @@ Provides two main functions:
 
 import csv
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict
 from utils.logging_setup import logger
 
 def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strategy.csv") -> None:
@@ -34,7 +34,6 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
     ]
     club_types = ["Private Clubs", "Public Courses", "Resorts", "Management Companies"]
 
-    # Recommended months for each geography
     months = {
         "Year-Round Golf": "January or September",
         "Peak Winter Season": "September",
@@ -43,14 +42,12 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
         "Shoulder Season Focus": "February or October"
     }
 
-    # Best time of day for each persona
     times_of_day = {
         "General Manager": "Mid-morning (9–11 AM)",
         "Membership Director": "Early afternoon (1–3 PM)",
         "Food & Beverage Director": "Late morning (10–12 AM)"
     }
 
-    # Best days of the week for each persona
     days_of_week = {
         "General Manager": "Tuesday or Thursday",
         "Membership Director": "Wednesday or Thursday",
@@ -69,7 +66,7 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
     with open(file_path, 'w', newline='') as f:
         writer = csv.writer(f)
         writer.writerow(columns)
-        
+
         for persona in personas:
             for geography in geographies:
                 for club_type in club_types:
@@ -81,7 +78,7 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
                         times_of_day[persona],
                         days_of_week[persona]
                     ])
-    
+
     logger.info(f"Outreach strategy CSV created or updated at: {file_path}")
 
 
@@ -94,76 +91,63 @@ def get_best_outreach_window(
     """
     Returns a dictionary with keys "Best Month", "Best Time", and "Best Day"
     from the CSV for the given persona, geography, and club type.
+
+    1) Attempt to match row in Golf_Outreach_Strategy.csv
+    2) If no match, return defaults
     """
-    # Default values for missing data
+
+    # If no persona or club_type, set defaults
     if not persona:
         persona = "General Manager"
         logger.warning("No role provided, using default", extra={"default_role": persona})
-    
     if not club_type:
         club_type = "Public Courses"
         logger.warning("No club type provided, using default", extra={"default_club_type": club_type})
 
     try:
+        # Ensure CSV exists
+        build_outreach_strategy_csv(file_path)
         with open(file_path, 'r', newline='') as f:
             reader = csv.DictReader(f)
             for row in reader:
-                if (row["Persona"].lower() == persona.lower() and 
-                    row["Geography/Golf Season"] == geography and 
-                    row["Club Type"].lower() == club_type.lower()):
-                    logger.info(
-                        "Found matching outreach strategy",
-                        extra={
-                            "role": persona,
-                            "club_type": club_type,
-                            "best_time": row["Best Time of Day"],
-                            "best_day": row["Best Day of the Week"],
-                            "best_month": row["Best Month to Start Outreach"]
-                        }
-                    )
+                if (row["Persona"].lower() == persona.lower()
+                    and row["Geography/Golf Season"] == geography
+                    and row["Club Type"].lower() == club_type.lower()):
+                    logger.info("Found matching outreach strategy", extra={
+                        "role": persona,
+                        "club_type": club_type,
+                        "best_time": row["Best Time of Day"],
+                        "best_day": row["Best Day of the Week"],
+                        "best_month": row["Best Month to Start Outreach"]
+                    })
                     return {
                         "Best Month": row["Best Month to Start Outreach"],
                         "Best Time": row["Best Time of Day"],
                         "Best Day": row["Best Day of the Week"]
                     }
     except FileNotFoundError:
-        # If file doesn't exist, create it
+        # Create it and re-check
         build_outreach_strategy_csv(file_path)
-        # Try reading again
         return get_best_outreach_window(persona, geography, club_type, file_path)
     except Exception as e:
         logger.error(f"Error reading outreach strategy: {str(e)}")
-    
-    # If no match found or error occurred, return default values
+
+    # If no match
     default_strategy = {
         "Best Month": "January or September",
         "Best Time": "Mid-morning (9–11 AM)",
         "Best Day": "Tuesday or Thursday"
     }
-    
-    logger.warning(
-        "No matching strategy found, using defaults",
-        extra={
-            "role": persona,
-            "club_type": club_type,
-            "default_strategy": default_strategy
-        }
-    )
-    
+    logger.warning("No matching strategy found, using defaults", extra={
+        "role": persona,
+        "club_type": club_type,
+        "default_strategy": default_strategy
+    })
     return default_strategy
 
 
 if __name__ == "__main__":
-    # Example usage when run directly
+    # Quick demonstration
     build_outreach_strategy_csv()
-    
-    # Test getting outreach window for a specific combination
-    test_persona = "General Manager"
-    test_geography = "Peak Summer Season" 
-    test_club_type = "Private Clubs"
-    
-    result = get_best_outreach_window(test_persona, test_geography, test_club_type)
-    print(f"\nBest outreach window for {test_persona} at {test_club_type} in {test_geography}:")
-    print(f"Month: {result['Best Month']}")
-    print(f"Time: {result['Best Time']}")
-    print(f"Day: {result['Best Day']}")
+    test_window = get_best_outreach_window("General Manager", "Peak Summer Season", "Private Clubs")
+    print("Example Best Outreach Window:", test_window)

@@ -1,6 +1,9 @@
 # scheduling/database.py
 
 import pyodbc
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.logging_setup import logger
 from config.settings import DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD
 

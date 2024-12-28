@@ -12,6 +12,9 @@ def clean_phone_number(raw_phone: str) -> str:
     1) Remove non-digit chars
     2) Format as needed (e.g., ###-###-####)
     """
+    if raw_phone is None:
+        return None
+        
     digits = "".join(char for char in raw_phone if char.isdigit())
     if len(digits) == 10:
         # e.g. (123) 456-7890

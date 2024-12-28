@@ -1,8 +1,8 @@
 """
 scripts/schedule_outreach.py
 
-Schedules multiple outreach steps (emails) via APScheduler.
-Now also integrates best outreach-window logic from golf_outreach_strategy.
+Schedules multiple outreach steps via APScheduler.
+Integrates best outreach-window logic from golf_outreach_strategy.
 """
 
 import time
@@ -10,15 +10,16 @@ import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils.gmail_integration import create_draft
 from utils.logging_setup import logger
-from scheduling.database import get_db_connection
 from utils.timezone_utils import adjust_for_timezone
 from scripts.golf_outreach_strategy import get_best_outreach_window
+from utils.db_connection import get_db_connection
 
 # Example outreach schedule steps
 OUTREACH_SCHEDULE = [
     {
         "name": "Email #1 (Day 0)",
         "days_from_now": 0,
+        "sequence_num": 0,
         "subject": "Enhancing Member Experience with Swoop Golf",
         "body": (
             "Hi [Name],\n\n"
@@ -31,6 +32,7 @@ OUTREACH_SCHEDULE = [
     {
         "name": "Follow-Up #1 (Day 3–4)",
         "days_from_now": 3,
+        "sequence_num": 1,
         "subject": "Quick follow-up: Swoop Golf",
         "body": (
             "Hello [Name],\n\n"
@@ -42,6 +44,7 @@ OUTREACH_SCHEDULE = [
     {
         "name": "Follow-Up #2 (Day 7)",
         "days_from_now": 7,
+        "sequence_num": 2,
         "subject": "Member Experience Improvements with Swoop Golf",
         "body": (
             "Hi [Name],\n\n"
@@ -54,6 +57,7 @@ OUTREACH_SCHEDULE = [
     {
         "name": "Follow-Up #3 (Day 14)",
         "days_from_now": 14,
+        "sequence_num": 3,
         "subject": "Final note: Swoop Golf platform",
         "body": (
             "Hi [Name],\n\n"
@@ -65,182 +69,117 @@ OUTREACH_SCHEDULE = [
     }
 ]
 
+
 def schedule_draft(step_details, sender, recipient, hubspot_contact_id, lead_data):
-    """
-    Create a Gmail draft for scheduled sending based on lead data and outreach strategy.
-    
-    Args:
-        step_details (dict): Details about the outreach step
-        sender (str): Email sender
-        recipient (str): Email recipient
-        hubspot_contact_id (str): HubSpot contact ID
-        lead_data (dict): Lead context data containing properties and analysis
-    """
-    # Get role and club type from lead data
-    role = lead_data.get("properties", {}).get("jobtitle", "General Manager")
-    club_type = lead_data.get("analysis", {}).get("facilities", {}).get("club_type", "Public Courses")
-    geography = lead_data.get("analysis", {}).get("season_data", {}).get("season_label", "Year-Round Golf")
-
-    # Get recommended outreach window
-    recommendation = get_best_outreach_window(role, geography, club_type)
-    logger.info(
-        "Determined outreach window",
-        extra={
-            "role": role,
-            "club_type": club_type,
-            "geography": geography,
-            "best_month": recommendation["Best Month"],
-            "best_time": recommendation["Best Time"],
-            "best_day": recommendation["Best Day"]
-        }
-    )
-
-    # Calculate base send time
-    base_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
-    
-    # Get state from lead data and adjust for timezone
-    state = lead_data.get("company_data", {}).get("state", "")
-    ideal_send_time = adjust_for_timezone(base_send_time, state) if state else base_send_time
-
-    # Get lead_id from database
-    conn = get_db_connection()
-    cursor = conn.cursor()
     try:
-        cursor.execute("SELECT lead_id FROM dbo.leads WHERE email = ?", (recipient,))
-        row = cursor.fetchone()
-        if not row:
-            logger.error("No lead found for email", extra={
-                "email": recipient,
-                "hubspot_contact_id": hubspot_contact_id
-            })
-            return
-        lead_id = row[0]
+        # Get lead_id from email
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT lead_id FROM leads WHERE email = ?", (recipient,))
+        result = cursor.fetchone()
+        lead_id = result[0] if result else None
 
-        # Create Gmail draft
-        draft_result = create_draft(
-            sender=sender,
-            to=recipient,
-            subject=step_details["subject"],
-            message_text=step_details["body"]
-        )
-
-        if draft_result["status"] != "ok":
-            logger.error(
-                f"Failed to create draft for step '{step_details['name']}'.",
-                extra={
-                    "step_name": step_details["name"],
-                    "hubspot_contact_id": hubspot_contact_id,
-                    "error": draft_result.get("error")
-                }
-            )
+        if not lead_id:
+            logger.error(f"No lead_id found for email: {recipient}")
             return
 
-        draft_id = draft_result.get("draft_id")
+        # Calculate send time with timezone adjustment
+        base_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
+        state = lead_data.get("company_data", {}).get("state", "")
+        scheduled_send_time = adjust_for_timezone(base_send_time, state) if state else base_send_time
 
-        # Save to emails table
-        sequence_num = next((i for i, step in enumerate(OUTREACH_SCHEDULE) if step["name"] == step_details["name"]), None)
+        logger.info("Scheduling draft", extra={
+            "step": step_details["name"],
+            "sequence_num": step_details["sequence_num"],
+            "scheduled_time": str(scheduled_send_time),
+            "recipient": recipient
+        })
+
+        # Create the draft
+        draft_result = create_draft(sender=sender, to=recipient, 
+                                  subject=step_details["subject"], 
+                                  message_text=step_details["body"])
+
+        # Insert into database
         cursor.execute("""
             INSERT INTO dbo.emails (
-                lead_id, subject, body, status,
-                scheduled_send_date, sequence_num, draft_id,
-                created_at
-            ) VALUES (?, ?, ?, 'pending', ?, ?, ?, GETDATE())
+                lead_id, subject, body, scheduled_send_date, draft_id, sequence_num, status
+            ) VALUES (?, ?, ?, ?, ?, ?, 'draft_created')
         """, (
             lead_id,
             step_details["subject"],
             step_details["body"],
-            ideal_send_time,
-            sequence_num,
-            draft_id
+            scheduled_send_time,
+            draft_result.get("draft_id"),
+            step_details["sequence_num"]
         ))
-        conn.commit()
         
-        logger.info("Email saved to database", extra={
-            "lead_id": lead_id,
-            "email": recipient,
-            "step_name": step_details["name"],
-            "sequence_num": sequence_num,
-            "scheduled_send_date": str(ideal_send_time)
+        conn.commit()
+        logger.info("Draft scheduled successfully", extra={
+            "step": step_details["name"],
+            "sequence_num": step_details["sequence_num"],
+            "scheduled_time": str(scheduled_send_time),
+            "recipient": recipient
         })
 
     except Exception as e:
-        logger.error("Error saving email to database", extra={
+        logger.error("Failed to schedule draft", extra={
             "error": str(e),
-            "email": recipient,
-            "step_name": step_details["name"]
+            "step": step_details.get("name"),
+            "recipient": recipient
         })
-        conn.rollback()
+        if 'conn' in locals():
+            conn.rollback()
+        raise
     finally:
-        conn.close()
-        
-    # Calculate base send time
-    base_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
-    
-    # Get state from lead data and adjust for timezone
-    state = lead_data.get("company_data", {}).get("state", "")
-    ideal_send_time = adjust_for_timezone(base_send_time, state) if state else base_send_time
-    
-    logger.info(
-        f"Created draft for outreach step",
-        extra={
-            "draft_id": draft_id,
-            "step_name": step_details["name"],
-            "send_time": str(ideal_send_time),
-            "hubspot_contact_id": hubspot_contact_id
-        }
-    )
+        if 'conn' in locals():
+            conn.close()
 
 
 def main(lead_data=None):
-    """
-    Main scheduling workflow:
-     1) Determine the best outreach window based on lead's role and club type
-     2) Start APScheduler
-     3) Schedule each step of the outreach
-     
-    Args:
-        lead_data (dict): Optional lead context data. If not provided, uses example data.
-    """
+    """Main scheduling workflow"""
     if lead_data is None:
-        # Example lead data for testing
         lead_data = {
             "properties": {
                 "jobtitle": "General Manager",
-                "email": "someone@example.com",
-                "hs_object_id": "255401"
+                "email": "jhiggins@valleylo.org",
+                "hs_object_id": "15537350171"
             },
-            "analysis": {
-                "facilities": {"club_type": "Private Clubs"},
-                "season_data": {"season_label": "Year-Round Golf"}
+            "company_data": {
+                "state": "IL"
             }
         }
-        logger.warning("Using example lead data - no lead_data provided")
-
-    # Start the background scheduler
+    
+    logger.info("Starting outreach scheduling", extra={
+        "recipient": lead_data["properties"].get("email"),
+        "steps": len(OUTREACH_SCHEDULE)
+    })
+    
+    # Initialize and start the background scheduler
     scheduler = BackgroundScheduler()
     scheduler.start()
-
-    now = datetime.datetime.now()
-    sender = "me"  # 'me' means the authenticated Gmail user
-    recipient = lead_data["properties"].get("email", "someone@example.com")
-    hubspot_contact_id = lead_data["properties"].get("hs_object_id", "255401")
-
-    # Schedule each step for future sending
+    
+    # Schedule each step for a future run
+    sender = "me"
+    recipient = lead_data["properties"].get("email")
     for step in OUTREACH_SCHEDULE:
-        run_time = now + datetime.timedelta(days=step["days_from_now"])
-        job_id = f"job_{step['name'].replace(' ', '_')}"
-
+        run_date = datetime.datetime.now() + datetime.timedelta(days=step["days_from_now"])
+        job_id = f"{step['name'].replace(' ', '_')}_{recipient}"
+        
         scheduler.add_job(
             schedule_draft,
             'date',
-            run_date=run_time,
+            run_date=run_date,
             id=job_id,
-            args=[step, sender, recipient, hubspot_contact_id, lead_data]
+            args=[step, sender, recipient, lead_data["properties"].get("hs_object_id"), lead_data]
         )
-        logger.info(f"Scheduled job '{job_id}' for {run_time}")
+        
+        logger.info(f"Scheduled job '{job_id}' for {run_date}", extra={"step": step["name"]})
+    
+    logger.info("All steps have been scheduled. Press Ctrl+C to exit.")
 
+    # Keep the script alive so scheduled jobs run
     try:
-        logger.info("Scheduler running. Press Ctrl+C to exit.")
         while True:
             time.sleep(60)
     except (KeyboardInterrupt, SystemExit):
