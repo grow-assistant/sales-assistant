@@ -1136,6 +1136,9 @@ def main():
 
         # Step 9: Personalize with xAI
         try:
+            # Get lead email first to avoid reference error
+            lead_email = lead_data.get("email", email)
+            
             subject, body = personalize_email_with_xai(
                 lead_sheet=lead_sheet,
                 subject=subject,
@@ -1144,6 +1147,11 @@ def main():
                 news_summary=news_result,
                 club_info=club_info_snippet
             )
+            
+            logger.debug("xAI response received:")
+            logger.debug(f"Subject: {subject}")
+            logger.debug(f"Full body:\n{body}")
+            
             if not subject.strip():
                 subject = orig_subject
             if not body.strip():
@@ -1166,6 +1174,27 @@ def main():
                     logger.error(f"Icebreaker generation error: {e}")
                     body = body.replace("[ICEBREAKER]", "")
 
+            logger.debug("Final email content before creating draft:")
+            logger.debug(f"To: {lead_email}")
+            logger.debug(f"Subject: {subject}")
+            logger.debug(f"Body:\n{body}")
+            
+            # Step 10: Create Gmail draft
+            draft_result = create_draft(
+                sender="me",
+                to=lead_email,
+                subject=subject,
+                message_text=body
+            )
+            if draft_result["status"] == "ok":
+                if DEBUG_MODE:
+                    logger.debug(f"Gmail draft created: {draft_result.get('draft_id')}")
+                else:
+                    logger.info("Gmail draft created successfully")
+                print("✓ Step 10: Created Gmail draft\n")
+            else:
+                logger.error("Failed to create Gmail draft.")
+
         except Exception as e:
             logger.error(f"xAI personalization error: {e}")
             subject, body = orig_subject, orig_body
@@ -1175,23 +1204,6 @@ def main():
             "body": body
         })
         print("✓ Step 9: Personalized email with xAI\n")
-
-        # Step 10: Create Gmail draft
-        lead_email = lead_data.get("email", email)
-        draft_result = create_draft(
-            sender="me",
-            to=lead_email,
-            subject=subject,
-            message_text=body
-        )
-        if draft_result["status"] == "ok":
-            if DEBUG_MODE:
-                logger.debug(f"Gmail draft created: {draft_result.get('draft_id')}")
-            else:
-                logger.info("Gmail draft created successfully")
-            print("✓ Step 10: Created Gmail draft\n")
-        else:
-            logger.error("Failed to create Gmail draft.")
 
     except LeadContextError as e:
         logger.error(f"Failed to prepare lead context: {e}")
@@ -2488,10 +2500,9 @@ def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
             "temperature": 0.1
         }
         
-        # Use _send_xai_request directly
+        # Use _send_xai_request directly with recipient email
         response = _send_xai_request(payload, timeout=10)
         
-        # Rest of validation and processing...
         if not response:
             raise ValueError("Empty response from xAI service")
             
@@ -2517,7 +2528,7 @@ def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
                 'recipient_name': recipient_name
             }
         )
-        return None
+        return "I wanted to reach out about enhancing your club's operations"  # Fallback icebreaker
 
 def parse_template(template_content):
     """Parse template content without requiring YAML frontmatter"""
@@ -4405,13 +4416,19 @@ def get_gmail_service():
             token.write(creds.to_json())
     return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
+
 def create_message(sender, to, subject, message_text):
     """Create a MIMEText email message."""
-    logger.debug(f"Building MIMEText email: to={to}, subject={subject}")
+    logger.debug("=== START CREATE MESSAGE DEBUG ===")
+    logger.debug(f"Original message text:\n{message_text}")
+    logger.debug(f"Original message length: {len(message_text)}")
     
     # Normalize line endings and clean up any extra spaces
     message_text = message_text.replace('\r\n', '\n')
     message_text = message_text.replace('\n\n\n', '\n\n')
+    
+    logger.debug(f"After normalization:\n{message_text}")
+    logger.debug(f"Normalized length: {len(message_text)}")
     
     # Create message with explicit content type and encoding
     message = MIMEText(message_text, _subtype='plain', _charset='utf-8')
@@ -4422,42 +4439,47 @@ def create_message(sender, to, subject, message_text):
     # Set content type with format=flowed to preserve line breaks
     message.replace_header('Content-Type', 'text/plain; charset=utf-8; format=flowed; delsp=yes')
     
+    # Log the raw message before encoding
+    raw_message = message.as_string()
+    logger.debug(f"Raw MIME message:\n{raw_message}")
+    
     # Convert to bytes, encode, and create raw message
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
     
-    logger.debug(f"Message built successfully for {to}")
-    logger.debug(f"Final message text (first 100 chars): {message_text[:100]}")
-    
+    logger.debug("=== END CREATE MESSAGE DEBUG ===")
     return {'raw': raw}
+
 
 def create_draft(sender: str, to: str, subject: str, message_text: str) -> dict:
     """Create a draft in the user's Gmail Drafts folder."""
     try:
-        logger.debug(f"Preparing to create draft. Sender={sender}, To={to}, Subject={subject}")
-        service = get_gmail_service()
+        logger.debug("=== START CREATE DRAFT DEBUG ===")
+        logger.debug(f"Input message text:\n{message_text}")
         
-        # Create the message first
+        service = get_gmail_service()
         message = create_message(sender, to, subject, message_text)
         
-        # Create the draft with proper structure
+        # Log the draft request body
+        draft_body = {'message': message}
+        logger.debug(f"Draft request body: {draft_body}")
+        
         draft = service.users().drafts().create(
             userId='me',
-            body={'message': message}  # Wrap the message in the required structure
+            body=draft_body
         ).execute()
         
         if draft.get('id'):
-            logger.info(f"Draft created successfully for '{to}' – ID={draft['id']}")
+            logger.debug(f"Draft created with ID: {draft['id']}")
+            logger.debug("=== END CREATE DRAFT DEBUG ===")
             return {"status": "ok", "draft_id": draft['id']}
         else:
-            logger.error(f"No draft ID returned for '{to}' – possibly an API error.")
+            logger.error("No draft ID returned")
             return {"status": "error", "error": "No draft ID returned"}
             
     except Exception as e:
-        logger.error(
-            f"Failed to create draft for recipient='{to}' with subject='{subject}'. "
-            f"Error: {e}"
-        )
+        logger.error(f"Draft creation error: {str(e)}")
         return {"status": "error", "error": str(e)}
+
 
 def send_message(sender, to, subject, message_text):
     """
@@ -4484,11 +4506,12 @@ def send_message(sender, to, subject, message_text):
         )
         return {"status": "error", "error": str(e)}
 
+
 def search_messages(query=""):
     """
     Search for messages in the Gmail inbox using the specified `query`.
     For example:
-      - 'from:kowen@capitalcityclub.org'
+      - 'from:someone@example.com'
       - 'subject:Testing'
       - 'to:me newer_than:7d'
     Returns a list of message dicts.
@@ -4502,10 +4525,11 @@ def search_messages(query=""):
         logger.error(f"Error searching messages with query '{query}': {e}")
         return []
 
+
 def check_thread_for_reply(thread_id):
     """
     Checks if there's more than one message in a given thread, indicating a reply.
-    This approach is more precise than searching by 'from:' and date alone.
+    More precise than searching by 'from:' or date alone.
     """
     service = get_gmail_service()
     try:
@@ -4516,25 +4540,17 @@ def check_thread_for_reply(thread_id):
         logger.error(f"Error retrieving thread {thread_id}: {e}")
         return False
 
-#
-#  NEW FUNCTION:
-#  Search your Gmail inbox for any messages from the specified email address.
-#  Return up to `max_results` message snippets (short preview text).
-#
+
 def search_inbound_messages_for_email(email_address: str, max_results: int = 1) -> list:
     """
     Search for inbound messages sent from `email_address`.
     Returns a list of short snippets from the most recent matching messages.
     """
-    # 1) Build a Gmail search query
     query = f"from:{email_address}"
-
-    # 2) Find message IDs matching the query
     message_ids = search_messages(query=query)
     if not message_ids:
-        return []  # None found
+        return []
 
-    # 3) Retrieve each message snippet up to max_results
     service = get_gmail_service()
     snippets = []
     for m in message_ids[:max_results]:
@@ -4550,6 +4566,7 @@ def search_inbound_messages_for_email(email_address: str, max_results: int = 1) 
             logger.error(f"Error fetching message {m['id']} from {email_address}: {e}")
 
     return snippets
+
 ```
 
 ## utils\logger_base.py
