@@ -14,14 +14,9 @@ Provides two main functions:
    for the specified persona/geography/club_type.
 """
 
-import sys
+import csv
 from pathlib import Path
-
-# Add the project root to the Python path
-project_root = Path(__file__).parent.parent
-sys.path.append(str(project_root))
-
-import pandas as pd
+from typing import Dict, List, Optional
 from utils.logging_setup import logger
 
 def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strategy.csv") -> None:
@@ -29,7 +24,6 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
     Create or overwrite a CSV table with recommended months, times, and days
     for each combination of persona, geography, and club type.
     """
-
     personas = ["General Manager", "Membership Director", "Food & Beverage Director"]
     geographies = [
         "Year-Round Golf",
@@ -63,19 +57,6 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
         "Food & Beverage Director": "Wednesday or Thursday"
     }
 
-    data = []
-    for persona in personas:
-        for geography in geographies:
-            for club_type in club_types:
-                data.append([
-                    persona,
-                    geography,
-                    club_type,
-                    months[geography],
-                    times_of_day[persona],
-                    days_of_week[persona]
-                ])
-
     columns = [
         "Persona",
         "Geography/Golf Season",
@@ -84,9 +65,23 @@ def build_outreach_strategy_csv(file_path: str = "docs/data/Golf_Outreach_Strate
         "Best Time of Day",
         "Best Day of the Week"
     ]
-    df = pd.DataFrame(data, columns=columns)
 
-    df.to_csv(file_path, index=False)
+    with open(file_path, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        
+        for persona in personas:
+            for geography in geographies:
+                for club_type in club_types:
+                    writer.writerow([
+                        persona,
+                        geography,
+                        club_type,
+                        months[geography],
+                        times_of_day[persona],
+                        days_of_week[persona]
+                    ])
+    
     logger.info(f"Outreach strategy CSV created or updated at: {file_path}")
 
 
@@ -94,44 +89,68 @@ def get_best_outreach_window(
     persona: str,
     geography: str,
     club_type: str,
-    file_path: str = "/mnt/data/Golf_Outreach_Strategy.csv"
+    file_path: str = "docs/data/Golf_Outreach_Strategy.csv"
 ) -> dict:
     """
     Returns a dictionary with keys "Best Month", "Best Time", and "Best Day"
     from the CSV for the given persona, geography, and club type.
-
-    Steps:
-    1) Ensure the CSV table is built by calling build_outreach_strategy_csv().
-    2) Load the CSV and filter to the single row matching the persona,
-       geography, and club type. If none found, return defaults.
     """
+    # Default values for missing data
+    if not persona:
+        persona = "General Manager"
+        logger.warning("No role provided, using default", extra={"default_role": persona})
+    
+    if not club_type:
+        club_type = "Public Courses"
+        logger.warning("No club type provided, using default", extra={"default_club_type": club_type})
 
-    # Rebuild or update the CSV if missing
-    build_outreach_strategy_csv(file_path=file_path)
-
-    df = pd.read_csv(file_path)
-    match = df[
-        (df["Persona"] == persona) &
-        (df["Geography/Golf Season"] == geography) &
-        (df["Club Type"] == club_type)
-    ]
-
-    if match.empty:
-        logger.warning(
-            f"No matching outreach window found for {persona}, {geography}, {club_type}. Returning N/A."
-        )
-        return {
-            "Best Month": "N/A",
-            "Best Time": "N/A",
-            "Best Day": "N/A"
-        }
-
-    row = match.iloc[0]
-    return {
-        "Best Month": row["Best Month to Start Outreach"],
-        "Best Time": row["Best Time of Day"],
-        "Best Day": row["Best Day of the Week"]
+    try:
+        with open(file_path, 'r', newline='') as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if (row["Persona"].lower() == persona.lower() and 
+                    row["Geography/Golf Season"] == geography and 
+                    row["Club Type"].lower() == club_type.lower()):
+                    logger.info(
+                        "Found matching outreach strategy",
+                        extra={
+                            "role": persona,
+                            "club_type": club_type,
+                            "best_time": row["Best Time of Day"],
+                            "best_day": row["Best Day of the Week"],
+                            "best_month": row["Best Month to Start Outreach"]
+                        }
+                    )
+                    return {
+                        "Best Month": row["Best Month to Start Outreach"],
+                        "Best Time": row["Best Time of Day"],
+                        "Best Day": row["Best Day of the Week"]
+                    }
+    except FileNotFoundError:
+        # If file doesn't exist, create it
+        build_outreach_strategy_csv(file_path)
+        # Try reading again
+        return get_best_outreach_window(persona, geography, club_type, file_path)
+    except Exception as e:
+        logger.error(f"Error reading outreach strategy: {str(e)}")
+    
+    # If no match found or error occurred, return default values
+    default_strategy = {
+        "Best Month": "January or September",
+        "Best Time": "Mid-morning (9–11 AM)",
+        "Best Day": "Tuesday or Thursday"
     }
+    
+    logger.warning(
+        "No matching strategy found, using defaults",
+        extra={
+            "role": persona,
+            "club_type": club_type,
+            "default_strategy": default_strategy
+        }
+    )
+    
+    return default_strategy
 
 
 if __name__ == "__main__":

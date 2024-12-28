@@ -10,15 +10,14 @@ import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils.gmail_integration import create_draft
 from utils.logging_setup import logger
-
-# NEW IMPORT
+from utils.timezone_utils import adjust_for_timezone
 from scripts.golf_outreach_strategy import get_best_outreach_window
 
 # Example outreach schedule steps
 OUTREACH_SCHEDULE = [
     {
-        "name": "Intro Email (Day 1)",
-        "days_from_now": 1,
+        "name": "Email #1 (Day 0)",
+        "days_from_now": 0,
         "subject": "Enhancing Member Experience with Swoop Golf",
         "body": (
             "Hi [Name],\n\n"
@@ -29,7 +28,7 @@ OUTREACH_SCHEDULE = [
         )
     },
     {
-        "name": "Quick Follow-Up (Day 3)",
+        "name": "Follow-Up #1 (Day 3–4)",
         "days_from_now": 3,
         "subject": "Quick follow-up: Swoop Golf",
         "body": (
@@ -39,13 +38,62 @@ OUTREACH_SCHEDULE = [
             "I'd be happy to schedule a brief call to discuss your specific needs."
         )
     },
-    # Add additional follow-up steps as needed...
+    {
+        "name": "Follow-Up #2 (Day 7)",
+        "days_from_now": 7,
+        "subject": "Member Experience Improvements with Swoop Golf",
+        "body": (
+            "Hi [Name],\n\n"
+            "It's been about a week since we reached out about Swoop Golf's F&B platform. "
+            "I wanted to share that clubs similar to yours have seen significant improvements in both member satisfaction "
+            "and operational efficiency after implementing our solution.\n\n"
+            "Would you be interested in learning more about these member experiences and how they might apply to your club?"
+        )
+    },
+    {
+        "name": "Follow-Up #3 (Day 14)",
+        "days_from_now": 14,
+        "subject": "Final note: Swoop Golf platform",
+        "body": (
+            "Hi [Name],\n\n"
+            "I wanted to send one final note regarding Swoop Golf's F&B platform. Many clubs have seen improvements in "
+            "both member satisfaction and revenue after implementing our solution.\n\n"
+            "If you'd like to explore how we could help enhance your club's F&B operations, please don't hesitate to reach out.\n\n"
+            "Thank you for your time."
+        )
+    }
 ]
 
-def schedule_draft(step_details, sender, recipient, hubspot_contact_id):
+def schedule_draft(step_details, sender, recipient, hubspot_contact_id, lead_data):
     """
-    Create a Gmail draft for scheduled sending.
+    Create a Gmail draft for scheduled sending based on lead data and outreach strategy.
+    
+    Args:
+        step_details (dict): Details about the outreach step
+        sender (str): Email sender
+        recipient (str): Email recipient
+        hubspot_contact_id (str): HubSpot contact ID
+        lead_data (dict): Lead context data containing properties and analysis
     """
+    # Get role and club type from lead data
+    role = lead_data.get("properties", {}).get("jobtitle", "General Manager")
+    club_type = lead_data.get("analysis", {}).get("facilities", {}).get("club_type", "Public Courses")
+    geography = lead_data.get("analysis", {}).get("season_data", {}).get("season_label", "Year-Round Golf")
+
+    # Get recommended outreach window
+    recommendation = get_best_outreach_window(role, geography, club_type)
+    logger.info(
+        "Determined outreach window",
+        extra={
+            "role": role,
+            "club_type": club_type,
+            "geography": geography,
+            "best_month": recommendation["Best Month"],
+            "best_time": recommendation["Best Time"],
+            "best_day": recommendation["Best Day"]
+        }
+    )
+
     draft_result = create_draft(
         sender=sender,
         to=recipient,
@@ -54,44 +102,65 @@ def schedule_draft(step_details, sender, recipient, hubspot_contact_id):
     )
 
     if draft_result["status"] != "ok":
-        logger.error(f"Failed to create draft for step '{step_details['name']}'.")
+        logger.error(
+            f"Failed to create draft for step '{step_details['name']}'.",
+            extra={"hubspot_contact_id": hubspot_contact_id}
+        )
         return
 
     draft_id = draft_result.get("draft_id")
-    ideal_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
-    logger.info(f"Created draft ID: {draft_id} for step '{step_details['name']}' to be sent at {ideal_send_time}.")
-
-
-def main():
-    """
-    Main scheduling workflow:
-     1) Determine the best outreach window for an example persona/season/club type
-     2) Start APScheduler
-     3) Schedule each step of the outreach
-    """
-
-    # Example of fetching recommended outreach window
-    persona = "General Manager"
-    geography = "Peak Summer Season"
-    club_type = "Private Clubs"
-
-    recommendation = get_best_outreach_window(persona, geography, club_type)
+    
+    # Calculate base send time
+    base_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
+    
+    # Get state from lead data and adjust for timezone
+    state = lead_data.get("company_data", {}).get("state", "")
+    ideal_send_time = adjust_for_timezone(base_send_time, state) if state else base_send_time
+    
     logger.info(
-        f"Recommended outreach for {persona}, {geography}, {club_type}: {recommendation}"
+        f"Created draft for outreach step",
+        extra={
+            "draft_id": draft_id,
+            "step_name": step_details["name"],
+            "send_time": str(ideal_send_time),
+            "hubspot_contact_id": hubspot_contact_id
+        }
     )
 
-    # If you want to incorporate recommended times/days into your scheduling logic,
-    # you can parse or handle them here (for example, adjust 'days_from_now' or
-    # specific times of day, etc.).
+
+def main(lead_data=None):
+    """
+    Main scheduling workflow:
+     1) Determine the best outreach window based on lead's role and club type
+     2) Start APScheduler
+     3) Schedule each step of the outreach
+     
+    Args:
+        lead_data (dict): Optional lead context data. If not provided, uses example data.
+    """
+    if lead_data is None:
+        # Example lead data for testing
+        lead_data = {
+            "properties": {
+                "jobtitle": "General Manager",
+                "email": "someone@example.com",
+                "hs_object_id": "255401"
+            },
+            "analysis": {
+                "facilities": {"club_type": "Private Clubs"},
+                "season_data": {"season_label": "Year-Round Golf"}
+            }
+        }
+        logger.warning("Using example lead data - no lead_data provided")
 
     # Start the background scheduler
     scheduler = BackgroundScheduler()
     scheduler.start()
 
     now = datetime.datetime.now()
-    sender = "me"                   # 'me' means the authenticated Gmail user
-    recipient = "someone@example.com"
-    hubspot_contact_id = "255401"   # Example contact ID in HubSpot
+    sender = "me"  # 'me' means the authenticated Gmail user
+    recipient = lead_data["properties"].get("email", "someone@example.com")
+    hubspot_contact_id = lead_data["properties"].get("hs_object_id", "255401")
 
     # Schedule each step for future sending
     for step in OUTREACH_SCHEDULE:
@@ -103,7 +172,7 @@ def main():
             'date',
             run_date=run_time,
             id=job_id,
-            args=[step, sender, recipient, hubspot_contact_id]
+            args=[step, sender, recipient, hubspot_contact_id, lead_data]
         )
         logger.info(f"Scheduled job '{job_id}' for {run_time}")
 

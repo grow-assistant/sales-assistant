@@ -27,8 +27,8 @@ def parse_subject_and_body(raw_text: str) -> tuple[str, str]:
 
 def generate_followup_email_xai(lead_id: int, sequence_num: int):
     """
-    For a given lead and sequence number (e.g., 2 or 3),
-    calls xAI to generate a personalized follow-up email,
+    For a given lead and sequence number (0=initial, 1=day3, 2=day7, 3=day14),
+    calls xAI to generate a personalized follow-up email based on lead role and club type,
     then updates the followups table with the resulting subject & body.
     """
     conn = get_db_connection()
@@ -46,11 +46,14 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
     }.get(sequence_num, "This is a follow-up email. Be professional and concise.")
 
     user_prompt = f"""
-    The lead's name is {lead['first_name']} {lead['last_name']}, 
+    The lead's name is {lead['first_name']} {lead['last_name']},
     role is {lead['role']}, at {lead.get('club_name', 'their club')}.
+    Club type: {lead.get('club_type', 'golf club')}
 
     {follow_up_context}
     Assume they have not responded to our previous outreach about Swoop Golf's on-demand F&B platform.
+    
+    Note: Customize the message based on their role ({lead['role']}) and club type ({lead.get('club_type', 'golf club')}).
 
     Requirements:
     1. Provide a concise subject line.

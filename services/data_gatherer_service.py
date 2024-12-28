@@ -80,6 +80,21 @@ class DataGathererService:
         club_name = company_props.get("name", "")
         news_result = self.gather_club_news(club_name)  # Get news once
         
+        # Check for missing critical properties and set defaults
+        jobtitle = contact_props.get("jobtitle", "")
+        if not jobtitle:
+            jobtitle = "General Manager"  # Default value
+            logger.warning(
+                "Missing jobtitle for contact, using default",
+                extra={
+                    "contact_id": contact_id,
+                    "email": lead_email,
+                    "default_value": jobtitle,
+                    "correlation_id": correlation_id
+                }
+            )
+            contact_props["jobtitle"] = jobtitle
+
         # Build partial lead_sheet
         lead_sheet = {
             "metadata": {
@@ -385,8 +400,20 @@ class DataGathererService:
                 }
             )
 
+            # Default to "Public Courses" if no specific type is determined
+            club_type = "Public Courses"
+            logger.info(
+                "Using default club type",
+                extra={
+                    "company": company_name,
+                    "default_club_type": club_type,
+                    "correlation_id": correlation_id
+                }
+            )
+            
             return {
                 "response": response,
+                "club_type": club_type,
                 "status": "success"
             }
 
@@ -405,6 +432,7 @@ class DataGathererService:
             )
             return {
                 "response": "",
+                "club_type": "Public Courses",  # Default even on error
                 "status": "error"
             }
 
