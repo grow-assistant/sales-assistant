@@ -10,6 +10,7 @@ import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from utils.gmail_integration import create_draft
 from utils.logging_setup import logger
+from scheduling.database import get_db_connection
 from utils.timezone_utils import adjust_for_timezone
 from scripts.golf_outreach_strategy import get_best_outreach_window
 
@@ -94,22 +95,84 @@ def schedule_draft(step_details, sender, recipient, hubspot_contact_id, lead_dat
         }
     )
 
-    draft_result = create_draft(
-        sender=sender,
-        to=recipient,
-        subject=step_details["subject"],
-        message_text=step_details["body"]
-    )
-
-    if draft_result["status"] != "ok":
-        logger.error(
-            f"Failed to create draft for step '{step_details['name']}'.",
-            extra={"hubspot_contact_id": hubspot_contact_id}
-        )
-        return
-
-    draft_id = draft_result.get("draft_id")
+    # Calculate base send time
+    base_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
     
+    # Get state from lead data and adjust for timezone
+    state = lead_data.get("company_data", {}).get("state", "")
+    ideal_send_time = adjust_for_timezone(base_send_time, state) if state else base_send_time
+
+    # Get lead_id from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        cursor.execute("SELECT lead_id FROM dbo.leads WHERE email = ?", (recipient,))
+        row = cursor.fetchone()
+        if not row:
+            logger.error("No lead found for email", extra={
+                "email": recipient,
+                "hubspot_contact_id": hubspot_contact_id
+            })
+            return
+        lead_id = row[0]
+
+        # Create Gmail draft
+        draft_result = create_draft(
+            sender=sender,
+            to=recipient,
+            subject=step_details["subject"],
+            message_text=step_details["body"]
+        )
+
+        if draft_result["status"] != "ok":
+            logger.error(
+                f"Failed to create draft for step '{step_details['name']}'.",
+                extra={
+                    "step_name": step_details["name"],
+                    "hubspot_contact_id": hubspot_contact_id,
+                    "error": draft_result.get("error")
+                }
+            )
+            return
+
+        draft_id = draft_result.get("draft_id")
+
+        # Save to emails table
+        sequence_num = next((i for i, step in enumerate(OUTREACH_SCHEDULE) if step["name"] == step_details["name"]), None)
+        cursor.execute("""
+            INSERT INTO dbo.emails (
+                lead_id, subject, body, status,
+                scheduled_send_date, sequence_num, draft_id,
+                created_at
+            ) VALUES (?, ?, ?, 'pending', ?, ?, ?, GETDATE())
+        """, (
+            lead_id,
+            step_details["subject"],
+            step_details["body"],
+            ideal_send_time,
+            sequence_num,
+            draft_id
+        ))
+        conn.commit()
+        
+        logger.info("Email saved to database", extra={
+            "lead_id": lead_id,
+            "email": recipient,
+            "step_name": step_details["name"],
+            "sequence_num": sequence_num,
+            "scheduled_send_date": str(ideal_send_time)
+        })
+
+    except Exception as e:
+        logger.error("Error saving email to database", extra={
+            "error": str(e),
+            "email": recipient,
+            "step_name": step_details["name"]
+        })
+        conn.rollback()
+    finally:
+        conn.close()
+        
     # Calculate base send time
     base_send_time = datetime.datetime.now() + datetime.timedelta(days=step_details["days_from_now"])
     

@@ -2,6 +2,7 @@
 
 from scheduling.database import get_db_connection
 from utils.xai_integration import _send_xai_request
+from utils.logging_setup import logger
 import re
 
 def parse_subject_and_body(raw_text: str) -> tuple[str, str]:
@@ -80,10 +81,17 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
     xai_response = _send_xai_request(payload)
     subject, body = parse_subject_and_body(xai_response)
 
+    # Update email content and status
     conn.execute("""
-        UPDATE followups
-        SET subject = ?, body = ?
+        UPDATE dbo.emails
+        SET subject = ?, body = ?, status = 'generated'
         WHERE lead_id = ? AND sequence_num = ?
     """, (subject, body, lead_id, sequence_num))
     conn.commit()
+
+    logger.info("Updated email content", extra={
+        "lead_id": lead_id,
+        "sequence_num": sequence_num,
+        "status": "generated"
+    })
     conn.close()
