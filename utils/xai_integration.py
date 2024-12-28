@@ -27,7 +27,12 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
     for attempt in range(max_retries):
         try:
             if DEBUG_MODE:
-                logger.debug(f"xAI request payload={payload}")
+                # Log only the essential parts of the payload
+                logger.debug("xAI request", extra={
+                    "attempt": attempt + 1,
+                    "model": payload.get("model"),
+                    "temperature": payload.get("temperature")
+                })
 
             response = requests.post(
                 XAI_API_URL,
@@ -53,7 +58,11 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
             content = data["choices"][0]["message"]["content"].strip()
 
             if DEBUG_MODE:
-                logger.debug(f"xAI response={content}")
+                # Log only length of response instead of full content
+                logger.debug("xAI response received", extra={
+                    "content_length": len(content),
+                    "attempt": attempt + 1
+                })
             return content
 
         except Exception as e:
@@ -192,7 +201,7 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that provides a brief overview of a club."
+                "content": "You are a helpful assistant that provides a brief overview of a club, it's location, and it's amenities."
             },
             {
                 "role": "user",
@@ -207,6 +216,7 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
         "temperature": 0.0
     }
     response = _send_xai_request(payload)
+
 
     # Cache the response
     _club_info_cache[cache_key] = response
@@ -250,6 +260,7 @@ def personalize_email_with_xai(
             f"Original Body: {body}\n\n"
             f"Context:\n{context}\n"
             "Instructions:\n"
+            "IMPORTANT: YOU MUST FOLLOW ALL RULES BELOW EXACTLY.\n\n"
             "1. Personalize based on verified club context and history.\n"
             "2. Use brief, relevant facility references only if confirmed.\n"
             "3. Write at 6th-8th grade reading level.\n"
@@ -257,7 +268,8 @@ def personalize_email_with_xai(
             "5. Maintain professional but helpful tone.\n"
             "6. Reference previous interactions naturally.\n"
             "7. If lead has replied, reference it carefully.\n"
-            "10. If lead expressed specific concerns in replies, address them.\n"
+            "8. Avoid generic or cliché references (e.g., seasons, local scenery).\n"
+            "9. If lead expressed specific concerns in replies, address them.\n"
             "Format:\n"
             "Subject: [new subject]\n\n"
             "Body:\n[new body]"
@@ -280,14 +292,15 @@ def personalize_email_with_xai(
             ],
             "model": MODEL_NAME,
             "stream": False,
-            "temperature": 0.7
+            "temperature": 0.3
         }
 
         if DEBUG_MODE:
             logger.debug("xAI request payload for personalization", extra={
                 "club_name": club_name,
                 "has_summary": bool(summary),
-                "payload": payload
+                "model": MODEL_NAME,
+                "temperature": ANALYSIS_TEMPERATURE
             })
 
         result = _send_xai_request(payload)

@@ -45,9 +45,6 @@ def create_message(sender, to, subject, message_text):
     message_text = message_text.replace('\r\n', '\n')
     message_text = message_text.replace('\n\n\n', '\n\n')
     
-    logger.debug(f"After normalization:\n{message_text}")
-    logger.debug(f"Normalized length: {len(message_text)}")
-    
     # Create message with explicit content type and encoding
     message = MIMEText(message_text, _subtype='plain', _charset='utf-8')
     message['to'] = to
@@ -69,34 +66,37 @@ def create_message(sender, to, subject, message_text):
 
 
 def create_draft(sender: str, to: str, subject: str, message_text: str) -> dict:
-    """Create a draft in the user's Gmail Drafts folder."""
+    """Creates an email draft in Gmail."""
     try:
-        logger.debug("=== START CREATE DRAFT DEBUG ===")
-        logger.debug(f"Input message text:\n{message_text}")
-        
+        # Get Gmail service
         service = get_gmail_service()
+        
+        # Create the message
         message = create_message(sender, to, subject, message_text)
         
-        # Log the draft request body
-        draft_body = {'message': message}
-        logger.debug(f"Draft request body: {draft_body}")
-        
+        # Single consolidated log for draft creation
+        logger.debug("Creating Gmail draft", extra={
+            "to": to,
+            "subject": subject
+        })
+
+        # Create the draft using service instead of gmail_service
         draft = service.users().drafts().create(
-            userId='me',
-            body=draft_body
+            userId="me",
+            body={"message": message}
         ).execute()
-        
-        if draft.get('id'):
-            logger.debug(f"Draft created with ID: {draft['id']}")
-            logger.debug("=== END CREATE DRAFT DEBUG ===")
-            return {"status": "ok", "draft_id": draft['id']}
-        else:
-            logger.error("No draft ID returned")
-            return {"status": "error", "error": "No draft ID returned"}
-            
+
+        return {
+            "status": "ok",
+            "draft_id": draft.get("id", "")
+        }
+
     except Exception as e:
-        logger.error(f"Draft creation error: {str(e)}")
-        return {"status": "error", "error": str(e)}
+        logger.error(f"Error creating draft: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e)
+        }
 
 
 def send_message(sender, to, subject, message_text):

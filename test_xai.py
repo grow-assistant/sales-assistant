@@ -59,9 +59,9 @@ def main():
     # Test cases
     clubs = [
         {
-            "name": "Starfire Golf Club",
-            "city": "Scottsdale",
-            "state": "AZ"
+            "name": "Beacon Hill Country Club",
+            "city": "Summit",
+            "state": "NJ"
         },
         {
             "name": "Pine Valley Golf Club",

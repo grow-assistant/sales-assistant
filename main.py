@@ -90,7 +90,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         
         prompt = (
             "Please summarize these interactions, focusing on:\n"
-            "1. Most recent email from the lead if there is one\n"
+            "1. Most recent email FROM THE LEADif there is one (note if no emails from lead exist)\n"
             "2. Key points of interest or next steps discussed\n"
             "3. Overall progression of the conversation\n\n"
             "Recent Interactions:\n"
@@ -113,7 +113,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     {"role": "system", "content": "You are a helpful assistant that summarizes business interactions."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.2
+                temperature=0.0
             )
             
             summary = response.choices[0].message.content.strip()
@@ -310,10 +310,6 @@ def main():
                 club_info=club_info_snippet
             )
             
-            logger.debug("xAI response received:")
-            logger.debug(f"Subject: {subject}")
-            logger.debug(f"Full body:\n{body}")
-            
             if not subject.strip():
                 subject = orig_subject
             if not body.strip():
@@ -336,11 +332,16 @@ def main():
                     logger.error(f"Icebreaker generation error: {e}")
                     body = body.replace("[ICEBREAKER]", "")
 
-            logger.debug("Final email content before creating draft:")
-            logger.debug(f"To: {lead_email}")
-            logger.debug(f"Subject: {subject}")
-            logger.debug(f"Body:\n{body}")
-            
+            print("✓ Step 9: Personalized email with xAI\n")
+
+            # Single consolidated log before draft creation
+            logger.debug("Creating email draft", extra={
+                "to": lead_email,
+                "subject": subject,
+                "body": body,
+                "correlation_id": correlation_id
+            })
+
             # Step 10: Create Gmail draft
             draft_result = create_draft(
                 sender="me",
@@ -350,7 +351,10 @@ def main():
             )
             if draft_result["status"] == "ok":
                 if DEBUG_MODE:
-                    logger.debug(f"Gmail draft created: {draft_result.get('draft_id')}")
+                    logger.debug("Gmail draft created successfully", extra={
+                        "draft_id": draft_result.get('draft_id'),
+                        "correlation_id": correlation_id
+                    })
                 else:
                     logger.info("Gmail draft created successfully")
                 print("✓ Step 10: Created Gmail draft\n")
@@ -360,12 +364,6 @@ def main():
         except Exception as e:
             logger.error(f"xAI personalization error: {e}")
             subject, body = orig_subject, orig_body
-
-        logger.debug("Final content after xAI", extra={
-            "subject": subject,
-            "body": body
-        })
-        print("✓ Step 9: Personalized email with xAI\n")
 
     except LeadContextError as e:
         logger.error(f"Failed to prepare lead context: {e}")
