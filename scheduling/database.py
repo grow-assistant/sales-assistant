@@ -183,6 +183,8 @@ def init_db():
             scheduled_send_date DATETIME NULL,
             actual_send_date    DATETIME NULL,
             created_at          DATETIME DEFAULT GETDATE(),
+            sequence_num        INT NULL,        -- tracks follow-up sequence (0=initial, 1=day3, etc.)
+            draft_id            VARCHAR(50),     -- Gmail draft ID for reference
 
             CONSTRAINT FK_emails_leads
                 FOREIGN KEY (lead_id) REFERENCES dbo.leads(lead_id)
