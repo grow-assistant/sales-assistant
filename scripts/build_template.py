@@ -6,6 +6,8 @@ from utils.doc_reader import DocReader
 from utils.logging_setup import logger
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from pathlib import Path
+from config.settings import PROJECT_ROOT
+from services.xai_service import get_xai_response
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -110,79 +112,247 @@ def build_outreach_email(
     profile_type: str,
     last_interaction_days: int,
     placeholders: dict,
-    current_month: int = 3,
-    start_peak_month: int = 4,
-    end_peak_month: int = 7,
-    use_markdown_template: bool = False
+    current_month: int,
+    start_peak_month: int,
+    end_peak_month: int,
+    use_markdown_template: bool = True
 ) -> tuple[str, str]:
     """
-    1) Conditionally pick a subject line
-    2) Optionally load a .md template for the email body
-    3) Insert a season snippet into the body if desired
-    4) Return (subject, body)
+    Builds an outreach email with enhanced error handling and debugging
     """
-    # First, pick the subject line
-    subject_line = pick_subject_line_based_on_lead(
-        profile_type, last_interaction_days, placeholders
-    )
-
-    md_body = ""
-    if use_markdown_template:
-        # Attempt to match a .md file based on profile_type
-        template_map = {
-            "general_manager": "templates/gm_initial_outreach.md",
-            "fnb_manager": "templates/fnb_initial_outreach.md",
-            "golf_ops": "templates/golf_ops_initial_outreach.md",
-            # NEW: Provide a fallback path for unrecognized roles
-            "fallback": "templates/fallback.md"
-        }
-        file_path = template_map.get(profile_type)
-        if file_path:
-            reader = DocReader()
-            logger.debug(f"Attempting to load markdown template: {file_path}")
-            md_content = reader.read_doc(file_path, fallback_content="")
-            if md_content.strip():
-                md_subject, md_body = extract_subject_and_body(md_content)
-                logger.debug(
-                    "Markdown template loaded successfully.",
-                    extra={
-                        "parsed_subject": md_subject.strip(),
-                        "body_length": len(md_body)
-                    }
-                )
-            else:
-                logger.warning(
-                    f"No content found in {file_path}. Using fallback body..."
-                )
-        else:
-            logger.warning(
-                f"No .md file mapped for profile_type='{profile_type}'. Using fallback body..."
-            )
-    else:
-        logger.debug("use_markdown_template=False, using inline fallback body.")
-
-    # If we couldn't load a .md body, use an inline fallback
-    if not md_body.strip():
-        logger.warning("Markdown body is empty. Using default fallback body.")
-        md_body = (
-            "Hey [FirstName],\n\n"
-            "{SEASON_VARIATION} I'd like to discuss how Swoop can significantly "
-            "enhance your club's operational efficiency. Our solutions are designed to:\n\n"
-            "- Automate booking and scheduling to reduce administrative workload.\n"
-            "- Improve member engagement through personalized communications.\n"
-            "- Optimize resource management for better cost control.\n\n"
-            "Could we schedule a brief call this week to explore how these benefits "
-            "could directly address your club's specific needs?\n\n"
-            "Best,\n[YourName]"
+    try:
+        # Log input parameters for debugging
+        logger.debug(
+            "Building outreach email",
+            extra={
+                'profile_type': profile_type,
+                'placeholders': placeholders,
+                'template_used': use_markdown_template
+            }
         )
+        
+        template_dir = PROJECT_ROOT / 'docs' / 'templates'
+        template_map = {
+            'general_manager': 'general_manager_initial_outreach.md',
+            'food_beverage': 'fb_manager_initial_outreach.md',
+            'golf_professional': 'golf_ops_initial_outreach.md',
+            'owner': 'owner_initial_outreach.md',
+            'membership': 'membership_director_initial_outreach.md'
+        }
+        
+        template_file = template_map.get(profile_type, 'general_manager_initial_outreach.md')
+        template_path = template_dir / template_file
+        
+        # Log template selection
+        logger.debug(f"Selected template: {template_path}")
+        
+        if template_path.exists():
+            with open(template_path, 'r', encoding='utf-8') as f:
+                template_content = f.read()
+                logger.debug(f"Template loaded, length: {len(template_content)}")
+        else:
+            logger.warning(f"Template not found: {template_path}, using fallback")
+            template_content = get_fallback_template()
+        
+        # Parse template with error tracking
+        try:
+            template_data = parse_template(template_content)
+            subject = template_data['subject']
+            body = template_data['body']
+        except Exception as e:
+            logger.error(f"Template parsing failed: {str(e)}")
+            raise
+        
+        # Track placeholder replacements
+        replacement_log = []
+        
+        # Replace placeholders with logging
+        for key, value in placeholders.items():
+            if value is None:
+                logger.warning(f"Missing value for placeholder: {key}")
+                value = ''
+            
+            # Track replacements for debugging
+            if f'[{key}]' in subject or f'[{key}]' in body:
+                replacement_log.append(f"Replaced [{key}] with '{value}'")
+            
+            subject = subject.replace(f'[{key}]', str(value))
+            body = body.replace(f'[{key}]', str(value))
+            
+            if key == 'SEASON_VARIATION':
+                body = body.replace('{SEASON_VARIATION}', str(value))
+                body = body.replace('[SEASON_VARIATION]', str(value))
+        
+        # Log all replacements made
+        if replacement_log:
+            logger.debug("Placeholder replacements: " + "; ".join(replacement_log))
+        
+        # Handle icebreaker with detailed logging
+        if '[ICEBREAKER]' in body:
+            try:
+                icebreaker = get_xai_icebreaker(
+                    placeholders.get('ClubName', ''),
+                    placeholders.get('FirstName', '')
+                )
+                if icebreaker:
+                    logger.debug(f"Using xAI icebreaker: {icebreaker}")
+                    body = body.replace('[ICEBREAKER]', icebreaker)
+                else:
+                    logger.warning("Using fallback icebreaker")
+                    body = body.replace('[ICEBREAKER]', "I hope this email finds you well.")
+            except Exception as e:
+                logger.error(f"Icebreaker generation failed: {str(e)}")
+                body = body.replace('[ICEBREAKER]', "I hope this email finds you well.")
 
-    # Replace placeholders in the body
-    for key, val in placeholders.items():
-        md_body = md_body.replace(f"[{key}]", str(val))
+        return subject, body
 
-    # Insert the season snippet
-    season_key = get_season_variation_key(current_month, start_peak_month, end_peak_month)
-    snippet = pick_season_snippet(season_key)
-    final_body = md_body.replace("{SEASON_VARIATION}", snippet)
+    except Exception as e:
+        logger.error(
+            "Email building failed",
+            extra={
+                'error': str(e),
+                'profile_type': profile_type,
+                'template_file': template_file if 'template_file' in locals() else None
+            }
+        )
+        return get_fallback_template().split('---\n', 1)
 
-    return subject_line, final_body
+def get_fallback_template() -> str:
+    """Returns a basic fallback template if all other templates fail."""
+    return """Connecting About Club Services
+---
+Hi [FirstName],
+
+I wanted to reach out about how we're helping clubs like [ClubName] enhance their member experience through our comprehensive platform.
+
+Would you be open to a brief conversation to explore if our solution might be a good fit for your needs?
+
+Best regards,
+[YourName]
+Swoop Golf
+480-225-9702
+swoopgolf.com"""
+
+def validate_template(template_content):
+    """Validate template format and structure"""
+    if not template_content:
+        raise ValueError("Template content cannot be empty")
+    
+    # Basic validation that template has some content
+    lines = template_content.strip().split('\n')
+    if len(lines) < 2:  # At least need greeting and body
+        raise ValueError("Template must have sufficient content")
+    
+    return True
+
+def build_template(template_path):
+    try:
+        with open(template_path, 'r') as f:
+            template_content = f.read()
+            
+        # Validate template before processing
+        validate_template(template_content)
+        
+        # Rest of the template building logic...
+        # ...
+    except Exception as e:
+        logger.error(f"Error building template from {template_path}: {str(e)}")
+        raise
+
+def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
+    """
+    Get personalized icebreaker from xAI with proper error handling and debugging
+    """
+    try:
+        # Log the request parameters
+        logger.debug(f"Requesting xAI icebreaker for club: {club_name}, recipient: {recipient_name}")
+        
+        # Add timeout to prevent hanging
+        response = get_xai_response(club_name, recipient_name, timeout=10)
+        
+        # Log raw response for debugging
+        logger.debug(f"Raw xAI response: {response}")
+        
+        # Validate response format
+        if not response:
+            raise ValueError("Empty response from xAI service")
+            
+        if not isinstance(response, str):
+            logger.debug(f"Unexpected response type: {type(response)}")
+            raise ValueError(f"Invalid response type: {type(response)}")
+        
+        # Clean and validate the response
+        cleaned_response = response.strip()
+        
+        # Log cleaned response for debugging
+        logger.debug(f"Cleaned response: {cleaned_response}")
+        
+        if len(cleaned_response) < 10:
+            raise ValueError(f"Response too short ({len(cleaned_response)} chars)")
+            
+        # Additional validation for common issues
+        if '[' in cleaned_response or ']' in cleaned_response:
+            logger.warning("Response contains unresolved template variables")
+        
+        if cleaned_response.lower().startswith(('hi', 'hello', 'dear')):
+            logger.warning("Response appears to be a full greeting instead of an icebreaker")
+            
+        return cleaned_response
+        
+    except Exception as e:
+        logger.warning(
+            "Failed to get xAI icebreaker",
+            extra={
+                'error': str(e),
+                'club_name': club_name,
+                'recipient_name': recipient_name
+            }
+        )
+        return None  # Will trigger fallback in build_outreach_email
+
+def parse_template(template_content):
+    """Parse template content without requiring YAML frontmatter"""
+    lines = template_content.strip().split('\n')
+    
+    # Initialize template parts
+    template_body = []
+    subject = None
+    
+    for line in lines:
+        # Look for subject in first few lines if not found yet
+        if not subject and line.startswith('subject:'):
+            subject = line.replace('subject:', '').strip()
+            continue
+        template_body.append(line)
+    
+    # If no explicit subject found, use a default or first line
+    if not subject:
+        subject = "Quick update from Swoop Golf"
+    
+    return {
+        'subject': subject,
+        'body': '\n'.join(template_body)
+    }
+
+def build_email(template_path, parameters):
+    """Build email from template and parameters"""
+    with open(template_path, 'r') as f:
+        template_content = f.read()
+    
+    template_data = parse_template(template_content)
+    
+    # Replace parameters in both subject and body
+    subject = template_data['subject']
+    body = template_data['body']
+    
+    for key, value in parameters.items():
+        subject = subject.replace(f'[{key}]', str(value))
+        body = body.replace(f'[{key}]', str(value))
+        # Handle season variation differently since it uses curly braces
+        if key == 'SEASON_VARIATION':
+            body = body.replace('{SEASON_VARIATION}', str(value))
+    
+    return {
+        'subject': subject,
+        'body': body
+    }

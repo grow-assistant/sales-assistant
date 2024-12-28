@@ -8,6 +8,9 @@ from pathlib import Path
 # Load environment variables
 load_dotenv()
 
+# Project Root - this should be at the top level of your settings
+PROJECT_ROOT = Path(__file__).parent.parent
+
 class EnvironmentVariableError(Exception):
     """Custom exception for environment variable related errors."""
     pass
@@ -99,9 +102,6 @@ CACHE_TTL = get_env_var("CACHE_TTL", default=3600, var_type=int)  # 1 hour defau
 # Logging Configuration
 LOG_LEVEL = get_env_var("LOG_LEVEL", default="INFO")
 
-# Project Root
-PROJECT_ROOT = Path(__file__).parent.parent
-
 # API Headers
 HEADERS: Dict[str, str] = {
     "Authorization": f"Bearer {HUBSPOT_API_KEY}",
@@ -123,6 +123,7 @@ API_ENDPOINTS: Dict[str, str] = {
 
 # Export all settings
 __all__ = [
+    'PROJECT_ROOT',  # Add PROJECT_ROOT to exports
     'DEV_MODE',
     'DEBUG_MODE',
     'OPENAI_API_KEY',
@@ -152,7 +153,6 @@ __all__ = [
     'CACHE_ENABLED',
     'CACHE_TTL',
     'LOG_LEVEL',
-    'PROJECT_ROOT',
     'HEADERS',
     'API_KEYS',
     'API_ENDPOINTS',
@@ -162,3 +162,7 @@ __all__ = [
 # Log configuration status
 if DEV_MODE:
     logger.warning("Running in DEVELOPMENT mode with dummy API keys")
+
+# Add debug logging for PROJECT_ROOT
+if DEBUG_MODE:
+    logger.debug(f"PROJECT_ROOT set to: {PROJECT_ROOT}")

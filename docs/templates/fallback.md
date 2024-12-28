@@ -1,21 +1,16 @@
-# Fallback Template
-
-## Subject
-Enhancing [ClubName] – Modern Solutions
-
-## Body
 Hey [FirstName],
 
 [ICEBREAKER]
 
-{SEASON_VARIATION} We’ve transformed our platform into a comprehensive club concierge solution—covering on-course and poolside F&B, to-go ordering, and more. It’s all about making member service faster and more convenient, without adding extra overhead.
+[SEASON_VARIATION], Swoop Golf has evolved beyond a golf-only service into a full club concierge platform—managing poolside F&B, on-course deliveries, and to-go orders. Our goal is to enhance efficiency and keep rounds flowing smoothly without disrupting play.
 
-We’re seeking a few clubs to partner with at no cost for the upcoming season, to refine a platform that truly meets your needs. If you’re open to it, I can share how our current partners have grown revenue and improved the overall member experience.
+We’re inviting 2–3 clubs to join us at no cost for 2025, to ensure we’re truly meeting your needs. For instance, at Pinetree Country Club, this approach helped reduce average order times by 40%, keeping players happier and minimizing course slowdowns.
 
-Would you be up for a brief conversation to see if this might fit [ClubName]?
+Interested in a quick chat on how this might work for [ClubName]? We’d love to share how Swoop can elevate your golfers’ experience.
 
 Cheers,
 Ty
-Swoop Golf
-480-225-9702
+
+Swoop Golf  
+480-225-9702  
 swoopgolf.com

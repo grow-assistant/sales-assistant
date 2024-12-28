@@ -76,7 +76,7 @@ class LeadsService:
         )
 
         # Get template content
-        template_path = f"docs/templates/{filename_job_title}_initial_outreach.md"
+        template_path = f"templates/{filename_job_title}_initial_outreach.md"
         try:
             template_content = read_doc(template_path)
             if isinstance(template_content, str):

@@ -1,31 +1,36 @@
 # scripts/job_title_categories.py
 
-def categorize_job_title(job_title_str: str) -> str:
+def categorize_job_title(title: str) -> str:
     """
-    Map a raw job title to a simplified category string,
-    which we then use to pick an outreach email template.
+    Categorizes job titles into standardized roles for template selection.
+    
+    Args:
+        title: The job title string to categorize
+        
+    Returns:
+        str: Standardized role category (e.g., 'general_manager', 'food_beverage', etc.)
     """
-    title = (job_title_str or "").lower().strip()
-
-    # 1) Food & Beverage
-    if any(keyword in title for keyword in ["food", "f&b", "beverage"]):
-        return "fnb_manager"
+    title = title.lower().strip()
     
-    # 2) Golf Operations
-    if any(keyword in title for keyword in ["golf", "director of golf", "head golf professional"]):
-        return "golf_ops"
-    
-    # 3) General Manager/COO (catch “Manager,” “GM,” “COO,” “Assistant General Manager,” etc.)
-    if "manager" in title or "gm" in title or "coo" in title:
-        return "general_manager"
-    
-    # 4) Executive or Owner (CEO, President, Owner, Founder, CFO, etc.)
-    if any(keyword in title for keyword in [
-        "owner", "president", "ceo", "chief executive",
-        "chief financial", "cfo", "founder", "vice president",
-        "partner", "chief revenue officer"
-    ]):
-        return "executive_or_owner"
-
-    # 5) Fallback / Default
-    return "fallback"
+    # General Manager / Director Categories
+    if any(term in title for term in ['general manager', 'gm', 'club manager', 'director of operations']):
+        return 'general_manager'
+        
+    # F&B Categories
+    if any(term in title for term in ['f&b', 'food', 'beverage', 'restaurant', 'dining', 'hospitality']):
+        return 'food_beverage'
+        
+    # Golf Professional Categories
+    if any(term in title for term in ['golf pro', 'golf professional', 'head pro', 'director of golf']):
+        return 'golf_professional'
+        
+    # Owner/President Categories
+    if any(term in title for term in ['owner', 'president', 'ceo', 'chief executive']):
+        return 'owner'
+        
+    # Membership Categories
+    if any(term in title for term in ['membership', 'member services']):
+        return 'membership'
+        
+    # Default to general manager template if unknown
+    return 'general_manager'

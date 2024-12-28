@@ -1,6 +1,7 @@
 import sys
 import logging
 import datetime
+from pathlib import Path
 
 from utils.logging_setup import logger
 from utils.exceptions import LeadContextError
@@ -11,7 +12,7 @@ from utils.xai_integration import (
 from utils.gmail_integration import create_draft
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
-from config.settings import DEBUG_MODE, HUBSPOT_API_KEY
+from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT
 from scheduling.extended_lead_storage import upsert_full_lead
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
@@ -19,6 +20,7 @@ from services.leads_service import LeadsService
 from services.data_gatherer_service import DataGathererService
 import openai
 from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
+
 
 # Initialize services
 data_gatherer = DataGathererService()
@@ -31,78 +33,87 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
     """
     Collects all prior emails and notes from the lead_sheet,
     then sends them to OpenAI to request a concise summary.
-
-    The summary should identify:
-      - How many times the lead responded
-      - Where the conversation left off
-      - Overall tone and progress of the interactions
-
-    :param lead_sheet: dict containing 'lead_data', which has 'emails' and 'notes'
-    :return: str summary from OpenAI or an error message
     """
-    import openai
-    from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
-
-    # 1) Grab prior emails and notes from the lead_sheet
-    lead_data = lead_sheet.get("lead_data", {})
-    emails = lead_data.get("emails", [])
-    notes = lead_data.get("notes", [])
-
-    # If there's truly no data, return early
-    if not emails and not notes:
-        return "No prior emails or notes found."
-
-    # 2) Compile a single text block of the conversation history
-    compiled_history = "=== PRIOR EMAILS ===\n"
-    for e in emails:
-        subject = e.get("subject", "(No Subject)")
-        body_text = e.get("body_text", "(No Body)").strip()
-        timestamp = e.get("timestamp", "Unknown time")
-        direction = e.get("direction", "")
-        compiled_history += (
-            f"[{timestamp} | direction={direction.upper()}]\n"
-            f"Subject: {subject}\n"
-            f"{body_text}\n\n"
-        )
-
-    compiled_history += "=== NOTES ===\n"
-    for n in notes:
-        note_body = n.get("body", "").strip()
-        note_time = n.get("timestamp", "Unknown time")
-        compiled_history += (
-            f"[{note_time}]\n"
-            f"{note_body}\n\n"
-        )
-
-    # 3) Build the prompt for OpenAI
-    system_prompt = {
-        "role": "system",
-        "content": "You are a helpful assistant that summarizes a lead's interaction history."
-    }
-    user_prompt = {
-        "role": "user",
-        "content": (
-            "Below is all the historical emails and notes with a lead:\n\n"
-            f"{compiled_history}\n\n"
-            "Create a summary starting from the most recent interactions, moving backward. "
-            "One Paragraph max. Condense older details more than recent ones. "
-            "Exclude specific dates, but note the time elapsed since the lead's last response "
-            "in months or years if you can infer it."
-        )
-    }
-
-    # 4) Call OpenAI to get the summary
-    openai.api_key = OPENAI_API_KEY
     try:
-        response = openai.ChatCompletion.create(
-            model=MODEL_FOR_GENERAL,  # e.g. "gpt-3.5-turbo" or "gpt-4"
-            temperature=DEFAULT_TEMPERATURE,
-            messages=[system_prompt, user_prompt]
+        # 1) Grab prior emails and notes from the lead_sheet
+        lead_data = lead_sheet.get("lead_data", {})
+        emails = lead_data.get("emails", [])
+        notes = lead_data.get("notes", [])
+        
+        # 2) Format the interactions for OpenAI
+        interactions = []
+        
+        # Add emails with proper encoding handling
+        for email in emails:
+            if isinstance(email, dict):
+                date = email.get('date', '')
+                subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
+                body = email.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
+                sender = email.get('from', '').encode('utf-8', errors='ignore').decode('utf-8')
+                
+                # Replace old company name
+                subject = subject.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
+                body = body.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
+                
+                # Clean up newlines and special characters
+                body = body.replace('\r\n', '\n').replace('\r', '\n')
+                
+                interaction = f"Date: {date}\nFrom: {sender}\nSubject: {subject}\nBody: {body}"
+                interactions.append(interaction)
+        
+        # Add notes with proper encoding handling
+        for note in notes:
+            if isinstance(note, dict):
+                date = note.get('date', '')
+                content = note.get('content', '').encode('utf-8', errors='ignore').decode('utf-8')
+                
+                # Replace old company name
+                content = content.replace('Byrdi', 'Swoop').replace('byrdi', 'Swoop')
+                
+                # Clean up newlines and special characters
+                content = content.replace('\r\n', '\n').replace('\r', '\n')
+                
+                interaction = f"Note Date: {date}\nContent: {content}"
+                interactions.append(interaction)
+        
+        if not interactions:
+            return "No prior interactions found."
+        
+        # 3) Create the prompt for OpenAI
+        prompt = (
+            "Please summarize these interactions, focusing on:\n"
+            "- The most recent interaction and its outcome\n"
+            "- Any key points of interest or next steps discussed\n"
+            "- The overall progression of the conversation\n"
+            "- How long it's been since the last interaction\n\n"
+            "Interactions:\n" + "\n\n".join(interactions)
         )
-        summary_text = response["choices"][0]["message"]["content"].strip()
-        return summary_text
+        
+        # 4) Get summary from OpenAI
+        try:
+            openai.api_key = OPENAI_API_KEY
+            response = openai.ChatCompletion.create(
+                model=MODEL_FOR_GENERAL,
+                messages=[
+                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=DEFAULT_TEMPERATURE
+            )
+            
+            summary = response.choices[0].message.content.strip()
+            return summary
+            
+        except Exception as e:
+            logger.error(f"Error getting summary from OpenAI: {str(e)}")
+            return "Error summarizing interactions."
+            
+    except UnicodeEncodeError as e:
+        logger.error(f"Unicode encoding error: {str(e)}")
+        return "Error processing interaction text encoding."
     except Exception as e:
-        return f"Error summarizing lead interactions: {str(e)}"
+        logger.error(f"Error in summarize_lead_interactions: {str(e)}")
+        return "Error processing interactions."
 
 ###############################################################################
 # Main Workflow
@@ -325,5 +336,24 @@ def main():
     except Exception as e:
         logger.error(f"Unexpected error in main: {e}")
 
+def verify_templates():
+    """Verify that required templates exist."""
+    template_dir = PROJECT_ROOT / 'docs' / 'templates'
+    required_templates = [
+        'general_manager_initial_outreach.md',
+        'fb_manager_initial_outreach.md',
+        'fallback.md'
+    ]
+    
+    missing_templates = [
+        template for template in required_templates
+        if not (template_dir / template).exists()
+    ]
+    
+    if missing_templates:
+        logger.warning(f"Missing templates: {missing_templates}")
+
+
 if __name__ == "__main__":
+    verify_templates()
     main()

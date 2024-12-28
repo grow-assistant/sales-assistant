@@ -5,6 +5,7 @@ from utils.logging_setup import logger
 from dotenv import load_dotenv
 from config.settings import DEBUG_MODE
 import json
+import time
 
 load_dotenv()
 
@@ -12,33 +13,51 @@ XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
 XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
 MODEL_NAME = os.getenv("XAI_MODEL", "grok-2-1212")
 
-def _send_xai_request(payload: dict) -> str:
+# Add a simple cache
+_news_cache = {}
+
+def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1) -> str:
     """
-    Sends request to xAI API and returns response content or empty string on error.
+    Sends request to xAI API with retry logic.
     """
-    if DEBUG_MODE:
-        logger.debug(f"xAI request payload={payload}")
-    try:
-        response = requests.post(
-            XAI_API_URL,
-            headers={
-                "Content-Type": "application/json",
-                "Authorization": XAI_BEARER_TOKEN
-            },
-            json=payload,
-            timeout=15
-        )
-        if response.status_code != 200:
-            logger.error(f"xAI API error ({response.status_code}): {response.text}")
-            return ""
-        data = response.json()
-        content = data["choices"][0]["message"]["content"].strip()
-        if DEBUG_MODE:
-            logger.debug(f"xAI response={content}")
-        return content
-    except Exception as e:
-        logger.error(f"Error in xAI request: {str(e)}")
-        return ""
+    for attempt in range(max_retries):
+        try:
+            if DEBUG_MODE:
+                logger.debug(f"xAI request payload={payload}")
+            
+            response = requests.post(
+                XAI_API_URL,
+                headers={
+                    "Content-Type": "application/json",
+                    "Authorization": XAI_BEARER_TOKEN
+                },
+                json=payload,
+                timeout=15
+            )
+            
+            if response.status_code == 429:  # Rate limit
+                wait_time = retry_delay * (attempt + 1)  # Exponential backoff
+                logger.warning(f"Rate limit hit, waiting {wait_time}s before retry")
+                time.sleep(wait_time)
+                continue
+                
+            if response.status_code != 200:
+                logger.error(f"xAI API error ({response.status_code}): {response.text}")
+                return ""
+                
+            data = response.json()
+            content = data["choices"][0]["message"]["content"].strip()
+            
+            if DEBUG_MODE:
+                logger.debug(f"xAI response={content}")
+            return content
+            
+        except Exception as e:
+            logger.error(f"Error in xAI request (attempt {attempt + 1}): {str(e)}")
+            if attempt < max_retries - 1:  # Don't sleep on last attempt
+                time.sleep(retry_delay)
+            
+    return ""  # Return empty string if all retries fail
 
 ##############################################################################
 # News Search + Icebreaker
@@ -46,13 +65,16 @@ def _send_xai_request(payload: dict) -> str:
 
 def xai_news_search(club_name: str) -> str:
     """
-    Checks if a club is in the news; returns a summary or 
-    indicates 'has not been in the news.'
+    Checks if a club is in the news with caching
     """
     if not club_name.strip():
-        if DEBUG_MODE:
-            logger.debug("Empty club_name passed to xai_news_search; returning blank.")
         return ""
+        
+    # Check cache first
+    if club_name in _news_cache:
+        if DEBUG_MODE:
+            logger.debug(f"Using cached news result for {club_name}")
+        return _news_cache[club_name]
 
     payload = {
         "messages": [
@@ -72,7 +94,23 @@ def xai_news_search(club_name: str) -> str:
         "stream": False,
         "temperature": 0
     }
-    return _send_xai_request(payload)
+    
+    # Get the raw response from xAI
+    response = _send_xai_request(payload)
+    
+    # Cache the response
+    _news_cache[club_name] = response
+    
+    # Clean up awkward grammar in the response
+    if response:
+        # Fix the "Has [club] has not been" pattern
+        if response.startswith("Has ") and " has not been in the news" in response:
+            response = response.replace("Has ", "")
+        
+        # Fix any double "has" instances
+        response = response.replace(" has has ", " has ")
+    
+    return response
 
 def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
     """
@@ -131,24 +169,23 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
             {
                 "role": "system",
                 "content": (
-                    "You are a helpful assistant that provides a brief overview "
-                    "of a club's location and amenities."
+                    "You are a helpful assistant that provides a brief overview of a club's location and amenities."
                 )
             },
             {
                 "role": "user",
                 "content": (
-                    f"Please provide a concise overview about {club_name} in {loc_str}, "
-                    f"highlighting amenities like {am_str}. Only provide one short paragraph."
+                    f"Please provide a concise overview about {club_name} in {loc_str}. "
+                    f"Is it private or public? Keep it to under 3 sentences."
                 )
             }
         ],
         "model": MODEL_NAME,
         "stream": False,
-        "temperature": 0.5
+        "temperature": 0.0
     }
     return _send_xai_request(payload)
-
+    
 ##############################################################################
 # Personalize Email with Additional Club Info
 ##############################################################################
@@ -281,7 +318,7 @@ def personalize_email_with_xai(
 
 def _parse_xai_response(response: str) -> Tuple[str, str]:
     """
-    Parses the xAI response into subject and body.
+    Parses the xAI response into subject and body with improved robustness.
     
     Args:
         response: Raw response from xAI
@@ -290,27 +327,56 @@ def _parse_xai_response(response: str) -> Tuple[str, str]:
         Tuple[str, str]: Parsed subject and body
     """
     try:
+        # Split response into lines
         lines = response.split('\n')
-        new_subject = ""
-        new_body = []
-        in_subject = False
+        subject = ""
+        body_lines = []
         in_body = False
         
-        for line in lines:
+        # Find subject line
+        for i, line in enumerate(lines):
+            line = line.strip()
             if line.lower().startswith('subject:'):
-                in_subject = True
-                in_body = False
-                new_subject = line.split(':', 1)[1].strip()
-            elif line.lower().startswith('body:'):
-                in_subject = False
+                subject = line.split(':', 1)[1].strip()
+                # Skip this line and start body from next line
                 in_body = True
-            elif in_body:
-                new_body.append(line)
-                
-        return new_subject, '\n'.join(new_body).strip()
+                continue
+            
+            if in_body:
+                # Skip empty lines at the start of body
+                if not line and not body_lines:
+                    continue
+                body_lines.append(lines[i])
+        
+        # If no explicit subject found, try to find it in the first non-empty line
+        if not subject:
+            for line in lines:
+                if line.strip():
+                    subject = line.strip()
+                    break
+        
+        # Join body lines, removing signature if present
+        body = '\n'.join(body_lines)
+        
+        # Clean up common signatures
+        signatures = ['Cheers,', 'Best,', 'Swoop Golf', '480-225-9702', 'swoopgolf.com']
+        for sig in signatures:
+            if sig in body:
+                body = body.split(sig)[0].strip()
+        
+        # Final cleanup
+        body = body.strip()
+        subject = subject.strip()
+        
+        if not subject or not body:
+            raise ValueError("Failed to parse subject or body")
+            
+        return subject, body
         
     except Exception as e:
-        logger.error(f"Error parsing xAI response: {str(e)}")
+        logger.error(f"Error parsing xAI response: {str(e)}", extra={
+            "raw_response": response
+        })
         return "", ""
 
 ##############################################################################
