@@ -7,7 +7,7 @@ from utils.logging_setup import logger
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from pathlib import Path
 from config.settings import PROJECT_ROOT
-from utils.xai_integration import get_xai_icebreaker
+from utils.xai_integration import _send_xai_request
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -186,23 +186,9 @@ def build_outreach_email(
         # Log all replacements made
         if replacement_log:
             logger.debug("Placeholder replacements: " + "; ".join(replacement_log))
-        
-        # Handle icebreaker with detailed logging
-        if '[ICEBREAKER]' in body:
-            try:
-                icebreaker = get_xai_icebreaker(
-                    placeholders.get('ClubName', ''),
-                    placeholders.get('FirstName', '')
-                )
-                if icebreaker:
-                    logger.debug(f"Using xAI icebreaker: {icebreaker}")
-                    body = body.replace('[ICEBREAKER]', icebreaker)
-                else:
-                    logger.warning("Using fallback icebreaker")
-                    body = body.replace('[ICEBREAKER]', "I hope this email finds you well.")
-            except Exception as e:
-                logger.error(f"Icebreaker generation failed: {str(e)}")
-                body = body.replace('[ICEBREAKER]', "I hope this email finds you well.")
+
+        # Leave [ICEBREAKER] placeholder for later personalization
+        # Remove the icebreaker generation from here
 
         return subject, body
 
@@ -258,6 +244,62 @@ def build_template(template_path):
     except Exception as e:
         logger.error(f"Error building template from {template_path}: {str(e)}")
         raise
+
+def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
+    """
+    Get personalized icebreaker from xAI with proper error handling and debugging
+    """
+    try:
+        # Log the request parameters
+        logger.debug(f"Requesting xAI icebreaker for club: {club_name}, recipient: {recipient_name}")
+        
+        # Create the payload for xAI request
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
+                },
+                {
+                    "role": "user",
+                    "content": f"Create a brief, professional icebreaker for {club_name}. Focus on improving their operations and member experience. Keep it concise."
+                }
+            ],
+            "model": "grok-2-1212",
+            "stream": False,
+            "temperature": 0.1
+        }
+        
+        # Use _send_xai_request directly
+        response = _send_xai_request(payload, timeout=10)
+        
+        # Rest of validation and processing...
+        if not response:
+            raise ValueError("Empty response from xAI service")
+            
+        cleaned_response = response.strip()
+        
+        if len(cleaned_response) < 10:
+            raise ValueError(f"Response too short ({len(cleaned_response)} chars)")
+            
+        if '[' in cleaned_response or ']' in cleaned_response:
+            logger.warning("Response contains unresolved template variables")
+        
+        if cleaned_response.lower().startswith(('hi', 'hello', 'dear')):
+            logger.warning("Response appears to be a full greeting instead of an icebreaker")
+            
+        return cleaned_response
+        
+    except Exception as e:
+        logger.warning(
+            "Failed to get xAI icebreaker",
+            extra={
+                'error': str(e),
+                'club_name': club_name,
+                'recipient_name': recipient_name
+            }
+        )
+        return None
 
 def parse_template(template_content):
     """Parse template content without requiring YAML frontmatter"""

@@ -7,7 +7,8 @@ from utils.logging_setup import logger
 from utils.exceptions import LeadContextError
 from utils.xai_integration import (
     personalize_email_with_xai,
-    _build_icebreaker_from_news
+    _build_icebreaker_from_news,
+    get_default_icebreaker
 )
 from utils.gmail_integration import create_draft
 from scripts.build_template import build_outreach_email
@@ -267,7 +268,15 @@ def main():
             "body_template": body
         })
 
-        if not has_news:
+        try:
+            if has_news and news_result and "has not been in the news" not in news_result.lower():
+                icebreaker = _build_icebreaker_from_news(club_name, news_result)
+                if icebreaker:
+                    body = body.replace("[ICEBREAKER]", icebreaker)
+            else:
+                body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
+        except Exception as e:
+            logger.error(f"Icebreaker generation error: {e}")
             body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
 
         orig_subject, orig_body = subject, body

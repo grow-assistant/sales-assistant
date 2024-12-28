@@ -16,3 +16,7 @@ test_data/
 # IDE specific files
 .vscode/
 .idea/
+
+# Credentials and tokens
+credentials.json
+token.json

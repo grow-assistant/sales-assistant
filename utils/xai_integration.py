@@ -117,36 +117,52 @@ def xai_news_search(club_name: str) -> str:
 
 def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
     """
-    Build a single-sentence icebreaker referencing recent news.
+    Build a single-sentence icebreaker for Swoop outreach.
+    Only used when there IS news to reference.
     """
-    if not club_name.strip() or not news_summary.strip():
-        if DEBUG_MODE:
-            logger.debug("Empty input passed to _build_icebreaker_from_news; returning blank.")
+    # Only generate news-based icebreaker if we have actual news
+    if not club_name.strip() or not news_summary.strip() or "has not been in the news" in news_summary.lower():
         return ""
 
     payload = {
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are a sales copywriter. Create a natural, conversational "
-                    "one-sentence opener mentioning recent club news."
-                )
+                "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
             },
             {
                 "role": "user",
-                "content": (
-                    f"Club: {club_name}\n"
-                    f"News: {news_summary}\n\n"
-                    "Write ONE engaging sentence that naturally references this news. "
-                    "Avoid starting with phrases like 'I saw' or 'I noticed'."
-                )
+                "content": f"Create a brief, natural-sounding icebreaker about {club_name} based on this news: {news_summary}. Keep it concise and professional."
             }
         ],
         "model": MODEL_NAME,
         "stream": False,
-        "temperature": 0.7
+        "temperature": 0.1
     }
+
+    return _send_xai_request(payload)
+
+def get_default_icebreaker(club_name: str) -> str:
+    """
+    Generate a generic icebreaker when no news is available.
+    Used as the default approach.
+    """
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
+            },
+            {
+                "role": "user",
+                "content": f"Create a brief, professional icebreaker for {club_name}. Focus on improving their operations and member experience. Keep it concise."
+            }
+        ],
+        "model": MODEL_NAME,
+        "stream": False,
+        "temperature": 0.1
+    }
+
     return _send_xai_request(payload)
 
 ##############################################################################

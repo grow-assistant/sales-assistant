@@ -76,6 +76,10 @@ class DataGathererService:
         emails = self._hubspot.get_all_emails_for_contact(contact_id)
         notes = self._hubspot.get_all_notes_for_contact(contact_id)
 
+        # Modify this section to avoid duplicate news calls
+        club_name = company_props.get("name", "")
+        news_result = self.gather_club_news(club_name)  # Get news once
+        
         # Build partial lead_sheet
         lead_sheet = {
             "metadata": {
@@ -101,11 +105,21 @@ class DataGathererService:
             },
             "analysis": {
                 "competitor_analysis": self.check_competitor_on_website(company_props.get("website", "")),
-                "research_data": self.market_research(company_props.get("name", "")),
+                "research_data": {  # Modified to use existing news result
+                    "company_overview": news_result,
+                    "recent_news": [{
+                        "title": "Recent News",
+                        "snippet": news_result,
+                        "link": "",
+                        "date": ""
+                    }] if news_result else [],
+                    "status": "success",
+                    "error": ""
+                },
                 "previous_interactions": self.review_previous_interactions(contact_id),
                 "season_data": self.determine_club_season(company_props.get("city", ""), company_props.get("state", "")),
                 "facilities": self.check_facilities(
-                    company_props.get("name", ""),
+                    club_name,
                     company_props.get("city", ""),
                     company_props.get("state", "")
                 )
@@ -396,105 +410,20 @@ class DataGathererService:
 
     def market_research(self, company_name: str) -> Dict[str, Any]:
         """
-        Perform market research for a company using xAI news search.
-        
-        Args:
-            company_name: Name of the company to research
-            
-        Returns:
-            Dictionary containing:
-                - company_overview: str (summary of company news)
-                - recent_news: List[Dict] (list of news articles)
-                - status: str ("success", "error", or "no_data")
-                - error: str (error message if any)
+        This method is now just a wrapper around gather_club_news for backward compatibility
         """
-        correlation_id = f"research_{company_name}"
-        logger.debug("Starting market research", extra={
-            "company": company_name,
-            "correlation_id": correlation_id
-        })
-        
-        try:
-            if not company_name:
-                logger.warning(
-                    "No company name provided for market research",
-                    extra={
-                        "status": "no_data",
-                        "correlation_id": correlation_id
-                    }
-                )
-                return {
-                    "company_overview": "",
-                    "recent_news": [],
-                    "status": "no_data",
-                    "error": "No company name provided"
-                }
-
-            query = f"Has {company_name} been in the news lately? Provide a short summary."
-            logger.debug("Sending xAI news query", extra={
-                "query": query,
-                "company": company_name,
-                "correlation_id": correlation_id
-            })
-            news_response = xai_news_search(query)
-
-            if not news_response:
-                logger.warning(
-                    "Failed to fetch news for company",
-                    extra={
-                        "company": company_name,
-                        "status": "error",
-                        "correlation_id": correlation_id
-                    }
-                )
-                return {
-                    "company_overview": f"Could not fetch recent events for {company_name}",
-                    "recent_news": [],
-                    "status": "error",
-                    "error": "No news data available"
-                }
-
-            logger.info(
-                "Market research completed successfully",
-                extra={
-                    "company": company_name,
-                    "has_news": bool(news_response),
-                    "status": "success",
-                    "response_length": len(news_response) if news_response else 0,
-                    "correlation_id": f"research_{company_name}"
-                }
-            )
-            return {
-                "company_overview": news_response,
-                "recent_news": [
-                    {
-                        "title": "Recent News",
-                        "snippet": news_response,
-                        "link": "",
-                        "date": ""
-                    }
-                ],
-                "status": "success",
-                "error": ""
-            }
-
-        except Exception as e:
-            logger.error(
-                "Error performing market research",
-                extra={
-                    "company": company_name,
-                    "error_type": type(e).__name__,
-                    "error": str(e),
-                    "correlation_id": correlation_id
-                },
-                exc_info=True
-            )
-            return {
-                "company_overview": "",
-                "recent_news": [],
-                "status": "error",
-                "error": f"Error performing market research: {str(e)}"
-            }
+        news_response = self.gather_club_news(company_name)
+        return {
+            "company_overview": news_response,
+            "recent_news": [{
+                "title": "Recent News",
+                "snippet": news_response,
+                "link": "",
+                "date": ""
+            }] if news_response else [],
+            "status": "success",
+            "error": ""
+        }
 
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
