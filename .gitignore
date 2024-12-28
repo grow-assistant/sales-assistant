@@ -1,11 +1,18 @@
-# Directories to ignore (optional)
-other_files/
-test_data/
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
 
-# Ignore dotenv or other environment files
+# Environment files
 .env
 
-# Ignore any private key or credential files
-credentials.json
-token.json
+# Logs
+logs/
+*.log
 
+# Test data
+test_data/
+
+# IDE specific files
+.vscode/
+.idea/
