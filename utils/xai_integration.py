@@ -258,18 +258,19 @@ def personalize_email_with_xai(
         user_content = (
             f"Original Subject: {subject}\n"
             f"Original Body: {body}\n\n"
-            f"Context:\n{context}\n"
+            f"Context:\n{context}\n\n"
             "Instructions:\n"
-            "IMPORTANT: YOU MUST FOLLOW ALL RULES BELOW EXACTLY.\n\n"
-            "1. Personalize based on verified club context and history.\n"
-            "2. Use brief, relevant facility references only if confirmed.\n"
-            "3. Write at 6th-8th grade reading level.\n"
-            "4. Keep paragraphs under 3 sentences.\n"
-            "5. Maintain professional but helpful tone.\n"
-            "6. Reference previous interactions naturally.\n"
-            "7. If lead has replied, reference it carefully.\n"
-            "8. Avoid generic or cliché references (e.g., seasons, local scenery).\n"
-            "9. If lead expressed specific concerns in replies, address them.\n"
+            "IMPORTANT: FOLLOW THESE RULES EXACTLY:\n\n"
+            "1. **Personalize**: Use details from the club's history and context.\n"
+            "2. **Facilities**: Mention only confirmed, relevant details about the club's facilities.\n"
+            "3. **Readability**: Aim for a 6th-8th grade reading level.\n"
+            "4. **Paragraphs**: Keep each paragraph to three sentences or less.\n"
+            "5. **Tone**: Maintain a professional yet helpful tone.\n"
+            "6. **Previous Interactions**: Naturally reference past communications.\n"
+            "7. **Replies**: If the lead has responded, weave those responses into your message.\n"
+            "8. **Avoid Clichés**: Skip generic references like weather or local attractions.\n"
+            "9. **Specific Concerns**: Address any concerns the lead has previously mentioned.\n"
+            "10. **Time References**: Use general terms like 'recently' or 'previously' instead of specific dates.\n\n"
             "Format:\n"
             "Subject: [new subject]\n\n"
             "Body:\n[new body]"
@@ -281,8 +282,8 @@ def personalize_email_with_xai(
                     "role": "system",
                     "content": (
                         "You are an expert at personalizing outreach emails for golf clubs. "
-                        "Maintain a professional yet friendly tone and incorporate relevant context naturally. "
-                        "Never mention unconfirmed facilities."
+                        "Maintain a professional yet friendly tone, integrate context naturally, "
+                        "and never mention unconfirmed facilities."
                     )
                 },
                 {
@@ -292,7 +293,7 @@ def personalize_email_with_xai(
             ],
             "model": MODEL_NAME,
             "stream": False,
-            "temperature": 0.3
+            "temperature": 0.2
         }
 
         if DEBUG_MODE:

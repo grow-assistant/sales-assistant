@@ -49,15 +49,18 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
             if isinstance(email, dict):
                 date = email.get('timestamp', '').split('T')[0]  # Extract just the date
                 subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
-                body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')  # Changed from 'body' to 'body_text'
+                body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')
                 direction = email.get('direction', '')
                 
                 # Only include relevant parts of the email thread
                 body = body.split('On ')[0].strip()  # Take only the most recent part
                 
+                # Add clear indication of email direction
+                email_type = "from the lead" if direction == "INCOMING_EMAIL" else "to the lead"
+                
                 interaction = {
                     'date': date,
-                    'type': 'email',
+                    'type': f'email {email_type}',
                     'direction': direction,
                     'subject': subject,
                     'notes': body[:500]  # Limit length to prevent token overflow
@@ -90,7 +93,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         
         prompt = (
             "Please summarize these interactions, focusing on:\n"
-            "1. Most recent email FROM THE LEADif there is one (note if no emails from lead exist)\n"
+            "1. Most recent email FROM THE LEAD if there is one (note if no emails from lead exist)\n"
             "2. Key points of interest or next steps discussed\n"
             "3. Overall progression of the conversation\n\n"
             "Recent Interactions:\n"
