@@ -12,9 +12,12 @@ load_dotenv()
 XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
 XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
 MODEL_NAME = os.getenv("XAI_MODEL", "grok-2-1212")
+ANALYSIS_TEMPERATURE = float(os.getenv("ANALYSIS_TEMPERATURE", "0.2"))
 
 # Add a simple cache
 _news_cache = {}
+# Add at top with other caches
+_club_info_cache = {}
 
 def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1) -> str:
     """
@@ -153,9 +156,15 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
     """
     Returns a short overview about the club's location and amenities.
-    This is NOT used for icebreakers. We only use its result 
-    to enhance context for final email rewriting.
     """
+    cache_key = f"{club_name}:{location}"
+    
+    # Check cache first
+    if cache_key in _club_info_cache:
+        if DEBUG_MODE:
+            logger.debug(f"Using cached club info for {club_name}")
+        return _club_info_cache[cache_key]
+
     if not club_name.strip():
         if DEBUG_MODE:
             logger.debug("Empty club_name passed to xai_club_info_search; returning blank.")
@@ -184,7 +193,12 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
         "stream": False,
         "temperature": 0.0
     }
-    return _send_xai_request(payload)
+    response = _send_xai_request(payload)
+    
+    # Cache the response
+    _club_info_cache[cache_key] = response
+    
+    return response
     
 ##############################################################################
 # Personalize Email with Additional Club Info
@@ -250,14 +264,12 @@ def personalize_email_with_xai(
             f"Context:\n{context}\n"
             "Instructions:\n"
             "1. Personalize based on verified club context and history.\n"
-            "2. Focus on business value and problem-solving.\n" 
-            "3. Keep core Swoop platform value proposition.\n"
-            "4. Use brief, relevant facility references only if confirmed.\n"
-            "5. Write at 6th-8th grade reading level.\n"
-            "6. Keep paragraphs under 3 sentences.\n"
-            "7. Maintain professional but helpful tone.\n"
-            "8. Reference previous interactions naturally.\n"
-            "9. If lead has replied to previous email, reference it naturally without direct acknowledgment.\n"
+            "2. Use brief, relevant facility references only if confirmed.\n"
+            "3. Write at 6th-8th grade reading level.\n"
+            "4. Keep paragraphs under 3 sentences.\n"
+            "5. Maintain professional but helpful tone.\n"
+            "6. Reference previous interactions naturally.\n"
+            "7. If lead has replied to previous email, reference it naturally without direct acknowledgment.\n"
             "10. If lead expressed specific interests/concerns in reply, address them.\n"
             "Format the response as:\n"
             "Subject: [new subject]\n\n"
@@ -319,12 +331,6 @@ def personalize_email_with_xai(
 def _parse_xai_response(response: str) -> Tuple[str, str]:
     """
     Parses the xAI response into subject and body with improved robustness.
-    
-    Args:
-        response: Raw response from xAI
-        
-    Returns:
-        Tuple[str, str]: Parsed subject and body
     """
     try:
         # Split response into lines
@@ -333,12 +339,15 @@ def _parse_xai_response(response: str) -> Tuple[str, str]:
         body_lines = []
         in_body = False
         
-        # Find subject line
+        # Find subject line and body
         for i, line in enumerate(lines):
             line = line.strip()
             if line.lower().startswith('subject:'):
                 subject = line.split(':', 1)[1].strip()
-                # Skip this line and start body from next line
+                continue
+            
+            # Skip the "Body:" line
+            if line.lower() == 'body:':
                 in_body = True
                 continue
             
@@ -379,58 +388,37 @@ def _parse_xai_response(response: str) -> Tuple[str, str]:
         })
         return "", ""
 
-##############################################################################
-# Facilities Check
-##############################################################################
-
-def xai_facilities_check(club_name: str, city: str, state: str) -> str:
+def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -> str:
     """
-    Checks what facilities a club has with improved accuracy.
+    Get personalized icebreaker from xAI service
     """
-    if not club_name.strip():
-        logger.debug("Empty club_name passed to xai_facilities_check")
-        return ""
+    cache_key = f"icebreaker:{club_name}:{recipient_name}"
+    
+    # Check cache first
+    if cache_key in _news_cache:
+        if DEBUG_MODE:
+            logger.debug(f"Using cached icebreaker for {club_name}")
+        return _news_cache[cache_key]
 
     payload = {
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You are a helpful assistant that provides accurate facility information "
-                    "for golf clubs and country clubs. Only confirm facilities that you are certain exist."
-                    "If you are unsure about any facility, do not mention it."
-                )
+                "content": "You are an expert at creating personalized icebreakers for golf club outreach."
             },
             {
                 "role": "user",
-                "content": (
-                    f"Please provide a concise sentence about {club_name} in {city}, {state}, "
-                    "mentioning only confirmed facilities like the number of holes for the golf course and "
-                    "whether it's public, private, or semi-private. Omit any unconfirmed facilities."
-                )
+                "content": f"Create a brief, natural-sounding icebreaker for {club_name}. Keep it concise and professional."
             }
         ],
         "model": MODEL_NAME,
         "stream": False,
-        "temperature": 0
+        "temperature": ANALYSIS_TEMPERATURE
     }
     
-    try:
-        response = _send_xai_request(payload)
-        if not response:
-            logger.error("Empty response from xAI facilities check", extra={
-                "club_name": club_name,
-                "city": city,
-                "state": state
-            })
-            return "Facility information unavailable"
-            
-        return response
-        
-    except Exception as e:
-        logger.error(f"Error in facilities check: {str(e)}", extra={
-            "club_name": club_name,
-            "city": city,
-            "state": state
-        })
-        return "Facility information unavailable"
+    response = _send_xai_request(payload)
+    
+    # Cache the response
+    _news_cache[cache_key] = response
+    
+    return response

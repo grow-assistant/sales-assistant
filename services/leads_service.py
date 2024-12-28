@@ -37,13 +37,13 @@ class LeadsService:
         """
         self.data_gatherer = data_gatherer_service
 
-    def prepare_lead_context(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
+    def prepare_lead_context(self, lead_email: str, lead_sheet: Dict = None, correlation_id: str = None) -> Dict[str, Any]:
         """
         Prepare lead context for personalization (subject/body).
-        Uses DataGathererService for data retrieval.
         
         Args:
             lead_email: Email address of the lead
+            lead_sheet: Optional pre-gathered lead data
             correlation_id: Optional correlation ID for tracing operations
         """
         if correlation_id is None:
@@ -54,12 +54,14 @@ class LeadsService:
             "correlation_id": correlation_id
         })
         
-        # Get comprehensive lead data from DataGathererService
-        lead_sheet = self.data_gatherer.gather_lead_data(lead_email, correlation_id=correlation_id)
-        if not lead_sheet: 
+        # Use provided lead_sheet or gather new data if none provided
+        if not lead_sheet:
+            lead_sheet = self.data_gatherer.gather_lead_data(lead_email, correlation_id=correlation_id)
+        
+        if not lead_sheet:
             logger.warning("No lead data found", extra={"email": lead_email})
             return {}
-
+        
         # Extract relevant data
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_data.get("company_data", {})

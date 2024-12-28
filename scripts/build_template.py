@@ -7,7 +7,7 @@ from utils.logging_setup import logger
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from pathlib import Path
 from config.settings import PROJECT_ROOT
-from services.xai_service import get_xai_response
+from utils.xai_integration import get_xai_icebreaker
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -258,57 +258,6 @@ def build_template(template_path):
     except Exception as e:
         logger.error(f"Error building template from {template_path}: {str(e)}")
         raise
-
-def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
-    """
-    Get personalized icebreaker from xAI with proper error handling and debugging
-    """
-    try:
-        # Log the request parameters
-        logger.debug(f"Requesting xAI icebreaker for club: {club_name}, recipient: {recipient_name}")
-        
-        # Add timeout to prevent hanging
-        response = get_xai_response(club_name, recipient_name, timeout=10)
-        
-        # Log raw response for debugging
-        logger.debug(f"Raw xAI response: {response}")
-        
-        # Validate response format
-        if not response:
-            raise ValueError("Empty response from xAI service")
-            
-        if not isinstance(response, str):
-            logger.debug(f"Unexpected response type: {type(response)}")
-            raise ValueError(f"Invalid response type: {type(response)}")
-        
-        # Clean and validate the response
-        cleaned_response = response.strip()
-        
-        # Log cleaned response for debugging
-        logger.debug(f"Cleaned response: {cleaned_response}")
-        
-        if len(cleaned_response) < 10:
-            raise ValueError(f"Response too short ({len(cleaned_response)} chars)")
-            
-        # Additional validation for common issues
-        if '[' in cleaned_response or ']' in cleaned_response:
-            logger.warning("Response contains unresolved template variables")
-        
-        if cleaned_response.lower().startswith(('hi', 'hello', 'dear')):
-            logger.warning("Response appears to be a full greeting instead of an icebreaker")
-            
-        return cleaned_response
-        
-    except Exception as e:
-        logger.warning(
-            "Failed to get xAI icebreaker",
-            extra={
-                'error': str(e),
-                'club_name': club_name,
-                'recipient_name': recipient_name
-            }
-        )
-        return None  # Will trigger fallback in build_outreach_email
 
 def parse_template(template_content):
     """Parse template content without requiring YAML frontmatter"""

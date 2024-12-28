@@ -190,7 +190,11 @@ def main():
             return
 
         # Step 4: Prepare lead context
-        lead_context = leads_service.prepare_lead_context(email, correlation_id=correlation_id)
+        lead_context = leads_service.prepare_lead_context(
+            email, 
+            lead_sheet=lead_sheet,
+            correlation_id=correlation_id
+        )
         print("✓ Step 4: Prepared lead context\n")
 
         # Step 5: Extract relevant data
