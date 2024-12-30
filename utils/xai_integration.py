@@ -270,7 +270,7 @@ def personalize_email_with_xai(
             "7. **Replies**: If the lead has responded, weave those responses into your message.\n"
             "8. **Avoid Clichés**: Skip generic references like weather or local attractions.\n"
             "9. **Specific Concerns**: Address any concerns the lead has previously mentioned.\n"
-            "10. **Time References**: Use general terms like 'recently' or 'previously' instead of specific dates.\n\n"
+            "10. **Time References**: Use general terms like 'recently' or 'previously' instead of specific dates or times.\n\n"
             "Format:\n"
             "Subject: [new subject]\n\n"
             "Body:\n[new body]"

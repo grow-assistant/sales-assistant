@@ -8,6 +8,7 @@ from pathlib import Path
 from dateutil.parser import parse as parse_date
 
 from services.hubspot_service import HubspotService
+from utils.exceptions import HubSpotError
 from utils.xai_integration import xai_news_search, xai_club_info_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
@@ -783,37 +784,33 @@ class DataGathererService:
             })
             return default
 
-    def get_club_geography_and_type(self, club_name, city, state):
+    def determine_geography(self, city: str, state: str) -> str:
         """
-        Given a club name, city, and state, returns the club's geography 
-        (e.g., 'Peak Summer Season') and type (e.g., 'Private Club').
+        Public method to determine geography from city and state.
         """
-        # Get company data from the lead sheet
-        company_data = self._hubspot.get_company_data(club_name)
-        company_type = company_data.get("company_type", "").lower()
-        
-        # Determine club type based on HubSpot data
-        if "private" in company_type:
-            club_type = "Private Clubs"
-        elif "semi-private" in company_type:
-            club_type = "Semi-Private Clubs"
-        elif "public" in company_type or "municipal" in company_type:
-            club_type = "Public Clubs"
-        else:
-            # Default to Public if unknown
-            logger.warning(f"Unknown company type '{company_type}' for {club_name}, defaulting to Public Clubs")
-            club_type = "Public Clubs"
-        
-        # Get geography based on season data
-        if state == "AZ":
-            geography = "Year-Round Golf"
-        else:
-            # Use existing season logic
-            geography = self._determine_geography(city, state)
-        
-        return geography, club_type
-    
-    
+        if not city or not state:
+            return "Unknown"
+        return f"{city}, {state}"
+
+    def get_club_geography_and_type(self, club_name: str, city: str, state: str) -> tuple:
+        """Get club geography and type."""
+        try:
+            # Try to get company data from HubSpot
+            company_data = self._hubspot.get_company_data(club_name)
+            geography = self.determine_geography(city, state)
+            
+            # Determine club type from HubSpot data
+            club_type = company_data.get("type", "Public Clubs")
+            if not club_type or club_type.lower() == "unknown":
+                club_type = "Public Clubs"
+                
+            return geography, club_type
+            
+        except HubSpotError:
+            # If company not found in HubSpot, use defaults
+            geography = self.determine_geography(city, state)
+            return geography, "Public Clubs"
+
     def get_club_timezone(self, state):
         """
         Given a club's state, returns the appropriate timezone.

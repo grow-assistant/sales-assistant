@@ -393,7 +393,7 @@ def main():
                 if state == "AZ":
                     geography = "Year-Round Golf"
                 else:
-                    geography = data_gatherer._determine_geography(city, state)
+                    geography = data_gatherer.determine_geography(city, state)
 
             except Exception as e:
                 logger.error(f"Error getting company type from database: {str(e)}")
@@ -644,20 +644,25 @@ def clear_sql_tables():
             'companies'
         ]
         
-        # Disable foreign key checks temporarily
-        cursor.execute("PRAGMA foreign_keys = OFF")
+        # Disable foreign key constraints for SQL Server
+        cursor.execute("ALTER TABLE emails NOCHECK CONSTRAINT ALL")
+        cursor.execute("ALTER TABLE lead_properties NOCHECK CONSTRAINT ALL")
+        cursor.execute("ALTER TABLE company_properties NOCHECK CONSTRAINT ALL")
+        cursor.execute("ALTER TABLE leads NOCHECK CONSTRAINT ALL")
         
         for table in tables:
             try:
-                cursor.execute(f"DELETE FROM {table}")
+                cursor.execute(f"DELETE FROM dbo.{table}")
                 print(f"Cleared table: {table}")
             except Exception as e:
                 print(f"Error clearing table {table}: {e}")
         
-        # Re-enable foreign key checks
-        cursor.execute("PRAGMA foreign_keys = ON")
+        # Re-enable foreign key constraints
+        cursor.execute("ALTER TABLE emails CHECK CONSTRAINT ALL")
+        cursor.execute("ALTER TABLE lead_properties CHECK CONSTRAINT ALL")
+        cursor.execute("ALTER TABLE company_properties CHECK CONSTRAINT ALL")
+        cursor.execute("ALTER TABLE leads CHECK CONSTRAINT ALL")
         
-        # Commit the changes
         conn.commit()
         print("All SQL tables cleared")
         
