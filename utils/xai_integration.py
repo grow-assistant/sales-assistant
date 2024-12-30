@@ -3,6 +3,7 @@
 import os
 import requests
 from typing import Tuple, Dict, Any
+from datetime import datetime
 from utils.logging_setup import logger
 from dotenv import load_dotenv
 from config.settings import DEBUG_MODE
@@ -255,26 +256,29 @@ def personalize_email_with_xai(
             context += f"Lead Interaction Summary: {summary}\n"
 
         # Build user prompt
+        current_date = datetime.now()
         user_content = (
             f"Original Subject: {subject}\n"
             f"Original Body: {body}\n\n"
-            f"Context:\n{context}\n\n"
+            f"Context:\n{context}\n"
+            f"Current Date: {current_date.strftime('%Y-%m-%d')}\n\n"
             "Instructions:\n"
             "IMPORTANT: FOLLOW THESE RULES EXACTLY:\n\n"
             "1. **Personalize**: Use details from the club's history and context.\n"
             "2. **Facilities**: Mention only confirmed, relevant details about the club's facilities.\n"
-            "3. **Readability**: Aim for a 6th-8th grade reading level.\n"
-            "4. **Paragraphs**: Keep each paragraph to three sentences or less.\n"
-            "5. **Tone**: Maintain a professional yet helpful tone.\n"
-            "6. **Previous Interactions**: Naturally reference past communications.\n"
-            "7. **Replies**: If the lead has responded, weave those responses into your message.\n"
-            "8. **Avoid Clichés**: Skip generic references like weather or local attractions.\n"
-            "9. **Specific Concerns**: Address any concerns the lead has previously mentioned.\n"
-            "10. **Time References**: Use general terms like 'recently' or 'previously' instead of specific dates or times.\n\n"
+            "3. **Paragraphs**: Keep each paragraph to three sentences or less, with a maximum of 3 paragraphs total.\n"
+            "4. **Tone**: Maintain a professional yet helpful tone.\n"
+            "5. **Previous Interactions**: Naturally reference past communications relative to today's date.\n"
+            "6. **Replies**: If the lead has responded, weave those responses into your message with appropriate time context.\n"
+            "7. **Avoid Clichés**: Skip generic references like weather or local attractions.\n"
+            "8. **Specific Concerns**: Address any concerns the lead has previously mentioned.\n"
+            "9. **Time References**: Use relative terms like 'last week' or '2 months ago' based on the current date.\n"
+            "10. **Call to Action**: End with a specific request for a meeting call-time, suggesting concrete next steps. Always use the upcoming Friday.\n\n"
             "Format:\n"
             "Subject: [new subject]\n\n"
             "Body:\n[new body]"
         )
+        
 
         payload = {
             "messages": [
@@ -283,7 +287,9 @@ def personalize_email_with_xai(
                     "content": (
                         "You are an expert at personalizing outreach emails for golf clubs. "
                         "Maintain a professional yet friendly tone, integrate context naturally, "
-                        "and never mention unconfirmed facilities."
+                        "and never mention unconfirmed facilities. "
+                        "For readability, aim for a 6th-8th grade reading level, keep each paragraph to three sentences or less, "
+                        "and limit the email to a maximum of three paragraphs."
                     )
                 },
                 {

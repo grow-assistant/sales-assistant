@@ -3,6 +3,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 from contextlib import contextmanager
+from config.settings import DEBUG_MODE
 
 class StepLogger(logging.Logger):
     def step_complete(self, step_number: int, message: str):
@@ -55,18 +56,19 @@ def setup_logging():
 
 logger = setup_logging()
 
-@contextmanager
-def workflow_step(step_number: int, description: str, logger=logger):
-    """Context manager for workflow steps with proper logging"""
-    logger.step_start(step_number, description)
-    try:
-        yield
-        logger.step_complete(step_number, description)
-    except Exception as e:
-        logger.error(f"Step {step_number} failed: {description}", 
-                    extra={"error": str(e)}, 
-                    exc_info=True)
-        raise
+def workflow_step(step_num: int, description: str):
+    """Context manager for workflow steps."""
+    class WorkflowStep:
+        def __enter__(self):
+            logger.debug(f"Starting Step {step_num}: {description}")
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if not exc_type:
+                logger.info(f"✓ Step {step_num}: {description}")
+            return False
+
+    return WorkflowStep()
 
 # Make it available for import
 __all__ = ['logger', 'workflow_step']

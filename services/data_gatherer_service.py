@@ -13,6 +13,8 @@ from utils.xai_integration import xai_news_search, xai_club_info_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
+from utils.formatting_utils import clean_html
+
 # CSV-based Season Data
 CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
 ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_st.csv'
@@ -76,6 +78,21 @@ class DataGathererService:
         # 5) Add calls to fetch emails and notes from HubSpot
         emails = self._hubspot.get_all_emails_for_contact(contact_id)
         notes = self._hubspot.get_all_notes_for_contact(contact_id)
+
+        # Add notes with proper encoding handling
+        for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
+            if isinstance(note, dict):
+                date = note.get('timestamp', '').split('T')[0]
+                raw_content = note.get('body', '')
+                content = clean_html(raw_content)
+                
+                interaction = {
+                    'date': date,
+                    'type': 'note',
+                    'direction': 'internal',
+                    'subject': 'Internal Note',
+                    'notes': content[:1000]  # Limit length to prevent token overflow
+                }
 
         # Modify this section to avoid duplicate news calls
         club_name = company_props.get("name", "")

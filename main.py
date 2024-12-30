@@ -88,7 +88,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     'type': f'email {email_type}',
                     'direction': direction,
                     'subject': subject,
-                    'notes': body[:500]  # Limit length to prevent token overflow
+                    'notes': body[:1000]  # Limit length to prevent token overflow
                 }
                 interactions.append(interaction)
         
@@ -103,7 +103,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     'type': 'note',
                     'direction': 'internal',
                     'subject': 'Internal Note',
-                    'notes': content[:500]  # Limit length to prevent token overflow
+                    'notes': content[:1000]  # Limit length to prevent token overflow
                 }
                 interactions.append(interaction)
         
@@ -113,8 +113,8 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         # Sort all interactions by date
         interactions.sort(key=lambda x: x['date'], reverse=True)
         
-        # Take only the last 3 interactions to keep the context focused
-        recent_interactions = interactions[:5]
+        # Take only the last 10 interactions to keep the context focused
+        recent_interactions = interactions[:10]
         
         prompt = (
             "Please summarize these interactions, focusing on:\n"
@@ -136,15 +136,18 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         try:
             openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(
-                model=MODEL_FOR_GENERAL,  # Use your configured model
+                model=MODEL_FOR_GENERAL,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions."},
+                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions. Anything coming from Ty or Ryan is from Swoop, otherwise it's from the lead."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0
             )
             
             summary = response.choices[0].message.content.strip()
+            # Remove debug logging, keep only essential info
+            if DEBUG_MODE:
+                logger.info(f"Interaction Summary:\n{summary}")
             return summary
             
         except Exception as e:
@@ -414,14 +417,14 @@ def main():
                 best_time = get_best_time(persona)
                 best_days = get_best_day(persona)
                 
-                print("\n=== Email Scheduling Logic ===")
-                print(f"Lead Profile: {persona}")
-                print(f"Geography: {geography}")
-                print(f"State: {state}")
-                print("\nOptimal Send Window:")
-                print(f"- Months: {best_months}")
-                print(f"- Days: {best_days} (0=Monday, 6=Sunday)")
-                print(f"- Time: {best_time['start']}:00 - {best_time['end']}:00")
+                # print("\n=== Email Scheduling Logic ===")
+                # print(f"Lead Profile: {persona}")
+                # print(f"Geography: {geography}")
+                # print(f"State: {state}")
+                # print("\nOptimal Send Window:")
+                # print(f"- Months: {best_months}")
+                # print(f"- Days: {best_days} (0=Monday, 6=Sunday)")
+                # print(f"- Time: {best_time['start']}:00 - {best_time['end']}:00")
                 
                 # Pick random hour within the time window
                 from random import randint
@@ -430,26 +433,26 @@ def main():
                 # Calculate the next occurrence
                 now = datetime.now()
                 
-                print("\nScheduling Process:")
-                print(f"1. Starting with tomorrow: {(now + timedelta(days=1)).strftime('%Y-%m-%d')}")
+                # print("\nScheduling Process:")
+                # print(f"1. Starting with tomorrow: {(now + timedelta(days=1)).strftime('%Y-%m-%d')}")
                 
                 # Start with tomorrow
                 target_date = now + timedelta(days=1)
                 
                 # Find the next valid month if current month isn't ideal
                 while target_date.month not in best_months:
-                    print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
+                    # print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
                     if target_date.month == 12:
                         target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
                     else:
                         target_date = target_date.replace(month=target_date.month + 1, day=1)
-                    print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+                    # print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
                 
                 # Find the next valid day of week
                 while target_date.weekday() not in best_days:
-                    print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
+                    # print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
                     target_date += timedelta(days=1)
-                    print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+                    # print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
                 
                 # Set the target time
                 scheduled_send_date = target_date.replace(
@@ -463,9 +466,9 @@ def main():
                 state_offsets = STATE_TIMEZONES.get(state.upper())
                 scheduled_send_date = convert_to_club_timezone(scheduled_send_date, state_offsets)
                 
-                print(f"\nFinal Schedule:")
-                print(f"✅ Selected send time: {scheduled_send_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                print("============================\n")
+                # print(f"\nFinal Schedule:")
+                # print(f"✅ Selected send time: {scheduled_send_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                # print("============================\n")
 
             except Exception as e:
                 logger.warning(f"Error calculating send date: {str(e)}. Using current time + 1 day", extra={
@@ -489,39 +492,54 @@ def main():
                 if result:
                     lead_id = result[0]
                     
-                    # Insert the email into the emails table
-                    cursor.execute("""
-                        INSERT INTO emails (
+                    # Create Gmail draft first
+                    draft_result = create_draft(
+                        sender="me",
+                        to=lead_email,
+                        subject=subject,
+                        message_text=body
+                    )
+
+                    if draft_result["status"] == "ok":
+                        draft_id = draft_result.get("draft_id")
+                        
+                        # Get the next sequence number for this lead
+                        cursor.execute("""
+                            SELECT COALESCE(MAX(sequence_num), 0) + 1
+                            FROM emails 
+                            WHERE lead_id = ?
+                        """, (lead_id,))
+                        next_seq = cursor.fetchone()[0]
+
+                        # Include sequence_num in the insert
+                        cursor.execute("""
+                            INSERT INTO emails (
+                                lead_id,
+                                subject,
+                                body,
+                                status,
+                                scheduled_send_date,
+                                draft_id,
+                                sequence_num
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                        """, (
                             lead_id,
                             subject,
                             body,
-                            status,
-                            scheduled_send_date
-                        ) VALUES (?, ?, ?, ?, ?)
-                    """, (
-                        lead_id,
-                        subject,
-                        body,
-                        'pending',  # Changed from 'draft' to 'pending'
-                        scheduled_send_date
-                    ))
-                    conn.commit()
-                    logger.info("Email draft saved to database", extra=logger_context)
+                            'pending',
+                            scheduled_send_date,
+                            draft_id,
+                            next_seq
+                        ))
+                        conn.commit()
+                        logger.info("Email draft saved to database", extra=logger_context)
+                    else:
+                        logger.error("Failed to create Gmail draft", extra=logger_context)
                 else:
                     logger.error("Could not find lead_id for email", extra={
                         **logger_context,
                         "email": lead_email
                     })
-                    
-                # Create Gmail draft
-                draft_result = create_draft(
-                    sender="me",
-                    to=lead_email,
-                    subject=subject,
-                    message_text=body
-                )
-                if draft_result["status"] != "ok":
-                    logger.error("Failed to create Gmail draft", extra=logger_context)
                     
             except Exception as e:
                 logger.error("Database operation failed", 
@@ -576,23 +594,23 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         now = datetime.now()
         target_date = now + timedelta(days=1)
         
-        print("\nScheduling Process:")
-        print(f"1. Starting with tomorrow: {target_date.strftime('%Y-%m-%d')}")
+        #print("\nScheduling Process:")
+        #print(f"1. Starting with tomorrow: {target_date.strftime('%Y-%m-%d')}")
         
         # Find the next valid month
         while target_date.month not in best_months:
-            print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
+            #print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
             if target_date.month == 12:
                 target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
             else:
                 target_date = target_date.replace(month=target_date.month + 1, day=1)
-            print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+            #print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
         
         # Find the next valid day of week
         while target_date.weekday() not in best_days:
-            print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
+            #print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
             target_date += timedelta(days=1)
-            print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+            #print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
         
         # Set time within the best window (9:00-11:00)
         send_hour = best_time["start"]  # This will be 9
@@ -612,9 +630,9 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         # Adjust for state's offset
         final_send_date = adjust_send_time(send_date, state_code)
         
-        print(f"\nFinal Schedule:")
-        print(f"✅ Selected send time: {final_send_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("============================\n")
+        #print(f"\nFinal Schedule:")
+        #print(f"✅ Selected send time: {final_send_date.strftime('%Y-%m-%d %H:%M:%S')}")
+        #print("============================\n")
         
         return final_send_date
         

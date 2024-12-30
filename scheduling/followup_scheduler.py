@@ -51,15 +51,15 @@ def check_and_send_followups():
         """)
         all_emails = cursor.fetchall()
         
-        print("\n=== Current Email Schedule ===")
-        for email in all_emails:
-            print(f"Email ID: {email[0]}")
-            print(f"To: {email[3]}")
-            print(f"Scheduled: {email[1]}")
-            print(f"Status: {email[2]}")
-            print(f"Created: {email[5]}")
-            print("---")
-        print("============================\n")
+        # print("\n=== Current Email Schedule ===")
+        # for email in all_emails:
+        #     print(f"Email ID: {email[0]}")
+        #     print(f"To: {email[3]}")
+        #     print(f"Scheduled: {email[1]}")
+        #     print(f"Status: {email[2]}")
+        #     print(f"Created: {email[5]}")
+        #     print("---")
+        # print("============================\n")
 
         # Debug query to see all scheduled emails
         cursor.execute("""
@@ -72,7 +72,7 @@ def check_and_send_followups():
         scheduled_emails = cursor.fetchall()
         
         # Print scheduling status
-        print_scheduling_status(scheduled_emails)
+        #print_scheduling_status(scheduled_emails)
 
         if scheduled_emails:
             logger.info("Found scheduled emails:", extra={
