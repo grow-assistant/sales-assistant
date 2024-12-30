@@ -1,51 +1,51 @@
-State Code,Time Zone,DST Offset from AZ,Standard Offset from AZ
-AL,Central,-2 hours,-1 hour
-AK,Alaska,-2 hours,-2 hours
-AZ,Mountain,-1 hour,0 hours
-AR,Central,-2 hours,-1 hour
-CA,Pacific,-1 hour,-1 hour
-CO,Mountain,-1 hour,0 hours
-CT,Eastern,-3 hours,-2 hours
-DE,Eastern,-3 hours,-2 hours
-FL,Eastern,-3 hours,-2 hours
-GA,Eastern,-3 hours,-2 hours
-HI,Hawaii-Aleutian,-3 hours,-3 hours
-ID,Mountain,-1 hour,0 hours
-IL,Central,-2 hours,-1 hour
-IN,Eastern,-3 hours,-2 hours
-IA,Central,-2 hours,-1 hour
-KS,Central,-2 hours,-1 hour
-KY,Eastern,-3 hours,-2 hours
-LA,Central,-2 hours,-1 hour
-ME,Eastern,-3 hours,-2 hours
-MD,Eastern,-3 hours,-2 hours
-MA,Eastern,-3 hours,-2 hours
-MI,Eastern,-3 hours,-2 hours
-MN,Central,-2 hours,-1 hour
-MS,Central,-2 hours,-1 hour
-MO,Central,-2 hours,-1 hour
-MT,Mountain,-1 hour,0 hours
-NE,Central,-2 hours,-1 hour
-NV,Pacific,-1 hour,-1 hour
-NH,Eastern,-3 hours,-2 hours
-NJ,Eastern,-3 hours,-2 hours
-NM,Mountain,-1 hour,0 hours
-NY,Eastern,-3 hours,-2 hours
-NC,Eastern,-3 hours,-2 hours
-ND,Central,-2 hours,-1 hour
-OH,Eastern,-3 hours,-2 hours
-OK,Central,-2 hours,-1 hour
-OR,Pacific,-1 hour,-1 hour
-PA,Eastern,-3 hours,-2 hours
-RI,Eastern,-3 hours,-2 hours
-SC,Eastern,-3 hours,-2 hours
-SD,Central,-2 hours,-1 hour
-TN,Central,-2 hours,-1 hour
-TX,Central,-2 hours,-1 hour
-UT,Mountain,-1 hour,0 hours
-VT,Eastern,-3 hours,-2 hours
-VA,Eastern,-3 hours,-2 hours
-WA,Pacific,-1 hour,-1 hour
-WV,Eastern,-3 hours,-2 hours
-WI,Central,-2 hours,-1 hour
-WY,Mountain,-1 hour,0 hours
+state_code,daylight_savings,standard_time
+AL,-2,-1
+AK,-2,-2
+AZ,0,0
+AR,-2,-1
+CA,-1,-1
+CO,-1,0
+CT,-3,-2
+DE,-3,-2
+FL,-3,-2
+GA,-3,-2
+HI,-3,-3
+ID,-1,0
+IL,-2,-1
+IN,-3,-2
+IA,-2,-1
+KS,-2,-1
+KY,-3,-2
+LA,-2,-1
+ME,-3,-2
+MD,-3,-2
+MA,-3,-2
+MI,-3,-2
+MN,-2,-1
+MS,-2,-1
+MO,-2,-1
+MT,-1,0
+NE,-2,-1
+NV,-1,-1
+NH,-3,-2
+NJ,-3,-2
+NM,-1,0
+NY,-3,-2
+NC,-3,-2
+ND,-2,-1
+OH,-3,-2
+OK,-2,-1
+OR,-1,-1
+PA,-3,-2
+RI,-3,-2
+SC,-3,-2
+SD,-2,-1
+TN,-2,-1
+TX,-2,-1
+UT,-1,0
+VT,-3,-2
+VA,-3,-2
+WA,-1,-1
+WV,-3,-2
+WI,-2,-1
+WY,-1,0

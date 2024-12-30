@@ -175,7 +175,7 @@ class HubspotService:
         if not company_id:
             return {}
             
-        url = f"{self.companies_endpoint}/{company_id}?properties=name&properties=city&properties=state&properties=annualrevenue&properties=createdate&properties=hs_lastmodifieddate&properties=hs_object_id"
+        url = f"{self.companies_endpoint}/{company_id}?properties=name&properties=city&properties=state&properties=annualrevenue&properties=createdate&properties=hs_lastmodifieddate&properties=hs_object_id&properties=company_type"
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()

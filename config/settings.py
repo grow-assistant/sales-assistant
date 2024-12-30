@@ -121,6 +121,12 @@ API_ENDPOINTS: Dict[str, str] = {
     "hubspot": "https://api.hubapi.com"
 }
 
+# Email sending control
+SEND_EMAILS = os.getenv('SEND_EMAILS', 'false').lower() == 'true'
+
+# Log cleanup control
+CLEAR_LOGS_ON_START = os.getenv('CLEAR_LOGS_ON_START', 'false').lower() == 'true'
+
 # Export all settings
 __all__ = [
     'PROJECT_ROOT',  # Add PROJECT_ROOT to exports

@@ -91,16 +91,7 @@ class DataGathererService:
             "lead_data": {
                 "id": contact_id,
                 "properties": contact_props,
-                "company_data": {
-                    "hs_object_id": company_props.get("hs_object_id", ""),
-                    "name": company_props.get("name", ""),
-                    "city": company_props.get("city", ""),
-                    "state": company_props.get("state", ""),
-                    "domain": company_props.get("domain", ""),
-                    "website": company_props.get("website", "")
-                },
-                # Include the new fields here:
-                "emails": emails,
+                "company_data": company_props,
                 "notes": notes
             },
             "analysis": {
@@ -791,3 +782,45 @@ class DataGathererService:
                 "type": str(type(value))
             })
             return default
+
+    def get_club_geography_and_type(self, club_name, city, state):
+        """
+        Given a club name, city, and state, returns the club's geography 
+        (e.g., 'Peak Summer Season') and type (e.g., 'Private Club').
+        """
+        # Get company data from the lead sheet
+        company_data = self._hubspot.get_company_data(club_name)
+        company_type = company_data.get("company_type", "").lower()
+        
+        # Determine club type based on HubSpot data
+        if "private" in company_type:
+            club_type = "Private Clubs"
+        elif "semi-private" in company_type:
+            club_type = "Semi-Private Clubs"
+        elif "public" in company_type or "municipal" in company_type:
+            club_type = "Public Clubs"
+        else:
+            # Default to Public if unknown
+            logger.warning(f"Unknown company type '{company_type}' for {club_name}, defaulting to Public Clubs")
+            club_type = "Public Clubs"
+        
+        # Get geography based on season data
+        if state == "AZ":
+            geography = "Year-Round Golf"
+        else:
+            # Use existing season logic
+            geography = self._determine_geography(city, state)
+        
+        return geography, club_type
+    
+    
+    def get_club_timezone(self, state):
+        """
+        Given a club's state, returns the appropriate timezone.
+        """
+        state_timezones = {
+            'AZ': 'US/Arizona',  # Arizona does not observe daylight savings
+            # ... (populate with more state-to-timezone mappings)
+        }
+        
+        return state_timezones.get(state, f'US/{state}')  # Default to 'US/XX' if state not found

@@ -1,6 +1,13 @@
 # scheduling/database.py
 
+import sys
+from pathlib import Path
 import pyodbc
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+
 from utils.logging_setup import logger
 from config.settings import DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD
 
@@ -88,6 +95,7 @@ def init_db():
             name                 VARCHAR(255) NOT NULL,
             city                 VARCHAR(255),
             state                VARCHAR(255),
+            company_type         VARCHAR(50),
             created_at           DATETIME DEFAULT GETDATE(),
 
             -- HubSpot data:
@@ -176,13 +184,15 @@ def init_db():
         cursor.execute("""
         CREATE TABLE dbo.emails (
             email_id            INT IDENTITY(1,1) PRIMARY KEY,
-            lead_id             INT NOT NULL,    -- references leads
+            lead_id             INT NOT NULL,
             subject             VARCHAR(500),
             body                VARCHAR(MAX),
-            status              VARCHAR(50) DEFAULT 'pending',
+            status             VARCHAR(50) DEFAULT 'pending',
             scheduled_send_date DATETIME NULL,
-            actual_send_date    DATETIME NULL,
-            created_at          DATETIME DEFAULT GETDATE(),
+            actual_send_date   DATETIME NULL,
+            created_at         DATETIME DEFAULT GETDATE(),
+            sequence_num       INT NULL,
+            draft_id          VARCHAR(100) NULL,
 
             CONSTRAINT FK_emails_leads
                 FOREIGN KEY (lead_id) REFERENCES dbo.leads(lead_id)
@@ -202,6 +212,31 @@ def init_db():
     finally:
         cursor.close()
         conn.close()
+
+def clear_tables():
+    """Clear all tables in the database."""
+    try:
+        with get_db_connection() as conn:
+            logger.debug("Clearing all tables")
+            
+            tables = [
+                "dbo.emails",
+                "dbo.leads", 
+                "dbo.companies",
+                "dbo.lead_properties",
+                "dbo.company_properties"
+            ]
+            
+            for table in tables:
+                query = f"DELETE FROM {table}"
+                logger.debug(f"Executing: {query}")
+                conn.execute(query)
+                
+            logger.info("Successfully cleared all tables")
+
+    except Exception as e:
+        logger.exception(f"Failed to clear SQL tables: {str(e)}")
+        raise e
 
 if __name__ == "__main__":
     init_db()

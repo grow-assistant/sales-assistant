@@ -9,13 +9,13 @@ from utils.formatting_utils import clean_phone_number
 
 def safe_parse_date(date_str):
     """
-    Safely parse a date string into a Python datetime (UTC).
+    Safely parse a date string into a Python datetime.
     Returns None if parsing fails or date_str is None.
     """
     if not date_str:
         return None
     try:
-        return parse_date(date_str)
+        return parse_date(date_str).replace(tzinfo=None)  # Remove timezone info
     except Exception:
         return None
 
@@ -86,8 +86,8 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
         company_hs_lastmodified = safe_parse_date(company_lastmod_str)
 
         # 5) lead_properties (dynamic)
-        phone = lead_properties.get("phone", "")
-        phone = clean_phone_number(phone)
+        phone = lead_data.get("phone")
+        cleaned_phone = clean_phone_number(phone) if phone is not None else None
         lifecyclestage = lead_properties.get("lifecyclestage", "")
 
         competitor_analysis = analysis_data.get("competitor_analysis", "")
@@ -220,6 +220,7 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     UPDATE dbo.companies
                     SET city = ?,
                         state = ?,
+                        company_type = ?,
                         hs_createdate = ?,
                         hs_lastmodifieddate = ?,
                         year_round = ?,
@@ -232,6 +233,7 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                 """, (
                     static_city,
                     static_state,
+                    company_data.get("company_type", ""),
                     company_hs_createdate,
                     company_hs_lastmodified,
                     year_round,
@@ -239,25 +241,26 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     end_month,
                     peak_season_start,
                     peak_season_end,
-                    facilities_info,  # Save xai_facilities_info into dbo.companies
+                    facilities_info,
                     company_id
                 ))
             else:
                 logger.debug(f"No matching company; inserting new row for name={static_company_name}.")
                 cursor.execute("""
                     INSERT INTO dbo.companies (
-                        name, city, state,
+                        name, city, state, company_type,
                         hs_object_id, hs_createdate, hs_lastmodifieddate,
                         year_round, start_month, end_month,
                         peak_season_start, peak_season_end,
                         xai_facilities_info
                     )
                     OUTPUT Inserted.company_id
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     static_company_name,
                     static_city,
                     static_state,
+                    company_data.get("company_type", ""),
                     company_hs_id,
                     company_hs_createdate,
                     company_hs_lastmodified,
@@ -402,6 +405,99 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
             "has_lead_properties": bool(lp_row),
             "has_company_properties": bool(cp_row) if company_id else False
         })
+
+        # Add email storage
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                
+                # Get lead_id for the email records
+                lead_email = lead_sheet["lead_data"]["properties"]["email"]
+                cursor.execute("SELECT lead_id FROM leads WHERE email = ?", (lead_email,))
+                lead_id = cursor.fetchone()[0]
+                
+                # Insert emails
+                emails = lead_sheet.get("lead_data", {}).get("emails", [])
+                for email in emails:
+                    cursor.execute("""
+                        MERGE INTO emails AS target
+                        USING (SELECT ? AS email_id, ? AS lead_id) AS source
+                        ON target.email_id = source.email_id
+                        WHEN MATCHED THEN
+                            UPDATE SET
+                                subject = ?,
+                                body = ?,
+                                direction = ?,
+                                status = ?,
+                                timestamp = ?,
+                                last_modified = GETDATE()
+                        WHEN NOT MATCHED THEN
+                            INSERT (email_id, lead_id, subject, body, direction, status, timestamp, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE());
+                    """, (
+                        email.get('id'),
+                        lead_id,
+                        email.get('subject'),
+                        email.get('body_text'),
+                        email.get('direction'),
+                        email.get('status'),
+                        email.get('timestamp'),
+                        # Values for INSERT
+                        email.get('id'),
+                        lead_id,
+                        email.get('subject'),
+                        email.get('body_text'),
+                        email.get('direction'),
+                        email.get('status'),
+                        email.get('timestamp')
+                    ))
+                
+                conn.commit()
+                logger.info("Successfully stored email records")
+                
+        except Exception as e:
+            logger.error(f"Failed to store emails: {str(e)}")
+            raise
+
+        # Store draft emails
+        def store_draft_email(lead_id, subject, body, scheduled_send_date, sequence_num=None, draft_id=None):
+            """Store a draft email in the database."""
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            try:
+                # Ensure datetime has no timezone info
+                if hasattr(scheduled_send_date, 'tzinfo'):
+                    scheduled_send_date = scheduled_send_date.replace(tzinfo=None)
+                    
+                cursor.execute("""
+                    INSERT INTO emails (
+                        lead_id,
+                        subject,
+                        body,
+                        status,
+                        scheduled_send_date,
+                        sequence_num,
+                        draft_id,
+                        created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE())
+                """, (
+                    lead_id,
+                    subject,
+                    body,
+                    'draft',
+                    scheduled_send_date,
+                    sequence_num,
+                    draft_id
+                ))
+                conn.commit()
+                logger.info("Draft email stored successfully")
+            except Exception as e:
+                logger.error(f"Failed to store draft email: {str(e)}")
+                conn.rollback()
+                raise
+            finally:
+                cursor.close()
+                conn.close()
 
     except Exception as e:
         logger.error("Error in upsert_full_lead", extra={
