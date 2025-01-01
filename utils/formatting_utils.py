@@ -22,36 +22,23 @@ def clean_phone_number(raw_phone):
     else:
         return digits
 
-def clean_html(raw_html: str, strip_tags: bool = True, remove_scripts: bool = True) -> str:
-    """
-    Clean HTML content by removing tags and/or unwanted elements.
-    
-    Args:
-        raw_html: Raw HTML string to clean
-        strip_tags: If True, removes all HTML tags
-        remove_scripts: If True, removes script and style tags before processing
-    
-    Returns:
-        Cleaned text string
-    """
-    if not raw_html:
+def clean_html(text):
+    """Clean HTML from text while handling both markup and file paths."""
+    if not text:
         return ""
-    
-    if remove_scripts:
-        soup = BeautifulSoup(raw_html, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        raw_html = str(soup)
-    
-    if strip_tags:
-        # Remove HTML tags while preserving content
-        text = re.sub('<[^<]+?>', '', raw_html)
-        # Decode HTML entities
-        text = BeautifulSoup(text, "html.parser").get_text()
-        return text.strip()
-    
-    return raw_html.strip()
-
+        
+    # If text is a file path, read the file first
+    if isinstance(text, str) and ('\n' not in text) and ('.' in text):
+        try:
+            with open(text, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except (IOError, OSError):
+            # If we can't open it as a file, treat it as markup
+            pass
+            
+    # Parse with BeautifulSoup
+    text = BeautifulSoup(text, "html.parser").get_text()
+    return text.strip()
 
 def extract_text_from_html(html_content: str, preserve_newlines: bool = False) -> str:
     """

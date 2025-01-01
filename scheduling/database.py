@@ -3,6 +3,7 @@
 import sys
 from pathlib import Path
 import pyodbc
+from datetime import datetime
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent
@@ -237,6 +238,27 @@ def clear_tables():
     except Exception as e:
         logger.exception(f"Failed to clear SQL tables: {str(e)}")
         raise e
+
+def store_email_draft(cursor, lead_id: int, subject: str, body: str, 
+                     scheduled_send_date: datetime = None, 
+                     sequence_num: int = None,
+                     draft_id: str = None,
+                     status: str = 'pending') -> int:
+    """
+    Store email draft in database. Returns email_id.
+    """
+    cursor.execute("""
+        INSERT INTO emails (
+            lead_id, subject, body, status,
+            scheduled_send_date, created_at,
+            sequence_num, draft_id
+        ) VALUES (?, ?, ?, ?, ?, GETDATE(), ?, ?)
+    """, (
+        lead_id, subject, body, status,
+        scheduled_send_date, sequence_num, draft_id
+    ))
+    cursor.execute("SELECT SCOPE_IDENTITY()")
+    return cursor.fetchone()[0]
 
 if __name__ == "__main__":
     init_db()

@@ -127,6 +127,9 @@ SEND_EMAILS = os.getenv('SEND_EMAILS', 'false').lower() == 'true'
 # Log cleanup control
 CLEAR_LOGS_ON_START = os.getenv('CLEAR_LOGS_ON_START', 'false').lower() == 'true'
 
+# Add this with the other settings
+ENABLE_FOLLOWUPS = os.getenv('ENABLE_FOLLOWUPS', 'false').lower() == 'true'
+
 # Export all settings
 __all__ = [
     'PROJECT_ROOT',  # Add PROJECT_ROOT to exports

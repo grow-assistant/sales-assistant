@@ -35,13 +35,13 @@ class DataGathererService:
 
     def __init__(self):
         """Initialize the DataGathererService with HubSpot client and season data."""
-        self._hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+        self.hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         # Load season data at initialization
         self.load_season_data()
 
     def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
         """Gather all HubSpot data."""
-        return self._hubspot.gather_lead_data(lead_email)
+        return self.hubspot.gather_lead_data(lead_email)
 
     def gather_lead_data(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
         """
@@ -55,7 +55,7 @@ class DataGathererService:
         if correlation_id is None:
             correlation_id = f"gather_{lead_email}"
         # 1) Lookup contact_id via email
-        contact_data = self._hubspot.get_contact_by_email(lead_email)
+        contact_data = self.hubspot.get_contact_by_email(lead_email)
         if not contact_data:
             logger.error("Failed to find contact ID", extra={
                 "email": lead_email,
@@ -67,17 +67,17 @@ class DataGathererService:
         contact_id = contact_data["id"]  # ID is directly on the contact object
 
         # 2) Get the contact properties
-        contact_props = self._hubspot.get_contact_properties(contact_id)
+        contact_props = self.hubspot.get_contact_properties(contact_id)
 
         # 3) Get the associated company_id
-        company_id = self._hubspot.get_associated_company_id(contact_id)
+        company_id = self.hubspot.get_associated_company_id(contact_id)
 
         # 4) Get the company data (including city/state)
-        company_props = self._hubspot.get_company_data(company_id)
+        company_props = self.hubspot.get_company_data(company_id)
 
         # 5) Add calls to fetch emails and notes from HubSpot
-        emails = self._hubspot.get_all_emails_for_contact(contact_id)
-        notes = self._hubspot.get_all_notes_for_contact(contact_id)
+        emails = self.hubspot.get_all_emails_for_contact(contact_id)
+        notes = self.hubspot.get_all_notes_for_contact(contact_id)
 
         # Add notes with proper encoding handling
         for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
@@ -519,22 +519,16 @@ class DataGathererService:
     def determine_club_season(self, city: str, state: str) -> Dict[str, str]:
         """
         Return the peak season data for the given city/state based on CSV lookups.
-        
-        Args:
-            city (str): City name
-            state (str): State name or abbreviation
-            
-        Returns:
-            Dict containing:
-                - year_round (str): "Yes", "No", or "Unknown"
-                - start_month (str): Season start month or "N/A"
-                - end_month (str): Season end month or "N/A"
-                - peak_season_start (str): Peak season start date (MM-DD)
-                - peak_season_end (str): Peak season end date (MM-DD)
-                - status (str): "success", "error", or "no_data"
-                - error (str): Error message if any
         """
         try:
+            # Add debug logging for input values
+            logger.debug("Determining club season", extra={
+                "city": city,
+                "state": state,
+                "city_st_data_count": len(CITY_ST_DATA),
+                "st_data_count": len(ST_DATA)
+            })
+
             if not city and not state:
                 logger.warning(
                     "No city or state provided for season lookup",
@@ -551,10 +545,21 @@ class DataGathererService:
                 }
 
             city_key = (city.lower(), state.lower())
-            row = CITY_ST_DATA.get(city_key)
+            logger.debug("Looking up season data", extra={
+                "city_key": city_key,
+                "found_in_city_data": city_key in CITY_ST_DATA,
+                "found_in_state_data": state.lower() in ST_DATA
+            })
 
+            row = CITY_ST_DATA.get(city_key)
+            
             if not row:
                 row = ST_DATA.get(state.lower())
+                logger.debug("Using state-level data", extra={
+                    "state": state.lower(),
+                    "found_data": bool(row),
+                    "row_data": row if row else None
+                })
 
             if not row:
                 logger.info(
@@ -575,27 +580,37 @@ class DataGathererService:
                     "error": "Location not found in season data"
                 }
 
+            # Add debug logging for found season data
+            logger.debug("Season data found", extra={
+                "year_round": row["Year-Round?"].strip(),
+                "start_month": row["Start Month"].strip(),
+                "end_month": row["End Month"].strip(),
+                "peak_start": row["Peak Season Start"].strip(),
+                "peak_end": row["Peak Season End"].strip()
+            })
+
             year_round = row["Year-Round?"].strip()
             start_month_str = row["Start Month"].strip()
             end_month_str = row["End Month"].strip()
             peak_season_start_str = row["Peak Season Start"].strip()
             peak_season_end_str = row["Peak Season End"].strip()
 
+            # Add debug logging for default values
             if not peak_season_start_str or peak_season_start_str == "N/A":
+                logger.debug("Using default peak season start", extra={
+                    "original": peak_season_start_str,
+                    "default": "May"
+                })
                 peak_season_start_str = "May"
+                
             if not peak_season_end_str or peak_season_end_str == "N/A":
+                logger.debug("Using default peak season end", extra={
+                    "original": peak_season_end_str,
+                    "default": "August"
+                })
                 peak_season_end_str = "August"
 
-            logger.info(
-                "Successfully determined club season",
-                extra={
-                    "city": city,
-                    "state": state,
-                    "year_round": year_round,
-                    "status": "success"
-                }
-            )
-            return {
+            result = {
                 "year_round": year_round,
                 "start_month": start_month_str,
                 "end_month": end_month_str,
@@ -604,6 +619,15 @@ class DataGathererService:
                 "status": "success",
                 "error": ""
             }
+
+            # Add debug logging for final result
+            logger.debug("Season determination complete", extra={
+                "city": city,
+                "state": state,
+                "result": result
+            })
+
+            return result
 
         except Exception as e:
             logger.error(
@@ -672,7 +696,7 @@ class DataGathererService:
         """
         try:
             # Get contact properties from HubSpot
-            lead_data = self._hubspot.get_contact_properties(contact_id)
+            lead_data = self.hubspot.get_contact_properties(contact_id)
             if not lead_data:
                 logger.warning(
                     "No lead data found for contact",
@@ -695,7 +719,7 @@ class DataGathererService:
             emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
 
             # Get all notes for contact
-            notes = self._hubspot.get_all_notes_for_contact(contact_id)
+            notes = self.hubspot.get_all_notes_for_contact(contact_id)
 
             # Count meetings from notes
             meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
@@ -813,7 +837,7 @@ class DataGathererService:
         """Get club geography and type."""
         try:
             # Try to get company data from HubSpot
-            company_data = self._hubspot.get_company_data(club_name)
+            company_data = self.hubspot.get_company_data(club_name)
             geography = self.determine_geography(city, state)
             
             # Determine club type from HubSpot data

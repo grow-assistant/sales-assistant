@@ -123,7 +123,14 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
 
         # Get news separately
         research_data = analysis_data.get("research_data", {})
-        facilities_news = research_data.get("recent_news", [])[0].get("snippet", "") if research_data.get("recent_news") else ""
+        facilities_news = ""
+        if research_data.get("recent_news"):
+            try:
+                news_item = research_data["recent_news"][0]
+                if isinstance(news_item, dict):
+                    facilities_news = str(news_item.get("snippet", ""))[:500]  # Limit length
+            except (IndexError, KeyError, TypeError):
+                logger.warning("Could not extract facilities news from research data")
 
         # Get the company overview separately
         research_data = analysis_data.get("research_data", {})
@@ -393,8 +400,8 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     VALUES (?, ?, ?, GETDATE())
                 """, (
                     company_id,
-                    annualrevenue,
-                    facilities_news
+                    str(annualrevenue) if annualrevenue else None,
+                    str(facilities_news)[:500] if facilities_news else None  # Limit length and ensure string
                 ))
             conn.commit()
 
@@ -416,34 +423,31 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                 cursor.execute("SELECT lead_id FROM leads WHERE email = ?", (lead_email,))
                 lead_id = cursor.fetchone()[0]
                 
-                # Insert emails
+                # Insert emails - Add check for existing draft
                 emails = lead_sheet.get("lead_data", {}).get("emails", [])
                 for email in emails:
+                    # Skip drafts - these are handled by store_draft_info
+                    if email.get('status') == 'draft':
+                        logger.debug(f"Skipping draft email for lead_id={lead_id}, will be handled by store_draft_info")
+                        continue
+
+                    # Check if email already exists
                     cursor.execute("""
-                        MERGE INTO emails AS target
-                        USING (SELECT ? AS email_id, ? AS lead_id) AS source
-                        ON target.email_id = source.email_id
-                        WHEN MATCHED THEN
-                            UPDATE SET
-                                subject = ?,
-                                body = ?,
-                                direction = ?,
-                                status = ?,
-                                timestamp = ?,
-                                last_modified = GETDATE()
-                        WHEN NOT MATCHED THEN
-                            INSERT (email_id, lead_id, subject, body, direction, status, timestamp, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE());
+                        SELECT email_id FROM emails 
+                        WHERE lead_id = ? AND draft_id = ?
+                    """, (lead_id, email.get('id')))
+                    
+                    if cursor.fetchone():
+                        logger.debug(f"Email already exists for lead_id={lead_id}, draft_id={email.get('id')}")
+                        continue
+
+                    cursor.execute("""
+                        INSERT INTO emails (
+                            lead_id, subject, body, 
+                            direction, status, timestamp, created_at
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, GETDATE())
                     """, (
-                        email.get('id'),
-                        lead_id,
-                        email.get('subject'),
-                        email.get('body_text'),
-                        email.get('direction'),
-                        email.get('status'),
-                        email.get('timestamp'),
-                        # Values for INSERT
-                        email.get('id'),
                         lead_id,
                         email.get('subject'),
                         email.get('body_text'),
@@ -459,55 +463,13 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
             logger.error(f"Failed to store emails: {str(e)}")
             raise
 
-        # Store draft emails
-        def store_draft_email(lead_id, subject, body, scheduled_send_date, sequence_num=None, draft_id=None):
-            """Store a draft email in the database."""
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            try:
-                # Ensure datetime has no timezone info
-                if hasattr(scheduled_send_date, 'tzinfo'):
-                    scheduled_send_date = scheduled_send_date.replace(tzinfo=None)
-                    
-                cursor.execute("""
-                    INSERT INTO emails (
-                        lead_id,
-                        subject,
-                        body,
-                        status,
-                        scheduled_send_date,
-                        sequence_num,
-                        draft_id,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE())
-                """, (
-                    lead_id,
-                    subject,
-                    body,
-                    'draft',
-                    scheduled_send_date,
-                    sequence_num,
-                    draft_id
-                ))
-                conn.commit()
-                logger.info("Draft email stored successfully")
-            except Exception as e:
-                logger.error(f"Failed to store draft email: {str(e)}")
-                conn.rollback()
-                raise
-            finally:
-                cursor.close()
-                conn.close()
+        logger.info(f"Successfully stored {len(emails)} email records")
 
     except Exception as e:
-        logger.error("Error in upsert_full_lead", extra={
-            "error": str(e),
-            "email": email,
-            "lead_id": lead_id if 'lead_id' in locals() else None,
-            "company_id": company_id if 'company_id' in locals() else None
-        }, exc_info=True)
-        conn.rollback()
-        logger.info("Transaction rolled back due to error")
+        logger.error(f"Error in upsert_full_lead: {str(e)}", exc_info=True)
+        raise
     finally:
-        conn.close()
-        logger.debug("Database connection closed")
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()

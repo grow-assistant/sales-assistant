@@ -144,3 +144,31 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
         "Best Time": best_time,
         "Best Day": best_days
     }
+
+def calculate_send_date(geography: str, profile_type: str, state: str, preferred_days: list, preferred_time: dict) -> datetime:
+    """
+    Calculate the next appropriate send date based on outreach window and preferred days/time.
+    """
+    outreach_window = get_best_outreach_window(geography, profile_type)
+    best_months = outreach_window["Best Month"]
+    
+    # Find the next preferred day of week
+    today = datetime.now().date()
+    days_ahead = [(day - today.weekday()) % 7 for day in preferred_days]
+    next_preferred_day = min(days_ahead)
+    
+    # Adjust to next month if needed
+    if today.month not in best_months:
+        target_month = min(best_months)
+        if today.month > target_month:
+            target_year = today.year + 1
+        else:
+            target_year = today.year
+        target_date = datetime(target_year, target_month, 1)
+    else:
+        target_date = today + timedelta(days=next_preferred_day)
+    
+    # Apply preferred time
+    target_date = target_date.replace(hour=preferred_time["start"])
+    
+    return target_date

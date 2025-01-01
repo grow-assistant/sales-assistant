@@ -845,15 +845,19 @@ import os
 import shutil
 import random
 from datetime import timedelta, datetime
+import json
 
-from utils.logging_setup import logger, workflow_step
+from utils.logging_setup import logger, workflow_step, setup_logging
 from utils.exceptions import LeadContextError
 from utils.xai_integration import (
     personalize_email_with_xai,
     _build_icebreaker_from_news,
-    get_default_icebreaker
+    get_email_critique,
+    revise_email_with_critique,
+    _send_xai_request,
+    MODEL_NAME
 )
-from utils.gmail_integration import create_draft
+from utils.gmail_integration import create_draft, store_draft_info
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
 from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START
@@ -869,6 +873,9 @@ from scheduling.database import get_db_connection
 from scripts.golf_outreach_strategy import get_best_outreach_window, get_best_month, get_best_time, get_best_day, adjust_send_time
 from utils.date_utils import convert_to_club_timezone
 
+
+# Initialize logging before creating DataGathererService instance
+setup_logging()
 
 # Initialize services
 data_gatherer = DataGathererService()
@@ -928,7 +935,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     'type': f'email {email_type}',
                     'direction': direction,
                     'subject': subject,
-                    'notes': body[:500]  # Limit length to prevent token overflow
+                    'notes': body[:1000]  # Limit length to prevent token overflow
                 }
                 interactions.append(interaction)
         
@@ -943,7 +950,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     'type': 'note',
                     'direction': 'internal',
                     'subject': 'Internal Note',
-                    'notes': content[:500]  # Limit length to prevent token overflow
+                    'notes': content[:1000]  # Limit length to prevent token overflow
                 }
                 interactions.append(interaction)
         
@@ -953,8 +960,8 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         # Sort all interactions by date
         interactions.sort(key=lambda x: x['date'], reverse=True)
         
-        # Take only the last 3 interactions to keep the context focused
-        recent_interactions = interactions[:5]
+        # Take only the last 10 interactions to keep the context focused
+        recent_interactions = interactions[:10]
         
         prompt = (
             "Please summarize these interactions, focusing on:\n"
@@ -976,15 +983,18 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         try:
             openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(
-                model=MODEL_FOR_GENERAL,  # Use your configured model
+                model=MODEL_FOR_GENERAL,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions."},
+                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions. Anything coming from Ty or Ryan is from Swoop, otherwise it's from the lead."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0
             )
             
             summary = response.choices[0].message.content.strip()
+            # Remove debug logging, keep only essential info
+            if DEBUG_MODE:
+                logger.info(f"Interaction Summary:\n{summary}")
             return summary
             
         except Exception as e:
@@ -1101,7 +1111,13 @@ def main():
         with workflow_step(6, "Gathering personalization data"):
             club_info_snippet = data_gatherer.gather_club_info(club_name, city, state)
             news_result = data_gatherer.gather_club_news(club_name)
-            has_news = bool(news_result and "has not been" not in news_result.lower())
+            has_news = False
+            if news_result:
+                if isinstance(news_result, tuple):
+                    news_text = news_result[0]
+                else:
+                    news_text = str(news_result)
+                has_news = "has not been" not in news_text.lower()
 
             jobtitle_str = lead_data.get("jobtitle", "")
             profile_type = categorize_job_title(jobtitle_str)
@@ -1141,11 +1157,15 @@ def main():
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
                     if icebreaker:
                         body = body.replace("[ICEBREAKER]", icebreaker)
+                    else:
+                        # If no icebreaker generated, just remove the placeholder
+                        body = body.replace("[ICEBREAKER]", "")
                 else:
-                    body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
+                    # No news, remove icebreaker placeholder
+                    body = body.replace("[ICEBREAKER]", "")
             except Exception as e:
                 logger.error(f"Icebreaker generation error: {e}")
-                body = body.replace("[ICEBREAKER]\n\n", "").replace("[ICEBREAKER]", "")
+                body = body.replace("[ICEBREAKER]", "")
 
             orig_subject, orig_body = subject, body
             for key, val in placeholders.items():
@@ -1158,6 +1178,7 @@ def main():
                 # Get lead email first to avoid reference error
                 lead_email = lead_data.get("email", email)
                 
+                # Get initial draft from xAI
                 subject, body = personalize_email_with_xai(
                     lead_sheet=lead_sheet,
                     subject=subject,
@@ -1185,15 +1206,41 @@ def main():
                         icebreaker = _build_icebreaker_from_news(club_name, news_result)
                         if icebreaker:
                             body = body.replace("[ICEBREAKER]", icebreaker)
+                        else:
+                            # If no icebreaker generated, just remove the placeholder
+                            body = body.replace("[ICEBREAKER]", "")
                     except Exception as e:
                         logger.error(f"Icebreaker generation error: {e}")
                         body = body.replace("[ICEBREAKER]", "")
+                else:
+                    # No news, remove icebreaker placeholder
+                    body = body.replace("[ICEBREAKER]", "")
 
                 logger.debug("Creating email draft", extra={
                     **logger_context,
                     "to": lead_email,
                     "subject": subject
                 })
+
+                # Get expert critique
+                critique = get_email_critique(subject, body, {
+                    "club_name": club_name,
+                    "lead_name": first_name,
+                    "interaction_history": interaction_summary,
+                    "news": news_result,
+                    "club_info": club_info_snippet
+                })
+                
+                if critique:
+                    logger.info("Received email critique", extra={
+                        "critique_length": len(critique)
+                    })
+                    
+                    # Revise email based on critique
+                    subject, body = revise_email_with_critique(subject, body, critique)
+                    logger.info("Email revised based on critique")
+                else:
+                    logger.warning("No critique received, using original version")
 
             except Exception as e:
                 logger.error(f"xAI personalization error: {e}")
@@ -1254,14 +1301,14 @@ def main():
                 best_time = get_best_time(persona)
                 best_days = get_best_day(persona)
                 
-                print("\n=== Email Scheduling Logic ===")
-                print(f"Lead Profile: {persona}")
-                print(f"Geography: {geography}")
-                print(f"State: {state}")
-                print("\nOptimal Send Window:")
-                print(f"- Months: {best_months}")
-                print(f"- Days: {best_days} (0=Monday, 6=Sunday)")
-                print(f"- Time: {best_time['start']}:00 - {best_time['end']}:00")
+                # print("\n=== Email Scheduling Logic ===")
+                # print(f"Lead Profile: {persona}")
+                # print(f"Geography: {geography}")
+                # print(f"State: {state}")
+                # print("\nOptimal Send Window:")
+                # print(f"- Months: {best_months}")
+                # print(f"- Days: {best_days} (0=Monday, 6=Sunday)")
+                # print(f"- Time: {best_time['start']}:00 - {best_time['end']}:00")
                 
                 # Pick random hour within the time window
                 from random import randint
@@ -1270,26 +1317,26 @@ def main():
                 # Calculate the next occurrence
                 now = datetime.now()
                 
-                print("\nScheduling Process:")
-                print(f"1. Starting with tomorrow: {(now + timedelta(days=1)).strftime('%Y-%m-%d')}")
+                # print("\nScheduling Process:")
+                # print(f"1. Starting with tomorrow: {(now + timedelta(days=1)).strftime('%Y-%m-%d')}")
                 
                 # Start with tomorrow
                 target_date = now + timedelta(days=1)
                 
                 # Find the next valid month if current month isn't ideal
                 while target_date.month not in best_months:
-                    print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
+                    # print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
                     if target_date.month == 12:
                         target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
                     else:
                         target_date = target_date.replace(month=target_date.month + 1, day=1)
-                    print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+                    # print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
                 
                 # Find the next valid day of week
                 while target_date.weekday() not in best_days:
-                    print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
+                    # print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
                     target_date += timedelta(days=1)
-                    print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+                    # print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
                 
                 # Set the target time
                 scheduled_send_date = target_date.replace(
@@ -1303,9 +1350,9 @@ def main():
                 state_offsets = STATE_TIMEZONES.get(state.upper())
                 scheduled_send_date = convert_to_club_timezone(scheduled_send_date, state_offsets)
                 
-                print(f"\nFinal Schedule:")
-                print(f"✅ Selected send time: {scheduled_send_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                print("============================\n")
+                # print(f"\nFinal Schedule:")
+                # print(f"✅ Selected send time: {scheduled_send_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
+                # print("============================\n")
 
             except Exception as e:
                 logger.warning(f"Error calculating send date: {str(e)}. Using current time + 1 day", extra={
@@ -1329,39 +1376,57 @@ def main():
                 if result:
                     lead_id = result[0]
                     
-                    # Insert the email into the emails table
-                    cursor.execute("""
-                        INSERT INTO emails (
-                            lead_id,
-                            subject,
-                            body,
-                            status,
-                            scheduled_send_date
-                        ) VALUES (?, ?, ?, ?, ?)
-                    """, (
-                        lead_id,
-                        subject,
-                        body,
-                        'pending',  # Changed from 'draft' to 'pending'
-                        scheduled_send_date
-                    ))
-                    conn.commit()
-                    logger.info("Email draft saved to database", extra=logger_context)
+                    # Create Gmail draft first
+                    draft_result = create_draft(
+                        sender="me",
+                        to=lead_email,
+                        subject=subject,
+                        message_text=body,
+                        lead_id=lead_id,
+                        sequence_num=1
+                    )
+
+                    if draft_result["status"] == "ok":
+                        # Store in database once
+                        store_draft_info(
+                            lead_id=lead_id,
+                            draft_id=draft_result["draft_id"],
+                            scheduled_date=scheduled_send_date,
+                            subject=subject,
+                            body=body,
+                            sequence_num=1
+                        )
+                        conn.commit()
+                        logger.info("Email draft saved to database", extra=logger_context)
+                        
+                        # Get next sequence number
+                        cursor.execute("""
+                            SELECT COALESCE(MAX(sequence_num), 0) + 1
+                            FROM emails 
+                            WHERE lead_id = ?
+                        """, (lead_id,))
+                        next_seq = cursor.fetchone()[0]
+
+                        # Then use it for follow-up
+                        cursor.execute("""
+                            SELECT email_id 
+                            FROM emails 
+                            WHERE draft_id = ? AND lead_id = ?
+                        """, (draft_result["draft_id"], lead_id))
+                        email_id = cursor.fetchone()[0]
+
+                        followup_data = generate_followup_email_xai(lead_id, email_id, next_seq)
+                        if followup_data:
+                            schedule_followup(lead_id, email_id)
+                        else:
+                            logger.warning("No follow-up data generated")
+                    else:
+                        logger.error("Failed to create Gmail draft", extra=logger_context)
                 else:
                     logger.error("Could not find lead_id for email", extra={
                         **logger_context,
                         "email": lead_email
                     })
-                    
-                # Create Gmail draft
-                draft_result = create_draft(
-                    sender="me",
-                    to=lead_email,
-                    subject=subject,
-                    message_text=body
-                )
-                if draft_result["status"] != "ok":
-                    logger.error("Failed to create Gmail draft", extra=logger_context)
                     
             except Exception as e:
                 logger.error("Database operation failed", 
@@ -1416,23 +1481,23 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         now = datetime.now()
         target_date = now + timedelta(days=1)
         
-        print("\nScheduling Process:")
-        print(f"1. Starting with tomorrow: {target_date.strftime('%Y-%m-%d')}")
+        #print("\nScheduling Process:")
+        #print(f"1. Starting with tomorrow: {target_date.strftime('%Y-%m-%d')}")
         
         # Find the next valid month
         while target_date.month not in best_months:
-            print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
+            #print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
             if target_date.month == 12:
                 target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
             else:
                 target_date = target_date.replace(month=target_date.month + 1, day=1)
-            print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+            #print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
         
         # Find the next valid day of week
         while target_date.weekday() not in best_days:
-            print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
+            #print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
             target_date += timedelta(days=1)
-            print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
+            #print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
         
         # Set time within the best window (9:00-11:00)
         send_hour = best_time["start"]  # This will be 9
@@ -1452,9 +1517,9 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         # Adjust for state's offset
         final_send_date = adjust_send_time(send_date, state_code)
         
-        print(f"\nFinal Schedule:")
-        print(f"✅ Selected send time: {final_send_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        print("============================\n")
+        #print(f"\nFinal Schedule:")
+        #print(f"✅ Selected send time: {final_send_date.strftime('%Y-%m-%d %H:%M:%S')}")
+        #print("============================\n")
         
         return final_send_date
         
@@ -1539,6 +1604,82 @@ def clear_files_on_start():
     # Clear SQL tables
     clear_sql_tables()
 
+def schedule_followup(lead_id: int, email_draft_id: int):
+    """Schedule a follow-up email"""
+    try:
+        # Get the original email content first
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get the original email content
+        cursor.execute("""
+            SELECT subject, body, scheduled_send_date
+            FROM emails
+            WHERE email_id = ?
+        """, (email_draft_id,))
+        
+        original_email = cursor.fetchone()
+        if not original_email:
+            logger.error(f"Could not find original email with ID {email_draft_id}")
+            return
+            
+        # Create dictionary with original email data
+        original_email_dict = {
+            'subject': original_email[0],
+            'body': original_email[1],
+            'created_at': original_email[2],
+            'draft_id': email_draft_id
+        }
+        
+        # Generate the follow-up email content
+        followup = generate_followup_email_xai(
+            lead_id=lead_id,
+            sequence_num=2,  # Second email in sequence
+            original_email=original_email_dict
+        )
+        
+        if followup:
+            # Create Gmail draft for follow-up
+            draft_result = create_draft(
+                sender="me",
+                to=followup.get('email'),
+                subject=followup.get('subject', "Follow-up"),
+                message_text=followup.get('body', "")
+            )
+            
+            if draft_result["status"] == "ok":
+                # Save follow-up to database
+                cursor.execute("""
+                    INSERT INTO emails (
+                        lead_id, subject, body, status, 
+                        scheduled_send_date, draft_id, sequence_num
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    lead_id,
+                    followup.get('subject'),
+                    followup.get('body'),
+                    'pending',
+                    followup.get('scheduled_send_date'),
+                    draft_result.get('draft_id'),
+                    2  # Second email in sequence
+                ))
+                conn.commit()
+                logger.info(f"Follow-up email scheduled with draft_id {draft_result.get('draft_id')}")
+            else:
+                logger.error("Failed to create Gmail draft for follow-up")
+        else:
+            logger.error("Failed to generate follow-up email content")
+            
+    except Exception as e:
+        logger.error(f"Error scheduling follow-up: {str(e)}", exc_info=True)
+        if 'conn' in locals():
+            conn.rollback()
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
 if __name__ == "__main__":
     if CLEAR_LOGS_ON_START:
         clear_files_on_start()
@@ -1571,6 +1712,7 @@ if __name__ == "__main__":
 import sys
 from pathlib import Path
 import pyodbc
+from datetime import datetime
 
 # Add the project root to the Python path
 project_root = Path(__file__).parent.parent
@@ -1806,6 +1948,27 @@ def clear_tables():
         logger.exception(f"Failed to clear SQL tables: {str(e)}")
         raise e
 
+def store_email_draft(cursor, lead_id: int, subject: str, body: str, 
+                     scheduled_send_date: datetime = None, 
+                     sequence_num: int = None,
+                     draft_id: str = None,
+                     status: str = 'pending') -> int:
+    """
+    Store email draft in database. Returns email_id.
+    """
+    cursor.execute("""
+        INSERT INTO emails (
+            lead_id, subject, body, status,
+            scheduled_send_date, created_at,
+            sequence_num, draft_id
+        ) VALUES (?, ?, ?, ?, ?, GETDATE(), ?, ?)
+    """, (
+        lead_id, subject, body, status,
+        scheduled_send_date, sequence_num, draft_id
+    ))
+    cursor.execute("SELECT SCOPE_IDENTITY()")
+    return cursor.fetchone()[0]
+
 if __name__ == "__main__":
     init_db()
     logger.info("Database tables dropped and recreated.")
@@ -1939,7 +2102,14 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
 
         # Get news separately
         research_data = analysis_data.get("research_data", {})
-        facilities_news = research_data.get("recent_news", [])[0].get("snippet", "") if research_data.get("recent_news") else ""
+        facilities_news = ""
+        if research_data.get("recent_news"):
+            try:
+                news_item = research_data["recent_news"][0]
+                if isinstance(news_item, dict):
+                    facilities_news = str(news_item.get("snippet", ""))[:500]  # Limit length
+            except (IndexError, KeyError, TypeError):
+                logger.warning("Could not extract facilities news from research data")
 
         # Get the company overview separately
         research_data = analysis_data.get("research_data", {})
@@ -2209,8 +2379,8 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     VALUES (?, ?, ?, GETDATE())
                 """, (
                     company_id,
-                    annualrevenue,
-                    facilities_news
+                    str(annualrevenue) if annualrevenue else None,
+                    str(facilities_news)[:500] if facilities_news else None  # Limit length and ensure string
                 ))
             conn.commit()
 
@@ -2275,45 +2445,7 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
             logger.error(f"Failed to store emails: {str(e)}")
             raise
 
-        # Store draft emails
-        def store_draft_email(lead_id, subject, body, scheduled_send_date, sequence_num=None, draft_id=None):
-            """Store a draft email in the database."""
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            try:
-                # Ensure datetime has no timezone info
-                if hasattr(scheduled_send_date, 'tzinfo'):
-                    scheduled_send_date = scheduled_send_date.replace(tzinfo=None)
-                    
-                cursor.execute("""
-                    INSERT INTO emails (
-                        lead_id,
-                        subject,
-                        body,
-                        status,
-                        scheduled_send_date,
-                        sequence_num,
-                        draft_id,
-                        created_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, GETDATE())
-                """, (
-                    lead_id,
-                    subject,
-                    body,
-                    'draft',
-                    scheduled_send_date,
-                    sequence_num,
-                    draft_id
-                ))
-                conn.commit()
-                logger.info("Draft email stored successfully")
-            except Exception as e:
-                logger.error(f"Failed to store draft email: {str(e)}")
-                conn.rollback()
-                raise
-            finally:
-                cursor.close()
-                conn.close()
+        logger.info(f"Successfully stored {len(emails)} email records and draft email")
 
     except Exception as e:
         logger.error("Error in upsert_full_lead", extra={
@@ -2335,89 +2467,83 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
 # followup_generation.py
 
 from scheduling.database import get_db_connection
+from utils.gmail_integration import create_draft
+from utils.logging_setup import logger
+from scripts.golf_outreach_strategy import get_best_outreach_window, adjust_send_time
 from utils.xai_integration import _send_xai_request
-import re
+from datetime import datetime, timedelta
+import random
 
-def parse_subject_and_body(raw_text: str) -> tuple[str, str]:
-    """
-    Basic parser to extract the subject and body from the xAI response.
-    This can be expanded depending on how xAI responds.
-    """
-    subject = "Follow-Up Email"
-    body = raw_text.strip()
+def generate_followup_email_xai(lead_id: int, email_id: int = None, sequence_num: int = None) -> dict:
+    """Generate a follow-up email using xAI"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
 
-    # If we expect a structure like:
-    # Subject: ...
-    # Body: ...
-    # we can parse with regex:
-    sub_match = re.search(r"(?i)^subject:\s*(.*)", raw_text)
-    bod_match = re.search(r"(?i)^body:\s*(.*)", raw_text, flags=re.DOTALL)
-    if sub_match:
-        subject = sub_match.group(1).strip()
-    if bod_match:
-        body = bod_match.group(1).strip()
+        # Get original email and lead data
+        query = """
+            SELECT 
+                l.email,
+                l.first_name,
+                e.subject as original_subject,
+                e.body as original_body,
+                e.created_at as original_date,
+                c.state
+            FROM leads l
+            JOIN emails e ON e.email_id = ?
+            LEFT JOIN companies c ON l.company_id = c.company_id
+            WHERE l.lead_id = ?
+        """
+        cursor.execute(query, (email_id, lead_id))
+        result = cursor.fetchone()
+        
+        if not result:
+            logger.error(f"Could not find original email: lead_id={lead_id}, email_id={email_id}")
+            return None
 
-    return subject, body
+        email, first_name, orig_subject, orig_body, orig_date, state = result
 
-def generate_followup_email_xai(lead_id: int, sequence_num: int):
-    """
-    For a given lead and sequence number (e.g., 2 or 3),
-    calls xAI to generate a personalized follow-up email,
-    then updates the followups table with the resulting subject & body.
-    """
-    conn = get_db_connection()
-    lead = conn.execute("SELECT * FROM leads WHERE lead_id = ?", (lead_id,)).fetchone()
+        # Fixed prompt for consistent follow-ups
+        followup_text = (
+            "I understand my last email might not have made it high enough in your inbox. "
+            f"I wanted to quickly follow up about improving {first_name}'s club operations. "
+            "Would you have 10 minutes this week for a brief call?"
+        )
 
-    if not lead:
-        conn.close()
-        return
+        # Format complete email with original included
+        subject = f"RE: {orig_subject}"
+        body = (
+            f"{followup_text}\n\n"
+            f"Best regards,\n"
+            f"Ty\n\n"
+            f"-------- Original Message --------\n"
+            f"Date: {orig_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
+            f"Subject: {orig_subject}\n\n"
+            f"{orig_body}"
+        )
 
-    # Customize prompt based on sequence number and follow-up stage
-    follow_up_context = {
-        1: "This is the first follow-up (Day 3). Keep it short, friendly, and focused on checking if they've had a chance to review the initial email.",
-        2: "This is the value-add follow-up (Day 7). Share a relevant success story about member satisfaction and revenue improvements. Focus on concrete metrics and results.",
-        3: "This is the final follow-up (Day 14). Be polite but create urgency, emphasizing the opportunity while maintaining professionalism."
-    }.get(sequence_num, "This is a follow-up email. Be professional and concise.")
+        # Calculate base send date (3 days from original)
+        base_date = orig_date + timedelta(days=3)
+        
+        # Adjust for timezone if state is available
+        send_date = adjust_send_time(base_date, state) if state else base_date
 
-    user_prompt = f"""
-    The lead's name is {lead['first_name']} {lead['last_name']}, 
-    role is {lead['role']}, at {lead.get('club_name', 'their club')}.
+        return {
+            'email': email,
+            'subject': subject,
+            'body': body,
+            'scheduled_send_date': send_date,
+            'sequence_num': sequence_num or 2  # Default to 2 if not specified
+        }
 
-    {follow_up_context}
-    Assume they have not responded to our previous outreach about Swoop Golf's on-demand F&B platform.
-
-    Requirements:
-    1. Provide a concise subject line.
-    2. Write a personalized email that matches the follow-up stage context.
-    3. For sequence=1 (Day 3): Keep it brief and friendly.
-    4. For sequence=2 (Day 7): Include specific success metrics from similar clubs.
-    5. For sequence=3 (Day 14): Politely indicate this is the final follow-up.
-    6. Always reference on-demand F&B and member experience enhancement.
-    7. Output format:
-       Subject: ...
-       Body: ...
-    """
-
-    payload = {
-        "messages": [
-            {"role": "system", "content": "You are a sales copywriter for the golf industry."},
-            {"role": "user", "content": user_prompt}
-        ],
-        "model": "grok-2-1212",   # Example model name
-        "stream": False,
-        "temperature": 0.7
-    }
-
-    xai_response = _send_xai_request(payload)
-    subject, body = parse_subject_and_body(xai_response)
-
-    conn.execute("""
-        UPDATE followups
-        SET subject = ?, body = ?
-        WHERE lead_id = ? AND sequence_num = ?
-    """, (subject, body, lead_id, sequence_num))
-    conn.commit()
-    conn.close()
+    except Exception as e:
+        logger.error(f"Error generating follow-up: {str(e)}", exc_info=True)
+        return None
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 ```
 
@@ -2428,184 +2554,89 @@ def generate_followup_email_xai(lead_id: int, sequence_num: int):
 import datetime
 import time
 from apscheduler.schedulers.background import BackgroundScheduler
-from scheduling.database import get_db_connection
+from scheduling.database import get_db_connection, store_email_draft
 from scheduling.followup_generation import generate_followup_email_xai
 from utils.gmail_integration import create_draft
 from utils.logging_setup import logger
 from config.settings import SEND_EMAILS
 import logging
 
-def print_scheduling_status(scheduled_emails):
-    """Prints a human-readable summary of scheduled emails and their status"""
-    print("\n=== Email Scheduling Status ===")
-    print(f"Found {len(scheduled_emails)} scheduled emails")
-    print("----------------------------")
-    
-    for email in scheduled_emails:
-        email_id, scheduled_date, status, recipient = email
-        print(f"\nEmail ID: {email_id}")
-        print(f"Recipient: {recipient}")
-        print(f"Scheduled for: {scheduled_date}")
-        print(f"Current status: {status}")
-    
-    if not scheduled_emails:
-        print("No emails currently scheduled")
-    print("============================\n")
-
 def check_and_send_followups():
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    now_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    print(f"\n🔍 Checking for followups at {now_str}")
-    print(f"Email sending is {'ENABLED' if SEND_EMAILS else 'DISABLED'}\n")
+    logger.debug("Running check_and_send_followups")
 
     try:
-        # Debug query to see ALL emails
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Get leads needing follow-up
         cursor.execute("""
-            SELECT 
-                e.email_id,
-                e.scheduled_send_date,
-                e.status,
-                l.email,
-                l.status as lead_status,
-                e.created_at
+            SELECT e.lead_id, e.email_id
             FROM emails e
-            LEFT JOIN leads l ON l.lead_id = e.lead_id
-            ORDER BY e.scheduled_send_date
+            WHERE e.sequence_num = 1
+            AND e.status = 'sent'
+            AND NOT EXISTS (
+                SELECT 1 FROM emails e2 
+                WHERE e2.lead_id = e.lead_id 
+                AND e2.sequence_num = 2
+            )
         """)
-        all_emails = cursor.fetchall()
         
-        print("\n=== Current Email Schedule ===")
-        for email in all_emails:
-            print(f"Email ID: {email[0]}")
-            print(f"To: {email[3]}")
-            print(f"Scheduled: {email[1]}")
-            print(f"Status: {email[2]}")
-            print(f"Created: {email[5]}")
-            print("---")
-        print("============================\n")
-
-        # Debug query to see all scheduled emails
-        cursor.execute("""
-            SELECT e.email_id, e.scheduled_send_date, e.status, l.email 
-            FROM emails e
-            JOIN leads l ON l.lead_id = e.lead_id
-            WHERE e.scheduled_send_date <= ? 
-            ORDER BY e.scheduled_send_date
-        """, (now_str,))
-        scheduled_emails = cursor.fetchall()
-        
-        # Print scheduling status
-        print_scheduling_status(scheduled_emails)
-
-        if scheduled_emails:
-            logger.info("Found scheduled emails:", extra={
-                "emails": [{
-                    "email_id": e[0],
-                    "scheduled_date": e[1],
-                    "status": e[2],
-                    "recipient": e[3]
-                } for e in scheduled_emails]
-            })
-        else:
-            logger.info("No scheduled emails found for current time window")
-
-        # Debug query to see all emails
-        cursor.execute("SELECT COUNT(*) FROM emails")
-        total_count = cursor.fetchone()[0]
-        logger.debug(f"Total emails in database: {total_count}")
-
-        # Debug query to see email statuses
-        cursor.execute("SELECT status, COUNT(*) FROM emails GROUP BY status")
-        status_counts = cursor.fetchall()
-        logger.debug(f"Email status counts: {dict(status_counts)}")
-
-        # Original query with added logging
-        query = """
-            SELECT COUNT(*) 
-            FROM emails e
-            JOIN leads l ON l.lead_id = e.lead_id
-            WHERE e.scheduled_send_date <= ?
-              AND e.status = 'pending'
-              AND l.status = 'active'
-              AND e.actual_send_date IS NULL
-        """
-        cursor.execute(query, (now_str,))
-        pending_count = cursor.fetchone()[0]
-        
-        logger.info(f"Found {pending_count} pending emails to process")
-
-        # Then get the actual rows
-        rows = cursor.execute("""
-            SELECT e.email_id,
-                   e.lead_id,
-                   e.subject,
-                   e.body,
-                   e.status,
-                   e.sequence_num,
-                   l.email,
-                   e.scheduled_send_date
-            FROM emails e
-            JOIN leads l ON l.lead_id = e.lead_id
-            WHERE e.scheduled_send_date <= ?
-              AND e.status = 'pending'
-              AND l.status = 'active'
-              AND e.actual_send_date IS NULL
-        """, (now_str,)).fetchall()
-
-        for row in rows:
-            email_id, lead_id, subject, body, status, seq_num, recipient, send_date = row
+        for row in cursor.fetchall():
+            lead_id, email_id = row
             
-            logger.info("Processing scheduled email", extra={
-                "email_id": email_id,
-                "recipient": recipient,
-                "scheduled_date": str(send_date),
-                "send_emails_enabled": SEND_EMAILS
-            })
-            
-            if not SEND_EMAILS:
-                logger.info("Email sending disabled - would have sent email", extra={
-                    "email_id": email_id,
-                    "recipient": recipient,
-                    "subject": subject
-                })
-                continue
-            
-            # Create Gmail draft
-            draft_res = create_draft(
-                sender="me",
-                to=recipient,
-                subject=subject,
-                message_text=body
+            # Generate follow-up content using updated function signature
+            followup_data = generate_followup_email_xai(
+                lead_id=lead_id,
+                email_id=email_id,  # Changed from original_email_id
+                sequence_num=2
             )
             
-            if draft_res["status"] == "ok":
-                cursor.execute("""
-                    UPDATE emails
-                    SET status = 'draft_created',
-                        draft_id = ?,
-                        last_updated = CURRENT_TIMESTAMP
-                    WHERE email_id = ?
-                """, (draft_res.get("draft_id"), email_id))
-                conn.commit()
-                logger.info(f"Created draft for email_id={email_id} to {recipient}")
-            else:
-                logger.error(f"Failed to create draft", extra={
-                    "email_id": email_id,
-                    "recipient": recipient,
-                    "error": draft_res.get("error", "Unknown error")
-                })
+            if followup_data:
+                # Create Gmail draft first
+                draft_result = create_draft(
+                    sender="me",
+                    to=followup_data['email'],
+                    subject=followup_data['subject'],
+                    message_text=followup_data['body'],
+                    lead_id=lead_id,
+                    sequence_num=2
+                )
 
+                if draft_result["status"] == "ok":
+                    # Store in database using centralized function
+                    email_id = store_email_draft(
+                        cursor,
+                        lead_id=lead_id,
+                        subject=followup_data['subject'],
+                        body=followup_data['body'],
+                        scheduled_send_date=followup_data['scheduled_send_date'],
+                        sequence_num=2,
+                        draft_id=draft_result["draft_id"],
+                        status='pending'
+                    )
+                    conn.commit()
+                    logger.info("Follow-up email draft created and stored", extra={
+                        "email_id": email_id,
+                        "lead_id": lead_id,
+                        "sequence_num": 2
+                    })
+                else:
+                    logger.error("Failed to create Gmail draft", extra={
+                        "lead_id": lead_id,
+                        "error": draft_result.get("error", "Unknown error")
+                    })
+            else:
+                logger.warning(f"No follow-up data generated for lead_id={lead_id}")
+            
     except Exception as e:
-        logger.error("Error in followup scheduler", extra={
-            "error": str(e),
-            "error_type": type(e).__name__
-        }, exc_info=True)
-        conn.rollback()
+        logger.exception("Error in followup scheduler")
+        if 'conn' in locals():
+            conn.rollback()
     finally:
-        cursor.close()
-        conn.close()
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 def start_scheduler():
     """Initialize and start the follow-up scheduler"""
@@ -2627,41 +2658,6 @@ def start_scheduler():
         
     except Exception as e:
         logger.error(f"Failed to start scheduler: {e}")
-
-def store_email_draft(cursor, lead_id, subject, body, scheduled_send_date):
-    """Store email draft in database with proper date handling"""
-    try:
-        # Ensure datetime has no timezone info
-        if hasattr(scheduled_send_date, 'tzinfo'):
-            scheduled_send_date = scheduled_send_date.replace(tzinfo=None)
-            
-        cursor.execute("""
-            INSERT INTO emails (
-                lead_id, 
-                subject, 
-                body, 
-                status,
-                scheduled_send_date,
-                created_at,
-                last_updated
-            ) VALUES (?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        """, (lead_id, subject, body, scheduled_send_date.strftime("%Y-%m-%d %H:%M:%S")))
-        
-        email_id = cursor.lastrowid
-        print(f"\n=== Email Scheduling Confirmation ===")
-        print(f"Email ID: {email_id}")
-        print(f"Scheduled for: {scheduled_send_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        print(f"Status: pending")
-        print("============================\n")
-        
-        return email_id
-    except Exception as e:
-        logger.error("Failed to store email draft", extra={
-            "error": str(e),
-            "lead_id": lead_id,
-            "scheduled_date": scheduled_send_date
-        })
-        raise
 
 if __name__ == "__main__":
     start_scheduler()
@@ -3335,6 +3331,34 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
         "Best Day": best_days
     }
 
+def calculate_send_date(geography: str, profile_type: str, state: str, preferred_days: list, preferred_time: dict) -> datetime:
+    """
+    Calculate the next appropriate send date based on outreach window and preferred days/time.
+    """
+    outreach_window = get_best_outreach_window(geography, profile_type)
+    best_months = outreach_window["Best Month"]
+    
+    # Find the next preferred day of week
+    today = datetime.now().date()
+    days_ahead = [(day - today.weekday()) % 7 for day in preferred_days]
+    next_preferred_day = min(days_ahead)
+    
+    # Adjust to next month if needed
+    if today.month not in best_months:
+        target_month = min(best_months)
+        if today.month > target_month:
+            target_year = today.year + 1
+        else:
+            target_year = today.year
+        target_date = datetime(target_year, target_month, 1)
+    else:
+        target_date = today + timedelta(days=next_preferred_day)
+    
+    # Apply preferred time
+    target_date = target_date.replace(hour=preferred_time["start"])
+    
+    return target_date
+
 ```
 
 ## scripts\job_title_categories.py
@@ -3529,8 +3553,13 @@ from services.hubspot_service import HubspotService
 from utils.exceptions import HubSpotError
 from utils.xai_integration import xai_news_search, xai_club_info_search
 from utils.web_fetch import fetch_website_html
-from utils.logging_setup import logger
+from utils.logging_setup import logger, setup_logging
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
+from utils.formatting_utils import clean_html
+
+# Initialize logging
+setup_logging()
+
 # CSV-based Season Data
 CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
 ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_st.csv'
@@ -3550,14 +3579,18 @@ class DataGathererService:
     """
 
     def __init__(self):
-        """Initialize the DataGathererService with HubSpot client and season data."""
-        self._hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
-        # Load season data at initialization
+        """Initialize the DataGathererService"""
+        self.hubspot = HubspotService(HUBSPOT_API_KEY)
+        # Load season data from CSV files
         self.load_season_data()
 
     def _gather_hubspot_data(self, lead_email: str) -> Dict[str, Any]:
         """Gather all HubSpot data."""
-        return self._hubspot.gather_lead_data(lead_email)
+        try:
+            return self.hubspot.gather_lead_data(lead_email)
+        except HubSpotError as e:
+            logger.error(f"HubSpot error gathering data for {lead_email}: {str(e)}")
+            raise
 
     def gather_lead_data(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
         """
@@ -3571,29 +3604,55 @@ class DataGathererService:
         if correlation_id is None:
             correlation_id = f"gather_{lead_email}"
         # 1) Lookup contact_id via email
-        contact_data = self._hubspot.get_contact_by_email(lead_email)
-        if not contact_data:
-            logger.error("Failed to find contact ID", extra={
-                "email": lead_email,
-                "operation": "gather_lead_data",
-                "correlation_id": f"gather_{lead_email}",
-                "status": "error"
-            })
-            return {}
-        contact_id = contact_data["id"]  # ID is directly on the contact object
+        try:
+            hubspot_data = self._gather_hubspot_data(lead_email)
+            contact_data = hubspot_data.get("contact", {})
+            company_data = hubspot_data.get("company", {})
+            contact_id = contact_data.get("id")
+            company_id = company_data.get("id")
+            contact_props = contact_data.get("properties", {})
+            company_props = company_data.get("properties", {})
+            notes = hubspot_data.get("notes", [])
+        except HubSpotError:
+            logger.warning(f"Skipping lead {lead_email} due to HubSpot data error")
+            return {
+                "metadata": {
+                    "contact_id": None, 
+                    "company_id": None,
+                    "lead_email": lead_email,
+                    "status": "error"
+                },
+                "lead_data": {},
+                "analysis": {}
+            }
 
         # 2) Get the contact properties
-        contact_props = self._hubspot.get_contact_properties(contact_id)
+        contact_props = self.hubspot.get_contact_properties(contact_id)
 
         # 3) Get the associated company_id
-        company_id = self._hubspot.get_associated_company_id(contact_id)
+        company_id = self.hubspot.get_associated_company_id(contact_id)
 
         # 4) Get the company data (including city/state)
-        company_props = self._hubspot.get_company_data(company_id)
+        company_props = self.hubspot.get_company_data(company_id)
 
         # 5) Add calls to fetch emails and notes from HubSpot
-        emails = self._hubspot.get_all_emails_for_contact(contact_id)
-        notes = self._hubspot.get_all_notes_for_contact(contact_id)
+        emails = self.hubspot.get_all_emails_for_contact(contact_id)
+        notes = self.hubspot.get_all_notes_for_contact(contact_id)
+
+        # Add notes with proper encoding handling
+        for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
+            if isinstance(note, dict):
+                date = note.get('timestamp', '').split('T')[0]
+                raw_content = note.get('body', '')
+                content = clean_html(raw_content)
+                
+                interaction = {
+                    'date': date,
+                    'type': 'note',
+                    'direction': 'internal',
+                    'subject': 'Internal Note',
+                    'notes': content[:1000]  # Limit length to prevent token overflow
+                }
 
         # Modify this section to avoid duplicate news calls
         club_name = company_props.get("name", "")
@@ -3989,53 +4048,58 @@ class DataGathererService:
         return f"lead_context_{safe_email}_{timestamp}.json"
 
     def load_season_data(self) -> None:
-        """Load golf season data from CSV files into CITY_ST_DATA, ST_DATA dictionaries."""
-        global CITY_ST_DATA, ST_DATA
+        """Load golf season data from CSV files into memory"""
         try:
-            with CITY_ST_CSV.open('r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    city = row['City'].strip().lower()
-                    st = row['State'].strip().lower()
-                    CITY_ST_DATA[(city, st)] = row
+            # Load city/state data
+            if CITY_ST_CSV.exists():
+                with CITY_ST_CSV.open('r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        key = f"{row['city']}, {row['state']}".lower()
+                        CITY_ST_DATA[key] = row
+            else:
+                logger.warning("City/State season data file not found", extra={
+                    "file_path": str(CITY_ST_CSV)
+                })
 
-            with ST_CSV.open('r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    st = row['State'].strip().lower()
-                    ST_DATA[st] = row
+            # Load state-only data
+            if ST_CSV.exists():
+                with ST_CSV.open('r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        ST_DATA[row['state'].lower()] = row
+            else:
+                logger.warning("State season data file not found", extra={
+                    "file_path": str(ST_CSV)
+                })
 
-            logger.info("Successfully loaded golf season data", extra={
-                "city_state_count": len(CITY_ST_DATA),
-                "state_count": len(ST_DATA)
-            })
+            if not CITY_ST_DATA and not ST_DATA:
+                logger.error("Failed to load golf season data", extra={
+                    "city_st_file": str(CITY_ST_CSV),
+                    "st_file": str(ST_CSV)
+                })
+
         except Exception as e:
-            logger.error("Failed to load golf season data", extra={
+            logger.error("Error loading season data", extra={
                 "error": str(e),
-                "city_st_path": str(CITY_ST_CSV),
-                "st_path": str(ST_CSV)
+                "error_type": type(e).__name__,
+                "city_st_file": str(CITY_ST_CSV),
+                "st_file": str(ST_CSV)
             })
-            raise
 
     def determine_club_season(self, city: str, state: str) -> Dict[str, str]:
         """
         Return the peak season data for the given city/state based on CSV lookups.
-        
-        Args:
-            city (str): City name
-            state (str): State name or abbreviation
-            
-        Returns:
-            Dict containing:
-                - year_round (str): "Yes", "No", or "Unknown"
-                - start_month (str): Season start month or "N/A"
-                - end_month (str): Season end month or "N/A"
-                - peak_season_start (str): Peak season start date (MM-DD)
-                - peak_season_end (str): Peak season end date (MM-DD)
-                - status (str): "success", "error", or "no_data"
-                - error (str): Error message if any
         """
         try:
+            # Add debug logging for input values
+            logger.debug("Determining club season", extra={
+                "city": city,
+                "state": state,
+                "city_st_data_count": len(CITY_ST_DATA),
+                "st_data_count": len(ST_DATA)
+            })
+
             if not city and not state:
                 logger.warning(
                     "No city or state provided for season lookup",
@@ -4052,10 +4116,21 @@ class DataGathererService:
                 }
 
             city_key = (city.lower(), state.lower())
-            row = CITY_ST_DATA.get(city_key)
+            logger.debug("Looking up season data", extra={
+                "city_key": city_key,
+                "found_in_city_data": city_key in CITY_ST_DATA,
+                "found_in_state_data": state.lower() in ST_DATA
+            })
 
+            row = CITY_ST_DATA.get(city_key)
+            
             if not row:
                 row = ST_DATA.get(state.lower())
+                logger.debug("Using state-level data", extra={
+                    "state": state.lower(),
+                    "found_data": bool(row),
+                    "row_data": row if row else None
+                })
 
             if not row:
                 logger.info(
@@ -4076,27 +4151,37 @@ class DataGathererService:
                     "error": "Location not found in season data"
                 }
 
+            # Add debug logging for found season data
+            logger.debug("Season data found", extra={
+                "year_round": row["Year-Round?"].strip(),
+                "start_month": row["Start Month"].strip(),
+                "end_month": row["End Month"].strip(),
+                "peak_start": row["Peak Season Start"].strip(),
+                "peak_end": row["Peak Season End"].strip()
+            })
+
             year_round = row["Year-Round?"].strip()
             start_month_str = row["Start Month"].strip()
             end_month_str = row["End Month"].strip()
             peak_season_start_str = row["Peak Season Start"].strip()
             peak_season_end_str = row["Peak Season End"].strip()
 
+            # Add debug logging for default values
             if not peak_season_start_str or peak_season_start_str == "N/A":
+                logger.debug("Using default peak season start", extra={
+                    "original": peak_season_start_str,
+                    "default": "May"
+                })
                 peak_season_start_str = "May"
+                
             if not peak_season_end_str or peak_season_end_str == "N/A":
+                logger.debug("Using default peak season end", extra={
+                    "original": peak_season_end_str,
+                    "default": "August"
+                })
                 peak_season_end_str = "August"
 
-            logger.info(
-                "Successfully determined club season",
-                extra={
-                    "city": city,
-                    "state": state,
-                    "year_round": year_round,
-                    "status": "success"
-                }
-            )
-            return {
+            result = {
                 "year_round": year_round,
                 "start_month": start_month_str,
                 "end_month": end_month_str,
@@ -4105,6 +4190,15 @@ class DataGathererService:
                 "status": "success",
                 "error": ""
             }
+
+            # Add debug logging for final result
+            logger.debug("Season determination complete", extra={
+                "city": city,
+                "state": state,
+                "result": result
+            })
+
+            return result
 
         except Exception as e:
             logger.error(
@@ -4173,7 +4267,7 @@ class DataGathererService:
         """
         try:
             # Get contact properties from HubSpot
-            lead_data = self._hubspot.get_contact_properties(contact_id)
+            lead_data = self.hubspot.get_contact_properties(contact_id)
             if not lead_data:
                 logger.warning(
                     "No lead data found for contact",
@@ -4196,7 +4290,7 @@ class DataGathererService:
             emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
 
             # Get all notes for contact
-            notes = self._hubspot.get_all_notes_for_contact(contact_id)
+            notes = self.hubspot.get_all_notes_for_contact(contact_id)
 
             # Count meetings from notes
             meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
@@ -4314,7 +4408,7 @@ class DataGathererService:
         """Get club geography and type."""
         try:
             # Try to get company data from HubSpot
-            company_data = self._hubspot.get_company_data(club_name)
+            company_data = self.hubspot.get_company_data(club_name)
             geography = self.determine_geography(city, state)
             
             # Determine club type from HubSpot data
@@ -5156,36 +5250,23 @@ def clean_phone_number(raw_phone):
     else:
         return digits
 
-def clean_html(raw_html: str, strip_tags: bool = True, remove_scripts: bool = True) -> str:
-    """
-    Clean HTML content by removing tags and/or unwanted elements.
-    
-    Args:
-        raw_html: Raw HTML string to clean
-        strip_tags: If True, removes all HTML tags
-        remove_scripts: If True, removes script and style tags before processing
-    
-    Returns:
-        Cleaned text string
-    """
-    if not raw_html:
+def clean_html(text):
+    """Clean HTML from text while handling both markup and file paths."""
+    if not text:
         return ""
-    
-    if remove_scripts:
-        soup = BeautifulSoup(raw_html, "html.parser")
-        for tag in soup(["script", "style"]):
-            tag.decompose()
-        raw_html = str(soup)
-    
-    if strip_tags:
-        # Remove HTML tags while preserving content
-        text = re.sub('<[^<]+?>', '', raw_html)
-        # Decode HTML entities
-        text = BeautifulSoup(text, "html.parser").get_text()
-        return text.strip()
-    
-    return raw_html.strip()
-
+        
+    # If text is a file path, read the file first
+    if isinstance(text, str) and ('\n' not in text) and ('.' in text):
+        try:
+            with open(text, 'r', encoding='utf-8') as f:
+                text = f.read()
+        except (IOError, OSError):
+            # If we can't open it as a file, treat it as markup
+            pass
+            
+    # Parse with BeautifulSoup
+    text = BeautifulSoup(text, "html.parser").get_text()
+    return text.strip()
 
 def extract_text_from_html(html_content: str, preserve_newlines: bool = False) -> str:
     """
@@ -5238,6 +5319,11 @@ from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
 from utils.logging_setup import logger
+import requests
+import json
+from datetime import datetime
+from scheduling.database import get_db_connection
+from typing import Dict, Any
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
@@ -5265,68 +5351,182 @@ def get_gmail_service():
     return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
 
-def create_message(sender, to, subject, message_text):
-    """Create a MIMEText email message."""
-    logger.debug("=== START CREATE MESSAGE DEBUG ===")
-    logger.debug(f"Original message text:\n{message_text}")
-    logger.debug(f"Original message length: {len(message_text)}")
-    
-    # Normalize line endings and clean up any extra spaces
-    message_text = message_text.replace('\r\n', '\n')
-    message_text = message_text.replace('\n\n\n', '\n\n')
-    
-    # Create message with explicit content type and encoding
-    message = MIMEText(message_text, _subtype='plain', _charset='utf-8')
-    message['to'] = to
-    message['from'] = sender
-    message['subject'] = subject
-    
-    # Set content type with format=flowed to preserve line breaks
-    message.replace_header('Content-Type', 'text/plain; charset=utf-8; format=flowed; delsp=yes')
-    
-    # Log the raw message before encoding
-    raw_message = message.as_string()
-    logger.debug(f"Raw MIME message:\n{raw_message}")
-    
-    # Convert to bytes, encode, and create raw message
-    raw = base64.urlsafe_b64encode(message.as_bytes()).decode()
-    
-    logger.debug("=== END CREATE MESSAGE DEBUG ===")
-    return {'raw': raw}
-
-
-def create_draft(sender: str, to: str, subject: str, message_text: str) -> dict:
-    """Creates an email draft in Gmail."""
+def create_message(to: str, subject: str, body: str) -> dict:
+    """
+    Create a message for an email.
+    Args:
+        to: Email address of the receiver.
+        subject: The subject of the email.
+        body: The body of the email message.
+    Returns:
+        An object containing a base64url encoded email object.
+    """
     try:
-        # Get Gmail service
-        service = get_gmail_service()
-        
-        # Create the message
-        message = create_message(sender, to, subject, message_text)
-        
-        # Single consolidated log for draft creation
-        logger.debug("Creating Gmail draft", extra={
+        # Validate inputs
+        if not all([to, subject, body]):
+            logger.error("Missing required email fields", extra={
+                "has_to": bool(to),
+                "has_subject": bool(subject),
+                "has_body": bool(body)
+            })
+            return None
+
+        # Ensure all inputs are strings
+        to = str(to).strip()
+        subject = str(subject).strip()
+        body = str(body).strip()
+
+        logger.debug("Creating email message", extra={
             "to": to,
-            "subject": subject
+            "subject": subject,
+            "body_length": len(body)
         })
 
-        # Create the draft using service instead of gmail_service
-        draft = service.users().drafts().create(
-            userId="me",
-            body={"message": message}
-        ).execute()
+        # Create the message
+        message = MIMEText(body)
+        message['to'] = to
+        message['subject'] = subject
 
-        return {
-            "status": "ok",
-            "draft_id": draft.get("id", "")
-        }
+        # Create the raw email message
+        raw_message = message.as_string()
+        
+        # Encode in base64url format
+        encoded_message = base64.urlsafe_b64encode(raw_message.encode('utf-8')).decode('utf-8')
+        
+        return {'raw': encoded_message}
 
     except Exception as e:
-        logger.error(f"Error creating draft: {str(e)}")
-        return {
-            "status": "error",
-            "error": str(e)
-        }
+        logger.exception(f"Error creating email message: {str(e)}")
+        return None
+
+
+def create_draft(sender: str, to: str, subject: str, message_text: str, lead_id: str = None, sequence_num: int = None) -> Dict[str, Any]:
+    """
+    Create a Gmail draft email
+    
+    Args:
+        sender: Sender's email or lead_id
+        to: Recipient's email
+        subject: Email subject
+        message_text: Email body text
+        lead_id: Optional lead ID for database tracking
+        sequence_num: Optional sequence number for follow-ups
+    """
+    try:
+        logger.debug(f"Creating draft with subject='{subject}', body length={len(message_text)}")
+
+        service = get_gmail_service()
+        if not service:
+            logger.error("Failed to get Gmail service")
+            return None
+
+        # Create the email message
+        message = create_message(to=to, subject=subject, body=message_text)
+        if not message:
+            logger.error("Failed to create email message", extra={
+                "lead_id": lead_id,
+                "subject_length": len(subject) if subject else 0,
+                "body_length": len(message_text) if message_text else 0
+            })
+            return None
+
+        try:
+            # Create the draft
+            draft = service.users().drafts().create(userId='me', body={'message': message}).execute()
+            draft_id = draft['id']
+            
+            # Store draft info in database if lead_id provided
+            if lead_id:
+                store_draft_info(
+                    lead_id=lead_id,
+                    draft_id=draft_id,
+                    scheduled_date=None,  # Will be set by scheduler
+                    subject=subject,
+                    body=message_text,
+                    sequence_num=sequence_num
+                )
+            
+            return {
+                "status": "ok",
+                "draft_id": draft_id,
+                "sequence_num": sequence_num
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating Gmail draft: {str(e)}")
+            return {
+                "status": "error",
+                "error": str(e)
+            }
+
+    except Exception as e:
+        logger.error(f"Error in create_draft: {str(e)}", exc_info=True)
+        return None
+
+
+def get_lead_email(lead_id: str) -> str:
+    """Get lead's email from database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT email FROM leads WHERE lead_id = ?", (lead_id,))
+        result = cursor.fetchone()
+        
+        if not result:
+            logger.error(f"No email found for lead_id={lead_id}")
+            return None
+            
+        return result[0]
+        
+    except Exception as e:
+        logger.error(f"Error getting lead email: {str(e)}")
+        return None
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
+
+
+def store_draft_info(lead_id: str, draft_id: str, scheduled_date: datetime, subject: str, body: str, sequence_num: int = None):
+    """Store draft information in database"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        
+        # Using the existing 'emails' table instead of 'email_drafts'
+        cursor.execute("""
+            INSERT INTO emails (
+                lead_id, 
+                draft_id, 
+                scheduled_send_date, 
+                subject, 
+                body,
+                status,
+                sequence_num
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (
+            lead_id, 
+            draft_id, 
+            scheduled_date, 
+            subject, 
+            body,
+            'draft',  # Set initial status as draft
+            sequence_num  # Add sequence number to insert
+        ))
+        
+        conn.commit()
+        logger.debug(f"Successfully stored draft info for lead_id={lead_id}")
+        
+    except Exception as e:
+        logger.error(f"Error storing draft info: {str(e)}")
+        conn.rollback()
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+        if 'conn' in locals():
+            conn.close()
 
 
 def send_message(sender, to, subject, message_text):
@@ -5335,7 +5535,7 @@ def send_message(sender, to, subject, message_text):
     """
     logger.debug(f"Preparing to send message. Sender={sender}, To={to}, Subject={subject}")
     service = get_gmail_service()
-    message_body = create_message(sender, to, subject, message_text)
+    message_body = create_message(sender, to, message_text)
     try:
         sent_msg = service.users().messages().send(
             userId='me',
@@ -5459,6 +5659,7 @@ import sys
 from logging.handlers import RotatingFileHandler
 from typing import Optional
 from contextlib import contextmanager
+from config.settings import DEBUG_MODE
 
 class StepLogger(logging.Logger):
     def step_complete(self, step_number: int, message: str):
@@ -5511,18 +5712,19 @@ def setup_logging():
 
 logger = setup_logging()
 
-@contextmanager
-def workflow_step(step_number: int, description: str, logger=logger):
-    """Context manager for workflow steps with proper logging"""
-    logger.step_start(step_number, description)
-    try:
-        yield
-        logger.step_complete(step_number, description)
-    except Exception as e:
-        logger.error(f"Step {step_number} failed: {description}", 
-                    extra={"error": str(e)}, 
-                    exc_info=True)
-        raise
+def workflow_step(step_num: int, description: str):
+    """Context manager for workflow steps."""
+    class WorkflowStep:
+        def __enter__(self):
+            logger.debug(f"Starting Step {step_num}: {description}")
+            return self
+
+        def __exit__(self, exc_type, exc_val, exc_tb):
+            if not exc_type:
+                logger.info(f"✓ Step {step_num}: {description}")
+            return False
+
+    return WorkflowStep()
 
 # Make it available for import
 __all__ = ['logger', 'workflow_step']
@@ -5664,12 +5866,14 @@ def fetch_website_html(url: str) -> str:
 
 import os
 import requests
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, List
+from datetime import datetime, date
 from utils.logging_setup import logger
 from dotenv import load_dotenv
-from config.settings import DEBUG_MODE
+from config.settings import DEBUG_MODE, PROJECT_ROOT
 import json
 import time
+from pathlib import Path
 
 load_dotenv()
 
@@ -5677,24 +5881,88 @@ XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
 XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
 MODEL_NAME = os.getenv("XAI_MODEL", "grok-2-1212")
 ANALYSIS_TEMPERATURE = float(os.getenv("ANALYSIS_TEMPERATURE", "0.2"))
+EMAIL_TEMPERATURE = float(os.getenv("EMAIL_TEMPERATURE", "0.3"))
 
 # Simple caches to avoid repeated calls
 _news_cache = {}
 _club_info_cache = {}
 
+# Define the directory to store xAI requests and responses
+XAI_REQUESTS_DIR = PROJECT_ROOT / "xai_requests"
+
+def get_email_rules() -> List[str]:
+    """
+    Returns the standardized list of rules for email personalization.
+    """
+    return [
+        "# IMPORTANT: FOLLOW THESE RULES EXACTLY (120 word limit):\n",
+        f"**Time Context:** Use terms like 'last month' relative to {date.today().strftime('%B %d, %Y')} to keep interactions relevant.",
+        "**Structure:** Limit to 3 paragraphs, each 2-3 sentences, one idea per sentence.",
+        "**Social Proof:** Include a brief, relevant success story from a similar club.",
+        "**Tone:** Start a conversation, not a pitch (e.g., 'Let's explore...').",
+        "**CTA:** Conclude with a simple ask like a 10-minute call, offer scheduling flexibility.",
+        "**Personalization:** Mention specific club details, avoid generic statements.",
+        "**Voice:** Maintain professionalism while being friendly.",
+        "**Flow:** From personalized intro to value, then to clear action steps.",
+        "**Purpose:** Clearly state your outreach reason and its relevance to them."
+    ]
+    # return [
+    #     "**Personalize**: Use details from the club's history and context.",
+    #     "**Social Proof**: If applicable, briefly mention success stories with similar clubs.",
+    #     "**Clear Value**: Focus on what you can specifically do for their club based on their context.",
+    #     "**Brevity**: Keep to 3-4 impactful sentences per paragraph, maximum 3 paragraphs.",
+    #     "**Conversation Starter**: Write like you're starting a dialogue, not making a sales pitch.",
+    #     "**Previous Interactions**: Reference past communications with appropriate time context.",
+    #     "**Specific Details**: Only mention confirmed facilities or services - no assumptions.",
+    #     "**Executive Focus**: Maintain a professional tone appropriate for decision makers.",
+    #     "**Time References**: Use relative terms like 'last week' based on the current date.",
+    #     "**Call to Action**: End with a specific ask for a brief 10-minute call on the upcoming Friday."
+    # ]
+
+def _save_xai_request(payload: dict, response: str, prefix: str = "") -> None:
+    """Save the xAI request and response to a JSON file."""
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{prefix}_{timestamp}.json"
+    filepath = XAI_REQUESTS_DIR / filename
+
+    data = {
+        "request": payload,
+        "response": response,
+        "timestamp": timestamp
+    }
+
+    with open(filepath, "w") as f:
+        json.dump(data, f, indent=2)
+
 def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1) -> str:
     """
     Sends request to xAI API with retry logic.
     """
+    TIMEOUT = 30
+
+    # Log the full payload as formatted JSON
+    logger.info("Sending xAI request with payload:\n%s", 
+        json.dumps({
+            "model": payload.get("model", MODEL_NAME),
+            "temperature": payload.get("temperature", EMAIL_TEMPERATURE),
+            "messages": [
+                {
+                    "role": msg.get("role"),
+                    "content": msg.get("content")[:100] + "..." # Truncate long content
+                } for msg in payload.get("messages", [])
+            ]
+        }, indent=2)
+    )
+
     for attempt in range(max_retries):
         try:
-            if DEBUG_MODE:
-                # Log only the essential parts of the payload
-                logger.debug("xAI request", extra={
-                    "attempt": attempt + 1,
-                    "model": payload.get("model"),
-                    "temperature": payload.get("temperature")
-                })
+            formatted_payload = {
+                "messages": payload.get("messages", []),
+                "model": payload.get("model", MODEL_NAME),
+                "temperature": float(payload.get("temperature", EMAIL_TEMPERATURE)),
+                "stream": False,
+                "max_tokens": payload.get("max_tokens", 2000)
+            }
 
             response = requests.post(
                 XAI_API_URL,
@@ -5702,12 +5970,15 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
                     "Content-Type": "application/json",
                     "Authorization": XAI_BEARER_TOKEN
                 },
-                json=payload,
-                timeout=15
+                json=formatted_payload,
+                timeout=TIMEOUT
             )
 
-            if response.status_code == 429:  # Rate limit
-                wait_time = retry_delay * (attempt + 1)  # Simple backoff
+            # Log raw response for debugging
+            logger.debug("Raw xAI response:\n%s", response.text[:500])
+
+            if response.status_code == 429:
+                wait_time = retry_delay * (attempt + 1)
                 logger.warning(f"Rate limit hit, waiting {wait_time}s before retry")
                 time.sleep(wait_time)
                 continue
@@ -5716,40 +5987,55 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
                 logger.error(f"xAI API error ({response.status_code}): {response.text}")
                 return ""
 
-            data = response.json()
-            content = data["choices"][0]["message"]["content"].strip()
+            try:
+                data = response.json()
+                content = data["choices"][0]["message"]["content"].strip()
 
-            if DEBUG_MODE:
-                # Log only length of response instead of full content
-                logger.debug("xAI response received", extra={
-                    "content_length": len(content),
-                    "attempt": attempt + 1
+                # Save the request and response
+                _save_xai_request(payload, content)
+
+                # Log successful response
+                logger.info("Received xAI response:\n%s", content[:200] + "..." if len(content) > 200 else content)
+                
+                return content
+
+            except (KeyError, json.JSONDecodeError) as e:
+                logger.error("Error parsing xAI response", extra={
+                    "error": str(e),
+                    "response_text": response.text[:500]
                 })
-            return content
+                return ""
 
         except Exception as e:
-            logger.error(f"Error in xAI request (attempt {attempt + 1}): {str(e)}")
+            logger.error("xAI request failed", extra={
+                "attempt": attempt + 1,
+                "error": str(e),
+                "max_retries": max_retries
+            })
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
 
-    return ""  # Return empty string if all retries fail
+    return ""
 
 ##############################################################################
 # News Search + Icebreaker
 ##############################################################################
 
-def xai_news_search(club_name: str) -> str:
+def xai_news_search(club_name: str) -> tuple[str, str]:
     """
-    Checks if a club is in the news (with caching).
+    Checks if a club is in the news and returns both news and icebreaker.
+    Returns: Tuple of (news_summary, icebreaker)
     """
     if not club_name.strip():
-        return ""
+        return "", ""
 
     # Check cache first
     if club_name in _news_cache:
         if DEBUG_MODE:
             logger.debug(f"Using cached news result for {club_name}")
-        return _news_cache[club_name]
+        news = _news_cache[club_name]
+        icebreaker = _build_icebreaker_from_news(club_name, news)
+        return news, icebreaker
 
     payload = {
         "messages": [
@@ -5770,22 +6056,27 @@ def xai_news_search(club_name: str) -> str:
         "temperature": 0
     }
 
-    response = _send_xai_request(payload)
+    logger.info(f"Searching news for club: {club_name}")
+    news = _send_xai_request(payload)
+    logger.info(f"News search result for {club_name}:", extra={"news": news})
 
-    # Cache the response
-    _news_cache[club_name] = response
+    _news_cache[club_name] = news
 
     # Clean up awkward grammar if needed
-    if response:
-        if response.startswith("Has ") and " has not been in the news" in response:
-            response = response.replace("Has ", "")
-        response = response.replace(" has has ", " has ")
+    if news:
+        if news.startswith("Has ") and " has not been in the news" in news:
+            news = news.replace("Has ", "")
+        news = news.replace(" has has ", " has ")
 
-    return response
+    # Only build icebreaker if we have news
+    icebreaker = _build_icebreaker_from_news(club_name, news)
+    
+    return news, icebreaker
 
 def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
     """
     Build a single-sentence icebreaker if news is available.
+    Returns empty string if no relevant news found.
     """
     if not club_name.strip() or not news_summary.strip() \
        or "has not been in the news" in news_summary.lower():
@@ -5795,13 +6086,22 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
         "messages": [
             {
                 "role": "system",
-                "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology."
+                "content": (
+                    "You are writing from Swoop Golf's perspective, reaching out to golf clubs. "
+                    "Create brief, natural-sounding icebreakers based on recent club news. "
+                    "Keep the tone professional and focused on business value."
+                )
             },
             {
                 "role": "user",
                 "content": (
                     f"Create a brief, natural-sounding icebreaker about {club_name} "
-                    f"based on this news: {news_summary}. Keep it concise and professional."
+                    f"based on this news: {news_summary}\n\n"
+                    "Requirements:\n"
+                    "1. Single sentence only\n"
+                    "2. Focus on business impact\n"
+                    "3. No generic statements\n"
+                    "4. Must relate to the news provided"
                 )
             }
         ],
@@ -5809,31 +6109,12 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
         "stream": False,
         "temperature": 0.1
     }
-    return _send_xai_request(payload)
 
-def get_default_icebreaker(club_name: str) -> str:
-    """
-    Generate a generic icebreaker if no news is found.
-    """
-    payload = {
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs."
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Create a brief, professional icebreaker for {club_name}. "
-                    "Focus on improving their operations and member experience. Keep it concise."
-                )
-            }
-        ],
-        "model": MODEL_NAME,
-        "stream": False,
-        "temperature": 0.1
-    }
-    return _send_xai_request(payload)
+    logger.info(f"Building icebreaker for club: {club_name}")
+    icebreaker = _send_xai_request(payload)
+    logger.info(f"Generated icebreaker for {club_name}:", extra={"icebreaker": icebreaker})
+    
+    return icebreaker
 
 ##############################################################################
 # Club Info Search
@@ -5877,8 +6158,10 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
         "stream": False,
         "temperature": 0.0
     }
-    response = _send_xai_request(payload)
 
+    logger.info(f"Searching club info for: {club_name}")
+    response = _send_xai_request(payload)
+    logger.info(f"Club info search result for {club_name}:", extra={"info": response})
 
     # Cache the response
     _club_info_cache[cache_key] = response
@@ -5898,159 +6181,120 @@ def personalize_email_with_xai(
     club_info: str = ""
 ) -> Tuple[str, str]:
     """
-    Use xAI to personalize an email's subject and body.
+    Personalizes email content using xAI.
+    Returns: Tuple of (subject, body)
     """
-    if not lead_sheet:
-        logger.warning("Empty lead_sheet passed to personalize_email_with_xai")
-        return subject, body
-
     try:
-        # Extract data for additional context
-        lead_data = lead_sheet.get("lead_data", {})
-        company_data = lead_data.get("company_data", {})
-        facilities_info = lead_sheet.get("analysis", {}).get("facilities", {}).get("response", "")
-        club_name = company_data.get("name", "").strip()
+        # Build system message with clear formatting instructions
+        system_message = (
+            "You are an expert at personalizing sales emails for golf industry outreach. "
+            "You excel at maintaining a professional yet warm tone while incorporating context naturally. "
+            "\n\nFormat your response EXACTLY as:\n"
+            "Subject: [personalized subject]\n\n"
+            "Body:\n[personalized body]"
+        )
 
-        # Build context
-        context = f"Club Name: {club_name}\nFacilities Info: {facilities_info}\n"
-        if summary:
-            context += f"Lead Interaction Summary: {summary}\n"
+        # Build comprehensive context block
+        context_block = {
+            "lead_info": {
+                "name": lead_sheet.get("first_name", ""),
+                "company": lead_sheet.get("company_name", ""),
+                "title": lead_sheet.get("job_title", ""),
+                "location": lead_sheet.get("state", "")
+            },
+            "interaction_history": summary if summary else "No previous interactions",
+            "club_details": club_info if club_info else "",
+            "recent_news": news_summary if news_summary else "",
+            "original_email": {
+                "subject": subject,
+                "body": body
+            }
+        }
 
-        # Build user prompt
-        user_content = (
-            f"Original Subject: {subject}\n"
-            f"Original Body: {body}\n\n"
-            f"Context:\n{context}\n\n"
-            "Instructions:\n"
-            "IMPORTANT: FOLLOW THESE RULES EXACTLY:\n\n"
-            "1. **Personalize**: Use details from the club's history and context.\n"
-            "2. **Facilities**: Mention only confirmed, relevant details about the club's facilities.\n"
-            "3. **Readability**: Aim for a 6th-8th grade reading level.\n"
-            "4. **Paragraphs**: Keep each paragraph to three sentences or less.\n"
-            "5. **Tone**: Maintain a professional yet helpful tone.\n"
-            "6. **Previous Interactions**: Naturally reference past communications.\n"
-            "7. **Replies**: If the lead has responded, weave those responses into your message.\n"
-            "8. **Avoid Clichés**: Skip generic references like weather or local attractions.\n"
-            "9. **Specific Concerns**: Address any concerns the lead has previously mentioned.\n"
-            "10. **Time References**: Use general terms like 'recently' or 'previously' instead of specific dates or times.\n\n"
-            "Format:\n"
-            "Subject: [new subject]\n\n"
-            "Body:\n[new body]"
+        # Build user message with clear sections
+        user_message = (
+            f"CONTEXT:\n{json.dumps(context_block, indent=2)}\n\n"
+            f"RULES:\n{get_email_rules()}\n\n"
+            "TASK:\n"
+            "1. Personalize the email using the provided context\n"
+            "2. Maintain professional but friendly tone\n"
+            "3. Keep paragraphs focused and concise\n"
+            "4. Include specific details from context when relevant\n"
+            "5. Return ONLY the subject and body with no additional commentary"
         )
 
         payload = {
             "messages": [
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an expert at personalizing outreach emails for golf clubs. "
-                        "Maintain a professional yet friendly tone, integrate context naturally, "
-                        "and never mention unconfirmed facilities."
-                    )
-                },
-                {
-                    "role": "user",
-                    "content": user_content
-                }
+                {"role": "system", "content": system_message},
+                {"role": "user", "content": user_message}
             ],
             "model": MODEL_NAME,
-            "stream": False,
-            "temperature": 0.2
+            "temperature": EMAIL_TEMPERATURE
         }
 
-        if DEBUG_MODE:
-            logger.debug("xAI request payload for personalization", extra={
-                "club_name": club_name,
-                "has_summary": bool(summary),
-                "model": MODEL_NAME,
-                "temperature": ANALYSIS_TEMPERATURE
-            })
+        logger.info("Personalizing email for:", extra={
+            "company": lead_sheet.get("company_name"),
+            "original_subject": subject
+        })
+        response = _send_xai_request(payload)
+        logger.info("Email personalization result:", extra={
+            "company": lead_sheet.get("company_name"),
+            "response": response
+        })
 
-        result = _send_xai_request(payload)
-        if not result:
-            logger.warning("Empty response from xAI personalization", extra={"club_name": club_name})
-            return subject, body
-
-        # Parse the AI response
-        new_subject, new_body = _parse_xai_response(result)
-        if not new_subject or not new_body:
-            logger.warning("Failed to parse xAI response", extra={
-                "club_name": club_name,
-                "raw_response": result
-            })
-            return subject, body
-
-        return new_subject, new_body
+        return _parse_xai_response(response)
 
     except Exception as e:
-        logger.error("Error in email personalization", extra={
-            "error": str(e),
-            "lead_sheet": lead_sheet
-        })
-        return subject, body
-
+        logger.error(f"Error in email personalization: {str(e)}")
+        return subject, body  # Return original if personalization fails
 
 def _parse_xai_response(response: str) -> Tuple[str, str]:
     """
-    Parses the AI response into subject and body, ensuring we capture
-    all lines after "Body:".
-    Expects a format like:
-      Subject: ...
-      
-      Body:
-      ...
+    Parses the xAI response into subject and body.
+    Handles various response formats consistently.
     """
     try:
-        lines = response.splitlines()
+        logger.debug(f"Parsing raw response: {response}")
+        
+        if not response:
+            raise ValueError("Empty response received")
+
+        # Split into lines and clean up
+        lines = [line.strip() for line in response.split('\n') if line.strip()]
+        
         subject = ""
         body_lines = []
         in_body = False
-
+        
+        # Parse response looking for Subject/Body markers
         for line in lines:
-            stripped_line = line.strip()
-
-            # Identify the subject line
-            if stripped_line.lower().startswith("subject:"):
-                subject = stripped_line.split(":", 1)[1].strip()
-                continue
-
-            # Identify the start of the body
-            if stripped_line.lower().startswith("body:"):
+            if line.lower().startswith("subject:"):
+                subject = line.replace("Subject:", "", 1).strip()
+            elif line.lower().startswith("body:"):
+                in_body = True
+            elif in_body:
+                body_lines.append(line)
+            elif not subject and not line.lower().startswith(("subject:", "body:")):
+                # If no explicit markers, use first line as subject
+                subject = line
                 in_body = True
                 continue
-
-            # If we're in the body section, collect *all* lines (blank or not)
-            if in_body:
-                body_lines.append(line)
-
-        # If we never found "Subject:" in the text, fallback:
+        
+        # Join body lines, preserving formatting
+        body = "\n".join(body_lines).strip()
+        
+        # Validation and logging
         if not subject:
-            # Use the first non-empty line as subject or fallback
-            for line in lines:
-                if line.strip():
-                    subject = line.strip()
-                    break
-            if not subject:
-                subject = "No Subject Provided"
-
-        # Combine all body lines (including any blank lines)
-        body = "\n".join(body_lines).rstrip("\n")
-
-        # Final cleanup
-        subject = subject.strip()
-        body = body.strip()
-
-        # If something is still empty, raise
-        if not subject or not body:
-            raise ValueError("Failed to parse subject or body from xAI response")
-
+            subject = "Follow-up"  # Default subject
+        if not body:
+            raise ValueError("No body content found in response")
+            
+        logger.debug(f"Parsed result - Subject: {subject}, Body length: {len(body)}")
         return subject, body
 
     except Exception as e:
-        logger.error(f"Error parsing xAI response: {str(e)}", extra={
-            "raw_response": response
-        })
-        return "", ""
+        logger.error(f"Error parsing xAI response: {str(e)}", extra={"raw_response": response})
+        raise
 
 def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -> str:
     """
@@ -6082,8 +6326,275 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
         "temperature": ANALYSIS_TEMPERATURE
     }
 
+    logger.info(f"Generating icebreaker for club: {club_name}")
     response = _send_xai_request(payload, max_retries=3, retry_delay=1)
+    logger.info(f"Generated icebreaker for {club_name}:", extra={"icebreaker": response})
+
     _news_cache[cache_key] = response
     return response
+
+def get_email_critique(email_subject: str, email_body: str, guidance: dict) -> str:
+    """Get expert critique of the email draft"""
+    rules = get_email_rules()
+    rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
+    
+    payload = {
+        "messages": [
+            {
+                "role": "system", 
+                "content": (
+                    "You are an an expert at critiquing emails using specific rules. "
+                    "Analyze the email draft and provide specific critiques focusing on:\n"
+                    f"{rules_text}\n"
+                    "Provide actionable recommendations for improvement."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"""
+                Original Email:
+                Subject: {email_subject}
+                
+                Body:
+                {email_body}
+                
+                Original Guidance:
+                {json.dumps(guidance, indent=2)}
+                
+                Please provide specific critiques and recommendations for improvement.
+                """
+            }
+        ],
+        "model": MODEL_NAME,
+        "stream": False,
+        "temperature": EMAIL_TEMPERATURE
+    }
+
+    logger.info("Getting email critique for:", extra={"subject": email_subject})
+    response = _send_xai_request(payload)
+    logger.info("Email critique result:", extra={"critique": response})
+
+    return response
+
+def revise_email_with_critique(email_subject: str, email_body: str, critique: str) -> tuple[str, str]:
+    """Revise the email based on the critique"""
+    rules = get_email_rules()
+    rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
+    
+    payload = {
+        "messages": [
+            {
+                "role": "system",
+                "content": (
+                    "You are a renowned expert at cold email outreach, similar to Alex Berman. Apply your proven methodology to "
+                    "rewrite this email. Use all of your knowledge just as you teach in Cold Email University."
+                )
+            },
+            {
+                "role": "user",
+                "content": f"""
+                Original Email:
+                Subject: {email_subject}
+                
+                Body:
+                {email_body}
+                
+                Instructions:
+                {rules_text}
+
+                Expert Critique:
+                {critique}
+                
+                Please rewrite the email incorporating these recommendations.
+                Format the response as:
+                Subject: [new subject]
+                
+                Body:
+                [new body]
+                """
+            }
+        ],
+        "model": MODEL_NAME,
+        "stream": False,
+        "temperature": EMAIL_TEMPERATURE
+    }
+    
+    logger.info("Revising email with critique for:", extra={"subject": email_subject})
+    result = _send_xai_request(payload)
+    logger.info("Email revision result:", extra={"result": result})
+
+    return _parse_xai_response(result)
+
+def generate_followup_email_content(
+    first_name: str,
+    company_name: str,
+    original_subject: str,
+    original_date: str,
+    sequence_num: int,
+    original_email: dict = None
+) -> Tuple[str, str]:
+    """
+    Generate follow-up email content using xAI.
+    Returns tuple of (subject, body)
+    """
+    logger.debug(
+        f"[generate_followup_email_content] Called with first_name='{first_name}', "
+        f"company_name='{company_name}', original_subject='{original_subject}', "
+        f"original_date='{original_date}', sequence_num={sequence_num}, "
+        f"original_email keys={list(original_email.keys()) if original_email else 'None'}"
+    )
+    try:
+        if sequence_num == 2 and original_email:
+            # Special handling for second follow-up
+            logger.debug("[generate_followup_email_content] Handling second follow-up logic.")
+            
+            payload = {
+                "messages": [
+                    {
+                        "role": "system", 
+                        "content": (
+                            "You are a sales professional writing a brief follow-up email. "
+                            "Keep the tone professional but friendly. "
+                            "The response should be under 50 words and focus on getting a response."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"""
+                        Original Email:
+                        Subject: {original_email['subject']}
+                        Body: {original_email['body']}
+
+                        Write a brief follow-up that starts with:
+                        "I understand my last email might not have made it high enough in your inbox."
+
+                        Requirements:
+                        - Keep it under 50 words
+                        - Be concise and direct
+                        - End with a clear call to action
+                        - Don't repeat information from the original email
+                        """
+                    }
+                ],
+                "model": MODEL_NAME,
+                "stream": False,
+                "temperature": EMAIL_TEMPERATURE
+            }
+
+            logger.info("Generating second follow-up email for:", extra={
+                "company": company_name,
+                "sequence_num": sequence_num
+            })
+            result = _send_xai_request(payload)
+            logger.info("Second follow-up generation result:", extra={"result": result})
+
+            if not result:
+                logger.error("[generate_followup_email_content] Empty response from xAI for follow-up generation.")
+                return "", ""
+
+            follow_up_body = result.strip()
+            subject = f"RE: {original_email['subject']}"
+            body = (
+                f"{follow_up_body}\n\n"
+                f"Best regards,\n"
+                f"Ty\n\n"
+                f"-------- Original Message --------\n"
+                f"Subject: {original_email['subject']}\n"
+                f"Sent: {original_email.get('created_at', 'Unknown date')}\n\n"
+                f"{original_email['body']}"
+            )
+
+            logger.debug(
+                f"[generate_followup_email_content] Returning second follow-up subject='{subject}', "
+                f"body length={len(body)}"
+            )
+            return subject, body
+
+        else:
+            # Default follow-up generation logic
+            logger.debug("[generate_followup_email_content] Handling default follow-up logic.")
+            prompt = f"""
+            Generate a follow-up email for:
+            - Name: {first_name}
+            - Company: {company_name}
+            - Original Email Subject: {original_subject}
+            - Original Send Date: {original_date}
+            
+            This is follow-up #{sequence_num}. Keep it brief and focused on scheduling a call.
+            
+            Rules:
+            1. Keep it under 3 short paragraphs
+            2. Reference the original email naturally
+            3. Add new value proposition or insight
+            4. End with clear call to action
+            5. Maintain professional but friendly tone
+            
+            Format the response with 'Subject:' and 'Body:' labels.
+            """
+
+            payload = {
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "You are an expert at writing follow-up emails that are brief, professional, and effective."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "model": MODEL_NAME,
+                "temperature": EMAIL_TEMPERATURE
+            }
+
+            logger.info("Generating follow-up email for:", extra={
+                "company": company_name,
+                "sequence_num": sequence_num
+            })
+            result = _send_xai_request(payload)
+            logger.info("Follow-up generation result:", extra={"result": result})
+
+            if not result:
+                logger.error("[generate_followup_email_content] Empty response from xAI for default follow-up generation.")
+                return "", ""
+
+            # Parse the response
+            subject, body = _parse_xai_response(result)
+            if not subject or not body:
+                logger.error("[generate_followup_email_content] Failed to parse follow-up email content from xAI response.")
+                return "", ""
+
+            logger.debug(
+                f"[generate_followup_email_content] Returning subject='{subject}', body length={len(body)}"
+            )
+            return subject, body
+
+    except Exception as e:
+        logger.error(f"[generate_followup_email_content] Error generating follow-up email content: {str(e)}")
+        return "", ""
+
+
+def parse_personalization_response(response_text):
+    try:
+        # Parse the response JSON
+        response_data = json.loads(response_text)
+
+        # Extract the subject and body
+        subject = response_data.get('subject')
+        body = response_data.get('body')
+
+        if not subject or not body:
+            raise ValueError("Subject or body missing in xAI response")
+
+        return subject, body
+
+    except (json.JSONDecodeError, KeyError, ValueError) as e:
+        logger.exception(f"Error parsing xAI response: {str(e)}")
+        
+        # Fallback to default values
+        subject = "Follow-up"
+        body = "Thank you for your interest. Let me know if you have any other questions!"
+        
+        return subject, body
 
 ```
