@@ -24,14 +24,15 @@ def check_and_send_followups():
         
         # Get leads needing follow-up with all required fields
         cursor.execute("""
-            SELECT TOP 1
+            SELECT 
                 e.lead_id,
+                e.email_id,
                 l.email,
                 l.first_name,
                 c.name,
                 e.subject,
                 e.body,
-                e.scheduled_send_date,
+                e.created_at,
                 c.state
             FROM emails e
             JOIN leads l ON l.lead_id = e.lead_id
@@ -41,14 +42,13 @@ def check_and_send_followups():
             AND l.email IS NOT NULL
             AND NOT EXISTS (
                 SELECT 1 FROM emails e2 
-                WHERE e2.lead_id = e.lead_id
-                AND e2.sequence_num > 1
+                WHERE e2.lead_id = e.lead_id 
+                AND e2.sequence_num = 2
             )
-            ORDER BY e.scheduled_send_date
         """)
         
         for row in cursor.fetchall():
-            lead_id, email, first_name, company_name, subject, body, scheduled_send_date, state = row
+            lead_id, email_id, email, first_name, company_name, subject, body, created_at, state = row
             
             # Package original email data
             original_email = {
@@ -57,13 +57,14 @@ def check_and_send_followups():
                 'name': company_name,
                 'subject': subject,
                 'body': body,
-                'scheduled_send_date': scheduled_send_date,
+                'created_at': created_at,
                 'state': state
             }
             
             # Generate follow-up content
             followup_data = generate_followup_email_xai(
                 lead_id=lead_id,
+                email_id=email_id,
                 sequence_num=2,
                 original_email=original_email
             )

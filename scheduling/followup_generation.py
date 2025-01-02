@@ -19,6 +19,41 @@ def generate_followup_email_xai(
         conn = get_db_connection()
         cursor = conn.cursor()
 
+        # Get the most recent email if not provided
+        if not original_email:
+            cursor.execute("""
+                SELECT TOP 1
+                    l.email,
+                    l.first_name,
+                    c.name,
+                    e.subject,
+                    e.body,
+                    e.created_at,
+                    c.state
+                FROM emails e
+                JOIN leads l ON l.lead_id = e.lead_id
+                LEFT JOIN companies c ON l.company_id = c.company_id
+                WHERE e.lead_id = ?
+                AND e.sequence_num = 1
+                ORDER BY e.created_at DESC
+            """, (lead_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                logger.error(f"No original email found for lead_id={lead_id}")
+                return None
+
+            email, first_name, company_name, subject, body, created_at, state = row
+            original_email = {
+                'email': email,
+                'first_name': first_name,
+                'name': company_name,
+                'subject': subject,
+                'body': body,
+                'created_at': created_at,
+                'state': state
+            }
+
         # If original_email is provided, use that instead of querying
         if original_email:
             email = original_email.get('email')
@@ -71,7 +106,12 @@ def generate_followup_email_xai(
                 WHERE email_id = ?
             """, (email_id,))
             result = cursor.fetchone()
-            orig_scheduled_date = result[0] if result else orig_date
+            orig_scheduled_date = result[0] if result and result[0] else orig_date
+
+        # If orig_scheduled_date is still None, default to orig_date
+        if orig_scheduled_date is None:
+            logger.warning("orig_scheduled_date is None, defaulting to orig_date")
+            orig_scheduled_date = orig_date
 
         # Validate required fields
         if not email:
@@ -97,15 +137,71 @@ def generate_followup_email_xai(
             f"{orig_body}"
         )
 
-        # Calculate base send date (3 days from original)
-        if orig_date:
-            base_date = orig_date + timedelta(days=3)
-        else:
-            logger.warning(f"No original date found for lead_id={lead_id}, using current date + 3 days")
-            base_date = datetime.now() + timedelta(days=3)
+        # Calculate base date (3 days after original scheduled date)
+        base_date = orig_scheduled_date + timedelta(days=3)
         
-        # Adjust for timezone if state is available
-        send_date = adjust_send_time(base_date, state) if state else base_date
+        # Get optimal send window
+        outreach_window = get_best_outreach_window(
+            persona="general",
+            geography="US",
+        )
+        
+        best_time = outreach_window["Best Time"]
+        best_days = outreach_window["Best Day"]
+        
+        # Adjust to next valid day while preserving the 3-day minimum gap
+        while base_date.weekday() not in best_days or base_date < (orig_scheduled_date + timedelta(days=3)):
+            base_date += timedelta(days=1)
+        
+        # Set time within the best window
+        send_hour = best_time["start"]
+        if random.random() < 0.5:  # 50% chance to use later hour
+            send_hour += 1
+            
+        send_date = base_date.replace(
+            hour=send_hour,
+            minute=random.randint(0, 59),
+            second=0,
+            microsecond=0
+        )
+        
+        # Adjust for timezone
+        send_date = adjust_send_time(send_date, state) if state else send_date
+
+        logger.debug(f"[followup_generation] Potential scheduled_send_date for lead_id={lead_id} (1st email) is: {send_date}")
+
+        # Calculate base date (3 days after original scheduled date)
+        base_date = orig_scheduled_date + timedelta(days=3)
+        
+        # Get optimal send window
+        outreach_window = get_best_outreach_window(
+            persona="general",
+            geography="US",
+        )
+        
+        best_time = outreach_window["Best Time"]
+        best_days = outreach_window["Best Day"]
+        
+        # Adjust to next valid day while preserving the 3-day minimum gap
+        while base_date.weekday() not in best_days or base_date < (orig_scheduled_date + timedelta(days=3)):
+            base_date += timedelta(days=1)
+        
+        # Set time within the best window
+        send_hour = best_time["start"]
+        if random.random() < 0.5:  # 50% chance to use later hour
+            send_hour += 1
+            
+        send_date = base_date.replace(
+            hour=send_hour,
+            minute=random.randint(0, 59),
+            second=0,
+            microsecond=0
+        )
+        
+        # Adjust for timezone
+        send_date = adjust_send_time(send_date, state) if state else send_date
+
+        logger.debug(f"[followup_generation] Potential scheduled_send_date for lead_id={lead_id} (follow-up) is: {send_date}")
 
         return {
             'email': email,

@@ -557,6 +557,10 @@ def main():
                 })
                 scheduled_send_date = datetime.now() + timedelta(days=1)
 
+            if scheduled_send_date is None:
+                logger.warning("scheduled_send_date is None, setting default send date")
+                scheduled_send_date = datetime.now() + timedelta(days=1)  # Default to 1 day later
+
             # First get the lead_id from the database
             conn = get_db_connection()
             cursor = conn.cursor()
@@ -582,7 +586,7 @@ def main():
                     )
 
                     if draft_result["status"] == "ok":
-                        # Store original email in database
+                        # Store in database once
                         store_draft_info(
                             lead_id=lead_id,
                             draft_id=draft_result["draft_id"],
@@ -594,9 +598,6 @@ def main():
                         conn.commit()
                         logger.info("Email draft saved to database", extra=logger_context)
                         
-                        # Schedule the follow-up based on the original email's scheduled send date
-                        schedule_followup(lead_id, scheduled_send_date)
-
                         # Get next sequence number
                         cursor.execute("""
                             SELECT COALESCE(MAX(sequence_num), 0) + 1
@@ -802,8 +803,8 @@ def clear_files_on_start():
     # Clear SQL tables
     clear_sql_tables()
 
-def schedule_followup(lead_id: int, scheduled_send_date: datetime):
-    """Schedule a follow-up email based on the original email's scheduled send date"""
+def schedule_followup(lead_id: int, email_id: int):
+    """Schedule a follow-up email"""
     try:
         # Get lead data first
         conn = get_db_connection()
@@ -811,23 +812,22 @@ def schedule_followup(lead_id: int, scheduled_send_date: datetime):
         
         # Get original email data
         cursor.execute("""
-            SELECT TOP 1
-                e.subject, e.body,
+            SELECT 
+                e.subject, e.body, e.created_at,
                 l.email, l.first_name,
                 c.name, c.state
             FROM emails e
             JOIN leads l ON e.lead_id = l.lead_id
             LEFT JOIN companies c ON l.company_id = c.company_id
-            WHERE e.lead_id = ? AND e.sequence_num = 1
-            ORDER BY e.created_at DESC
-        """, (lead_id,))
+            WHERE e.email_id = ? AND e.lead_id = ?
+        """, (email_id, lead_id))
         
         result = cursor.fetchone()
         if not result:
-            logger.error(f"No original email found for lead_id={lead_id}")
+            logger.error(f"No email found for email_id={email_id}")
             return
             
-        orig_subject, orig_body, email, first_name, company_name, state = result
+        orig_subject, orig_body, created_at, email, first_name, company_name, state = result
         
         # Package original email data
         original_email = {
@@ -837,20 +837,18 @@ def schedule_followup(lead_id: int, scheduled_send_date: datetime):
             'state': state,
             'subject': orig_subject,
             'body': orig_body,
-            'scheduled_send_date': scheduled_send_date
+            'created_at': created_at
         }
         
         # Generate the follow-up email content
         followup = generate_followup_email_xai(
             lead_id=lead_id,
+            email_id=email_id,
             sequence_num=2,  # Second email in sequence
             original_email=original_email  # Pass the original email data
         )
         
         if followup:
-            # Calculate follow-up send date (e.g., 2 days after original email)
-            followup_send_date = scheduled_send_date + timedelta(days=2)
-            
             # Create Gmail draft for follow-up
             draft_result = create_draft(
                 sender="me",
@@ -860,14 +858,14 @@ def schedule_followup(lead_id: int, scheduled_send_date: datetime):
             )
             
             if draft_result["status"] == "ok":
-                # Save follow-up to database with calculated send date
+                # Save follow-up to database
                 store_draft_info(
                     lead_id=lead_id,
                     draft_id=draft_result["draft_id"],
-                    scheduled_date=followup_send_date,  # Use calculated date
+                    scheduled_date=followup.get('scheduled_send_date'),
                     subject=followup.get('subject'),
                     body=followup.get('body'),
-                    sequence_num=2
+                    sequence_num=followup.get('sequence_num', 2)
                 )
                 logger.info(f"Follow-up email scheduled with draft_id {draft_result.get('draft_id')}")
             else:
@@ -885,39 +883,54 @@ def schedule_followup(lead_id: int, scheduled_send_date: datetime):
         if 'conn' in locals():
             conn.close()
 
-def store_draft_info(lead_id: int, draft_id: str, scheduled_date: datetime, 
-                    subject: str, body: str, sequence_num: int = 1):
-    """Store email draft info in database"""
+def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft_id):
+    """
+    Persists the draft info (subject, body, scheduled send date, etc.) to the 'emails' table.
+    """
     try:
+        logger.debug(f"[store_draft_info] Attempting to store draft info for lead_id={lead_id}, scheduled_date={scheduled_date}")
         conn = get_db_connection()
         cursor = conn.cursor()
-
-        # Check if draft already exists
-        cursor.execute("""
-            SELECT email_id FROM emails 
-            WHERE lead_id = ? AND draft_id = ? AND status = 'draft'
-        """, (lead_id, draft_id))
         
-        if cursor.fetchone():
-            logger.debug(f"Draft already exists for lead_id={lead_id}, draft_id={draft_id}")
-            return
-
-        # Insert new draft
-        cursor.execute("""
-            INSERT INTO emails (
-                lead_id, subject, body, status,
-                scheduled_send_date, created_at,
-                sequence_num, draft_id
-            ) VALUES (?, ?, ?, ?, ?, GETDATE(), ?, ?)
-        """, (
-            lead_id, subject, body, 'draft',
-            scheduled_date, sequence_num, draft_id
-        ))
+        # Insert or update the email record
+        cursor.execute(
+            """
+            UPDATE emails
+            SET subject = ?, body = ?, scheduled_send_date = ?, sequence_num = ?, draft_id = ?
+            WHERE lead_id = ? AND sequence_num = ?
+            
+            IF @@ROWCOUNT = 0
+            BEGIN
+                INSERT INTO emails
+                    (lead_id, subject, body, scheduled_send_date, sequence_num, draft_id, status)
+                VALUES
+                    (?, ?, ?, ?, ?, ?, 'draft')
+            END
+            """,
+            (
+                subject, 
+                body,
+                scheduled_date,
+                sequence_num,
+                draft_id,
+                lead_id, 
+                sequence_num,
+                
+                # For the INSERT
+                lead_id,
+                subject,
+                body,
+                scheduled_date,
+                sequence_num,
+                draft_id
+            )
+        )
+        
         conn.commit()
-        logger.debug(f"Successfully stored draft info for lead_id={lead_id}")
-
+        logger.debug(f"[store_draft_info] Successfully wrote scheduled_date={scheduled_date} for lead_id={lead_id}, draft_id={draft_id}")
+        
     except Exception as e:
-        logger.error(f"Failed to store draft info: {str(e)}")
+        logger.error(f"[store_draft_info] Failed to store draft info: {str(e)}")
         conn.rollback()
         raise
     finally:
