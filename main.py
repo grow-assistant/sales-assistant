@@ -21,7 +21,7 @@ from utils.xai_integration import (
 from utils.gmail_integration import create_draft, store_draft_info
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
-from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START, USE_RANDOM_LEAD, TEST_EMAIL
+from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START, USE_RANDOM_LEAD, TEST_EMAIL, CREATE_FOLLOWUP_DRAFT
 from scheduling.extended_lead_storage import upsert_full_lead
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
@@ -650,27 +650,29 @@ def main():
                         conn.commit()
                         logger.info("Email draft saved to database", extra=logger_context)
                         
-                        # Get next sequence number
-                        cursor.execute("""
-                            SELECT COALESCE(MAX(sequence_num), 0) + 1
-                            FROM emails 
-                            WHERE lead_id = ?
-                        """, (lead_id,))
-                        next_seq = cursor.fetchone()[0]
-
-                        # Then use it for follow-up
-                        cursor.execute("""
-                            SELECT email_id 
-                            FROM emails 
-                            WHERE draft_id = ? AND lead_id = ?
-                        """, (draft_result["draft_id"], lead_id))
-                        email_id = cursor.fetchone()[0]
-
-                        followup_data = generate_followup_email_xai(lead_id, email_id, next_seq)
-                        if followup_data:
-                            schedule_followup(lead_id, email_id)
+                        if CREATE_FOLLOWUP_DRAFT:
+                            # Get next sequence number
+                            cursor.execute("""
+                                SELECT COALESCE(MAX(sequence_num), 0) + 1
+                                FROM emails 
+                                WHERE lead_id = ?
+                            """, (lead_id,))
+                            next_seq = cursor.fetchone()[0]
+                            
+                            cursor.execute("""
+                                SELECT email_id 
+                                FROM emails 
+                                WHERE draft_id = ? AND lead_id = ?
+                            """, (draft_result["draft_id"], lead_id))
+                            email_id = cursor.fetchone()[0]
+                            
+                            followup_data = generate_followup_email_xai(lead_id, email_id, next_seq)
+                            if followup_data:
+                                schedule_followup(lead_id, email_id)
+                            else:
+                                logger.warning("No follow-up data generated")
                         else:
-                            logger.warning("No follow-up data generated")
+                            logger.info("Follow-up draft creation is disabled via CREATE_FOLLOWUP_DRAFT setting")
                     else:
                         logger.error("Failed to create Gmail draft", extra=logger_context)
                 else:

@@ -146,6 +146,9 @@ USE_RANDOM_LEAD = USE_RANDOM_LEAD.lower() == "true"
 print(f"USE_RANDOM_LEAD after conversion: {USE_RANDOM_LEAD}")
 TEST_EMAIL = get_env_var("TEST_EMAIL", required=False, default="test@example.com")
 
+# Add this with the other settings
+CREATE_FOLLOWUP_DRAFT = os.getenv('CREATE_FOLLOWUP_DRAFT', 'false').lower() == 'true'
+
 # Export all settings
 __all__ = [
     'PROJECT_ROOT',  # Add PROJECT_ROOT to exports
@@ -183,7 +186,8 @@ __all__ = [
     'API_ENDPOINTS',
     'MARKET_RESEARCH_API',
     'USE_RANDOM_LEAD',
-    'TEST_EMAIL'
+    'TEST_EMAIL',
+    'CREATE_FOLLOWUP_DRAFT'
 ]
 
 # Log configuration status

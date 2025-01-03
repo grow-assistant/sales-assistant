@@ -13,6 +13,7 @@ from utils.logging_setup import logger
 from datetime import datetime
 from scheduling.database import get_db_connection
 from typing import Dict, Any
+from config import settings
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
@@ -167,7 +168,7 @@ def create_draft(
         logger.debug(f"Created draft with id={draft_id}, message_id={draft_message_id}")
 
         # 3) Store draft info in the DB if lead_id is provided
-        if lead_id:
+        if settings.CREATE_FOLLOWUP_DRAFT and lead_id:
             store_draft_info(
                 lead_id=lead_id,
                 draft_id=draft_id,
@@ -176,6 +177,8 @@ def create_draft(
                 body=message_text,
                 sequence_num=sequence_num,
             )
+        else:
+            logger.info("Follow-up draft creation is disabled via CREATE_FOLLOWUP_DRAFT setting")
 
         # 4) Add the "to_review" label to the underlying draft message
         label_id = get_or_create_label(service, "to_review")
