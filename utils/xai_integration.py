@@ -245,54 +245,73 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 ##############################################################################
 
 def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
-    """
-    Returns a short overview about the club's location and amenities.
-    """
-    cache_key = f"{club_name}:{location}"
-
-    # Check cache first
+    cache_key = f"{club_name}_{location}"
     if cache_key in _club_info_cache:
-        if DEBUG_MODE:
-            logger.debug(f"Using cached club info for {club_name}")
+        logger.debug(f"Using cached club info for {club_name} in {location}")
         return _club_info_cache[cache_key]
 
-    if not club_name.strip():
-        if DEBUG_MODE:
-            logger.debug("Empty club_name passed to xai_club_info_search; returning blank.")
-        return ""
-
-    loc_str = location if location else "an unknown location"
-    am_str = ", ".join(amenities) if amenities else "no specific amenities"
+    logger.info(f"Searching for club info: {club_name} in {location}")
+    amenity_str = ", ".join(amenities) if amenities else ""
+    prompt = f"""
+    Please provide a brief overview of {club_name} located in {location}. Include key facts such as:
+    - Type of facility (private, semi-private, public, resort, country club, etc.) 
+    - Notable amenities or features, such as: {amenity_str}
+    - Any other relevant information
+    
+    Also, please classify the facility into one of the following types at the end of your response:
+    - Private Course
+    - Semi-Private Course 
+    - Public Course
+    - Country Club
+    - Resort
+    - Other
+    
+    Provide the classification on a new line starting with "Facility Type: ".
+    """
 
     payload = {
         "messages": [
             {
-                "role": "system",
+                "role": "system", 
                 "content": "You are a factual assistant that provides objective, data-focused overviews of golf clubs and country clubs. "
                 "Focus only on verifiable facts like location, type (private/public), number of holes, and amenities like pool, restaurant, tennis, etc. "
                 "Avoid mentioning course designers or architects. Avoid subjective descriptions or flowery language."
             },
             {
                 "role": "user",
-                "content": (
-                    f"Please provide a concise overview about {club_name} in {loc_str}. "
-                    f"Is it private or public? Keep it to under 3 sentences. Do not mention who designed the course."
-                )
+                "content": prompt
             }
         ],
         "model": MODEL_NAME,
-        "stream": False,
-        "temperature": 0.0
+        "temperature": ANALYSIS_TEMPERATURE
     }
 
-    logger.info(f"Searching club info for: {club_name}")
     response = _send_xai_request(payload)
     logger.info(f"Club info search result for {club_name}:", extra={"info": response})
-
+    
+    # Extract the facility type from the response
+    facility_type = extract_facility_type(response)
+    print(f"Classified facility type for {club_name}: {facility_type}")
+    
     # Cache the response
     _club_info_cache[cache_key] = response
 
     return response
+
+def extract_facility_type(response: str) -> str:
+    response_lower = response.lower()
+    if "country club" in response_lower:
+        return "Country Club"
+    elif "private" in response_lower:
+        return "Private Course"
+    elif "semi-private" in response_lower:
+        return "Semi-Private Course"
+    elif "public" in response_lower:
+        return "Public Course"
+    elif "resort" in response_lower:
+        return "Resort"
+    else:
+        return "Other"
 
 ##############################################################################
 # Personalize Email
