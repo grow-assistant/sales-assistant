@@ -316,7 +316,6 @@ def extract_facility_type(response: str) -> str:
 ##############################################################################
 # Personalize Email
 ##############################################################################
-
 def personalize_email_with_xai(
     lead_sheet: Dict[str, Any],
     subject: str,
@@ -330,6 +329,10 @@ def personalize_email_with_xai(
     Returns: Tuple of (subject, body)
     """
     try:
+        # Load objection handling content
+        with open('docs/templates/objection_handling.txt', 'r') as f:
+            objection_handling = f.read()
+
         # Modify system message to use our subject templates
         system_message = (
             "You are an expert at personalizing sales emails for golf industry outreach. "
@@ -352,6 +355,7 @@ def personalize_email_with_xai(
             "interaction_history": summary if summary else "No previous interactions",
             "club_details": club_info if club_info else "",
             "recent_news": news_summary if news_summary else "",
+            "objection_handling": objection_handling,
             "original_email": {
                 "subject": subject,
                 "body": body
@@ -367,7 +371,8 @@ def personalize_email_with_xai(
             "2. Maintain professional but friendly tone\n"
             "3. Keep paragraphs concise\n"
             "4. Include relevant details from context\n"
-            "5. Return ONLY the subject and body"
+            "5. Address any potential objections using the objection handling guide\n"
+            "6. Return ONLY the subject and body"
         )
 
         payload = {
