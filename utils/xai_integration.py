@@ -268,13 +268,15 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
         "messages": [
             {
                 "role": "system",
-                "content": "You are a helpful assistant that provides a brief overview of a club, it's location, and it's amenities."
+                "content": "You are a factual assistant that provides objective, data-focused overviews of golf clubs and country clubs. "
+                "Focus only on verifiable facts like location, type (private/public), number of holes, and amenities like pool, restaurant, tennis, etc. "
+                "Avoid mentioning course designers or architects. Avoid subjective descriptions or flowery language."
             },
             {
                 "role": "user",
                 "content": (
                     f"Please provide a concise overview about {club_name} in {loc_str}. "
-                    f"Is it private or public? Keep it to under 3 sentences."
+                    f"Is it private or public? Keep it to under 3 sentences. Do not mention who designed the course."
                 )
             }
         ],

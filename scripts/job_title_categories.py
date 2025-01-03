@@ -2,35 +2,35 @@
 
 def categorize_job_title(title: str) -> str:
     """
-    Categorizes job titles into standardized roles for template selection.
-    
-    Args:
-        title: The job title string to categorize
-        
-    Returns:
-        str: Standardized role category (e.g., 'general_manager', 'food_beverage', etc.)
+    Categorizes job titles to map to one of four templates:
+    - general_manager_initial_outreach.md
+    - fb_manager_initial_outreach.md
+    - golf_ops_initial_outreach.md
+    - fallback.md (default)
     """
     title = title.lower().strip()
     
-    # General Manager / Director Categories
-    if any(term in title for term in ['general manager', 'gm', 'club manager', 'director of operations']):
+    # General Manager Category
+    if any(term in title for term in [
+        'general manager', 'gm', 'club manager', 
+        'director of operations', 'coo', 'president', 
+        'owner', 'ceo', 'chief executive'
+    ]):
         return 'general_manager'
         
-    # F&B Categories
-    if any(term in title for term in ['f&b', 'food', 'beverage', 'restaurant', 'dining', 'hospitality']):
-        return 'food_beverage'
+    # F&B Category
+    if any(term in title for term in [
+        'f&b', 'food', 'beverage', 'restaurant', 
+        'dining', 'hospitality', 'culinary'
+    ]):
+        return 'fb_manager'
         
-    # Golf Professional Categories
-    if any(term in title for term in ['golf pro', 'golf professional', 'head pro', 'director of golf']):
-        return 'golf_professional'
-        
-    # Owner/President Categories
-    if any(term in title for term in ['owner', 'president', 'ceo', 'chief executive']):
-        return 'owner'
-        
-    # Membership Categories
-    if any(term in title for term in ['membership', 'member services']):
-        return 'membership'
-        
-    # Default to general manager template if unknown
-    return 'general_manager'
+    # Golf Operations Category
+    if any(term in title for term in [
+        'golf', 'pro shop', 'course', 'professional',
+        'head pro', 'assistant pro', 'director of golf'
+    ]):
+        return 'golf_ops'
+    
+    # Default to fallback template
+    return 'fallback'

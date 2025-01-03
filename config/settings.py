@@ -56,6 +56,15 @@ def get_env_var(
         logger.error(msg)
         return default
 
+def get_bool_env_var(name: str, default: bool = False) -> bool:
+    """
+    Get boolean environment variable.
+    'true', '1', 'yes', 'on' → True
+    'false', '0', 'no', 'off' → False
+    """
+    value = get_env_var(name, str(default).lower())
+    return value.lower() in ('true', '1', 'yes', 'on')
+
 # Determine if we're in development mode
 DEV_MODE = get_env_var("DEV_MODE", required=False, default=True, var_type=bool)
 DEBUG_MODE = get_env_var("DEBUG_MODE", default=False, var_type=bool)
@@ -125,10 +134,17 @@ API_ENDPOINTS: Dict[str, str] = {
 SEND_EMAILS = os.getenv('SEND_EMAILS', 'false').lower() == 'true'
 
 # Log cleanup control
-CLEAR_LOGS_ON_START = os.getenv('CLEAR_LOGS_ON_START', 'false').lower() == 'true'
+CLEAR_LOGS_ON_START = get_bool_env_var("CLEAR_LOGS_ON_START", default=False)
 
 # Add this with the other settings
 ENABLE_FOLLOWUPS = os.getenv('ENABLE_FOLLOWUPS', 'false').lower() == 'true'
+
+# Testing Configuration
+USE_RANDOM_LEAD = os.getenv("USE_RANDOM_LEAD", "false")
+print(f"USE_RANDOM_LEAD before conversion: {USE_RANDOM_LEAD}")
+USE_RANDOM_LEAD = USE_RANDOM_LEAD.lower() == "true"
+print(f"USE_RANDOM_LEAD after conversion: {USE_RANDOM_LEAD}")
+TEST_EMAIL = get_env_var("TEST_EMAIL", required=False, default="test@example.com")
 
 # Export all settings
 __all__ = [
@@ -165,7 +181,9 @@ __all__ = [
     'HEADERS',
     'API_KEYS',
     'API_ENDPOINTS',
-    'MARKET_RESEARCH_API'
+    'MARKET_RESEARCH_API',
+    'USE_RANDOM_LEAD',
+    'TEST_EMAIL'
 ]
 
 # Log configuration status

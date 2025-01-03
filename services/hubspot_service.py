@@ -214,3 +214,67 @@ class HubspotService:
             "notes": notes,
             "company_data": company_data
         }
+
+    def get_random_contacts(self, count: int = 3) -> List[Dict[str, Any]]:
+        """
+        Get a random sample of contact email addresses from HubSpot.
+        
+        Args:
+            count: Number of random contacts to retrieve (default: 3)
+            
+        Returns:
+            List of dicts containing contact info (email, name, etc.)
+        """
+        try:
+            # First, get total count of contacts
+            url = f"{self.contacts_endpoint}/search"
+            payload = {
+                "filterGroups": [],  # No filters to get all contacts
+                "properties": ["email", "firstname", "lastname", "company"],
+                "limit": 1,  # Just need count
+            }
+            
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            total = response.json().get("total", 0)
+            
+            if total == 0:
+                logger.warning("No contacts found in HubSpot")
+                return []
+            
+            # Generate random offset to get different contacts each time
+            import random
+            random_offset = random.randint(0, max(0, total - count * 2))
+            
+            # Get a batch starting from random offset
+            batch_size = min(count * 2, total)  # Get 2x needed to ensure enough valid contacts
+            payload.update({
+                "limit": batch_size,
+                "after": str(random_offset)  # Add random offset
+            })
+            
+            response = requests.post(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            contacts = response.json().get("results", [])
+            
+            # Randomly sample from the batch
+            selected = random.sample(contacts, min(count, len(contacts)))
+            
+            # Format the results
+            results = []
+            for contact in selected:
+                props = contact.get("properties", {})
+                results.append({
+                    "id": contact.get("id"),
+                    "email": props.get("email"),
+                    "first_name": props.get("firstname"),
+                    "last_name": props.get("lastname"),
+                    "company": props.get("company")
+                })
+            
+            logger.debug(f"Retrieved {len(results)} random contacts from HubSpot (offset: {random_offset})")
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error getting random contacts: {str(e)}")
+            return []

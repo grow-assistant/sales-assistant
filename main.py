@@ -21,7 +21,7 @@ from utils.xai_integration import (
 from utils.gmail_integration import create_draft, store_draft_info
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
-from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START
+from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START, USE_RANDOM_LEAD, TEST_EMAIL
 from scheduling.extended_lead_storage import upsert_full_lead
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
@@ -34,7 +34,9 @@ from scheduling.database import get_db_connection
 from scripts.golf_outreach_strategy import get_best_outreach_window, get_best_month, get_best_time, get_best_day, adjust_send_time
 from utils.date_utils import convert_to_club_timezone
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
+from services.hubspot_service import HubspotService
 
+print(f"USE_RANDOM_LEAD: {os.getenv('USE_RANDOM_LEAD')}")
 
 # Initialize logging before creating DataGathererService instance
 setup_logging()
@@ -170,25 +172,75 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
 ###############################################################################
 # Main Workflow
 ###############################################################################
+def get_random_lead_email() -> str:
+    """Get a random lead email from HubSpot."""
+    try:
+        hubspot = HubspotService(HUBSPOT_API_KEY)
+        
+        logger.debug("Calling hubspot.get_random_contacts()")
+        contacts = hubspot.get_random_contacts(count=1)
+        logger.debug(f"Received contacts: {contacts}")
+        
+        if contacts and contacts[0].get('email'):
+            email = contacts[0]['email']
+            logger.info(f"Selected random lead: {email}")
+            return email
+        else:
+            logger.warning("No random lead found, falling back to TEST_EMAIL")
+            return TEST_EMAIL
+    except Exception as e:
+        logger.error(f"Error getting random lead: {e}")
+        return TEST_EMAIL
+
+def get_lead_email() -> str:
+    """Get lead email either randomly or via user input based on settings."""
+    # Add debug logging
+    logger.debug(f"USE_RANDOM_LEAD setting is: {USE_RANDOM_LEAD}")
+    logger.debug(f"TEST_EMAIL setting is: {TEST_EMAIL}")
+    
+    if USE_RANDOM_LEAD:
+        logger.debug("Using random lead selection")
+        try:
+            hubspot = HubspotService(HUBSPOT_API_KEY)
+            contacts = hubspot.get_random_contacts(count=1)
+            logger.debug(f"Retrieved contacts: {contacts}")
+            
+            if contacts and contacts[0].get('email'):
+                email = contacts[0]['email']
+                logger.info(f"Selected random lead: {email}")
+                return email
+            else:
+                logger.warning("No random lead found, falling back to TEST_EMAIL")
+                return TEST_EMAIL
+        except Exception as e:
+            logger.error(f"Error getting random lead: {e}")
+            return TEST_EMAIL
+    else:
+        logger.debug("Using manual email input")
+        while True:
+            email = input("\nPlease enter a lead's email address: ").strip()
+            if email:
+                return email
+            print("Email address cannot be empty. Please try again.")
+
 def main():
-    """
-    Main entry point for the sales assistant application.
-    """
+    """Main entry point for the sales assistant application."""
     correlation_id = str(uuid.uuid4())
     logger_context = {"correlation_id": correlation_id}
     
-    if DEBUG_MODE:
-        logger.setLevel(logging.DEBUG)
-        logger.debug("Debug mode enabled in main workflow", extra=logger_context)
+    # Force debug logging at start
+    logger.setLevel(logging.DEBUG)
+    logger.debug("Starting main workflow", extra=logger_context)
+    logger.debug(f"USE_RANDOM_LEAD is set to: {USE_RANDOM_LEAD}")
     
     try:
-        # Step 1: Initialize and get lead email
+        # Step 1: Get lead email
         with workflow_step(1, "Getting lead email"):
-            email = input("Please enter a lead's email address: ").strip()
+            email = get_lead_email()
             if not email:
-                logger.error("No email entered; exiting.", extra=logger_context)
+                logger.error("No email provided; exiting.", extra=logger_context)
                 return
-                
+            logger.info(f"Using email: {email}")
             logger_context["email"] = email
 
         # Step 2: External data gathering
@@ -777,7 +829,13 @@ def clear_sql_tables():
             conn.close()
 
 def clear_files_on_start():
-    """Clear log file, lead contexts, and SQL data if they exist"""
+    """Clear log file, lead contexts, and SQL data if CLEAR_LOGS_ON_START is True"""
+    from config.settings import CLEAR_LOGS_ON_START
+    
+    if not CLEAR_LOGS_ON_START:
+        print("Skipping file cleanup - CLEAR_LOGS_ON_START is False")
+        return
+        
     # Clear log file
     log_path = os.path.join(PROJECT_ROOT, 'logs', 'app.log')
     if os.path.exists(log_path):
@@ -791,7 +849,6 @@ def clear_files_on_start():
     lead_contexts_path = os.path.join(PROJECT_ROOT, 'lead_contexts')
     if os.path.exists(lead_contexts_path):
         try:
-            # Remove all files in the directory
             for filename in os.listdir(lead_contexts_path):
                 file_path = os.path.join(lead_contexts_path, filename)
                 if os.path.isfile(file_path):
@@ -942,6 +999,8 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
 if __name__ == "__main__":
     if CLEAR_LOGS_ON_START:
         clear_files_on_start()
+        # Only clear console if logs should be cleared
+        os.system('cls' if os.name == 'nt' else 'clear')
     
     verify_templates()
     
@@ -950,9 +1009,6 @@ if __name__ == "__main__":
     import threading
     scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
     scheduler_thread.start()
-    
-    # Clear the console before starting
-    os.system('cls' if os.name == 'nt' else 'clear')
     
     # Start main workflow
     main()
