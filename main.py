@@ -702,19 +702,25 @@ def main():
 def verify_templates():
     """Verify that required templates exist."""
     template_dir = PROJECT_ROOT / 'docs' / 'templates'
-    required_templates = [
-        'general_manager_initial_outreach.md',
-        'fb_manager_initial_outreach.md',
-        'fallback.md'
-    ]
     
-    missing_templates = [
-        template for template in required_templates
-        if not (template_dir / template).exists()
-    ]
+    # Check if template directory exists
+    if not template_dir.exists():
+        logger.error(f"Template directory not found: {template_dir}")
+        return
+        
+    # Check for at least one template of each type
+    template_types = {
+        'general_manager': 'general_manager_initial_outreach_*.md',
+        'fb_manager': 'fb_manager_initial_outreach_*.md',
+        'fallback': 'fallback_*.md'
+    }
     
-    if missing_templates:
-        logger.warning(f"Missing templates: {missing_templates}")
+    for type_name, pattern in template_types.items():
+        templates = list(template_dir.glob(pattern))
+        if not templates:
+            logger.warning(f"No {type_name} templates found matching pattern: {pattern}")
+        else:
+            logger.debug(f"Found {len(templates)} {type_name} templates: {[t.name for t in templates]}")
 
 def calculate_send_date(geography, persona, state_code, season_data=None):
     """Calculate optimal send date based on geography and persona."""

@@ -86,16 +86,26 @@ class DocReader:
     def read_doc(self, doc_name: str, fallback_content: str = "") -> str:
         """
         Read document content with fallback strategy.
-        
-        Args:
-            doc_name: Name of the document to read
-            fallback_content: Content to return if document cannot be read
-            
-        Returns:
-            Content of the document or fallback content if document cannot be read
         """
-        doc_path = self.get_doc_path(doc_name)
+        logger.debug(f"Attempting to read document: {doc_name}")
         
+        # Handle numbered template variations
+        if 'initial_outreach' in doc_name:
+            base_name = doc_name.replace('.md', '')
+            for i in range(1, 4):
+                variation_name = f"{base_name}_{i}.md"
+                doc_path = self.get_doc_path(variation_name)
+                
+                if doc_path:
+                    logger.debug(f"Found template variation: {variation_name}")
+                    content = self.read_file(doc_path)
+                    if content is not None:
+                        return content
+            
+            logger.warning(f"No variations found for {doc_name}, trying fallback")
+        
+        # Try direct path as fallback
+        doc_path = self.get_doc_path(doc_name)
         if doc_path:
             content = self.read_file(doc_path)
             if content is not None:

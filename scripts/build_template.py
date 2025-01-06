@@ -121,13 +121,21 @@ def build_outreach_email(
     Builds an outreach email with enhanced error handling and debugging
     """
     try:
+        # Map fallback to general_manager explicitly
+        if profile_type == 'fallback':
+            profile_type = 'general_manager'
+            logger.info("Using general_manager templates for fallback profile type")
+        
         # Log input parameters for debugging
         logger.debug(
-            "Building outreach email",
+            "Building outreach email with parameters",
             extra={
                 'profile_type': profile_type,
+                'last_interaction_days': last_interaction_days,
                 'placeholders': placeholders,
-                'template_used': use_markdown_template
+                'current_month': current_month,
+                'template_used': use_markdown_template,
+                'original_profile_type': profile_type  # Track original profile type
             }
         )
         
@@ -161,32 +169,67 @@ def build_outreach_email(
         }
         
         template_dir = PROJECT_ROOT / 'docs' / 'templates'
+        logger.debug(f"Looking for templates in directory: {template_dir}")
         
-        # Get list of template variations for the profile type, defaulting to general_manager
-        template_variations = template_map.get(profile_type, template_map['general_manager'])
+        # Log available templates
+        if template_dir.exists():
+            available_templates = list(template_dir.glob('*.md'))
+            logger.debug(f"Found {len(available_templates)} templates in directory: {[t.name for t in available_templates]}")
+        else:
+            logger.error(f"Template directory does not exist: {template_dir}")
+            raise FileNotFoundError(f"Template directory not found: {template_dir}")
+
+        # Get list of template variations for the profile type
+        template_variations = template_map.get(profile_type)
+        if not template_variations:
+            original_type = profile_type
+            profile_type = 'general_manager'
+            logger.info(
+                f"Profile type '{original_type}' not found in template map, using '{profile_type}' templates",
+                extra={'original_type': original_type, 'fallback_type': profile_type}
+            )
+            template_variations = template_map[profile_type]
         
-        # Randomly select one of the three variations
+        logger.debug(f"Using template variations for '{profile_type}': {template_variations}")
+        
+        # Randomly select one of the variations
         template_file = random.choice(template_variations)
-        template_path = template_dir / template_file
+        logger.debug(f"Selected template file: {template_file}")
         
-        # Log template selection
-        logger.debug(f"Selected template variation: {template_path}")
+        template_path = template_dir / template_file
+        logger.debug(f"Full template path: {template_path}")
         
         if template_path.exists():
+            logger.debug(f"Loading template from: {template_path}")
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
-                logger.debug(f"Template loaded, length: {len(template_content)}")
+                logger.debug(f"Successfully loaded template, content length: {len(template_content)}")
         else:
-            logger.warning(f"Template not found: {template_path}, using fallback")
+            logger.warning(f"Template not found at path: {template_path}")
+            logger.debug("Available files in template directory:")
+            if template_dir.exists():
+                for file in template_dir.iterdir():
+                    logger.debug(f"  - {file.name}")
+            logger.warning("Using fallback template")
             template_content = get_fallback_template()
         
         # Parse template with error tracking
         try:
             template_data = parse_template(template_content)
-            subject = template_data['subject']
+            logger.debug(f"Successfully parsed template: {template_data.keys()}")
+            
+            # Get subject from CONDITION_SUBJECTS based on profile type
+            if profile_type in CONDITION_SUBJECTS:
+                subject = random.choice(CONDITION_SUBJECTS[profile_type])
+                logger.debug(f"Selected subject from {profile_type} templates: {subject}")
+            else:
+                subject = random.choice(CONDITION_SUBJECTS["fallback"])
+                logger.debug(f"Using fallback subject: {subject}")
+            
             body = template_data['body']
+            
         except Exception as e:
-            logger.error(f"Template parsing failed: {str(e)}")
+            logger.error(f"Template parsing failed: {str(e)}", exc_info=True)
             raise
         
         # Track placeholder replacements
@@ -212,9 +255,6 @@ def build_outreach_email(
         # Log all replacements made
         if replacement_log:
             logger.debug("Placeholder replacements: " + "; ".join(replacement_log))
-
-        # Leave [ICEBREAKER] placeholder for later personalization
-        # Remove the icebreaker generation from here
 
         return subject, body
 
@@ -327,28 +367,19 @@ def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
         return "I wanted to reach out about enhancing your club's operations"  # Fallback icebreaker
 
 def parse_template(template_content):
-    """Parse template content without requiring YAML frontmatter"""
+    """Parse template content - subject lines are handled separately via CONDITION_SUBJECTS"""
+    logger.debug(f"Parsing template content of length: {len(template_content)}")
     lines = template_content.strip().split('\n')
+    logger.debug(f"Template contains {len(lines)} lines")
     
-    # Initialize template parts
-    template_body = []
-    subject = None
-    
-    for line in lines:
-        # Look for subject in first few lines if not found yet
-        if not subject and line.startswith('subject:'):
-            subject = line.replace('subject:', '').strip()
-            continue
-        template_body.append(line)
-    
-    # If no explicit subject found, use a default or first line
-    if not subject:
-        subject = "Quick update from Swoop Golf"
-    
-    return {
-        'subject': subject,
-        'body': '\n'.join(template_body)
+    # Just return the body content directly
+    result = {
+        'subject': None,  # Subject will be set from CONDITION_SUBJECTS
+        'body': template_content.strip()
     }
+    
+    logger.debug(f"Parsed template - Body length: {len(result['body'])}")
+    return result
 
 def build_email(template_path, parameters):
     """Build email from template and parameters"""
