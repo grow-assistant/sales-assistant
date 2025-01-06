@@ -18,23 +18,18 @@ XAI_API_URL = os.getenv("XAI_API_URL", "https://api.x.ai/v1/chat/completions")
 XAI_BEARER_TOKEN = f"Bearer {os.getenv('XAI_TOKEN', '')}"
 MODEL_NAME = os.getenv("XAI_MODEL", "grok-2-1212")
 ANALYSIS_TEMPERATURE = float(os.getenv("ANALYSIS_TEMPERATURE", "0.2"))
-EMAIL_TEMPERATURE = float(os.getenv("EMAIL_TEMPERATURE", "0.3"))
+EMAIL_TEMPERATURE = float(os.getenv("EMAIL_TEMPERATURE", "0.2"))
 
 # Simple caches to avoid repeated calls
 _news_cache = {}
 _club_info_cache = {}
 
 SUBJECT_TEMPLATES = [
-    "Swoop: [ClubName]'s Ace?",
     "Quick Chat, [FirstName]?",
-    "Swoop Efficiency for [ClubName]?",
-    "Quick Ask, [FirstName]?",
+    "Quick Question, [FirstName]?",
     "Swoop: [ClubName]'s Edge?",
-    "Brief Q, [FirstName]?",
-    "Swoop: [ClubName]'s Boost?",
-    "Quick Note, [FirstName]?",
-    "Swoop for [ClubName] Wins?",
-    "Quick Idea, [FirstName]?"
+    "Question about 2025",
+    "Quick Question"
 ]
 
 def get_random_subject_template() -> str:
@@ -51,8 +46,8 @@ def get_email_rules() -> List[str]:
         f"**Time Context:** Use relative date terms compared to Todays date to {date.today().strftime('%B %d, %Y')} to keep interactions relevant. When referencing past interactions, use general relative terms like 'when we last spoke' or 'in our previous conversation' rather than specific dates.",
         "**Tone:** Professional but conversational, focusing on starting a dialogue.",
         "**Closing:** End emails directly after your call-to-action. Avoid generic closing lines like 'Looking forward to hearing from you' or 'Hope to connect soon'.",
+        "**Previous Contact:** If the lead has never replied to our emails, do not reference any prior emails we have sent or mention any pilot programs/special offers.",
     ]
-    
 def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1) -> str:
     """
     Sends request to xAI API with retry logic.
@@ -329,9 +324,19 @@ def personalize_email_with_xai(
     Returns: Tuple of (subject, body)
     """
     try:
-        # Load objection handling content
-        with open('docs/templates/objection_handling.txt', 'r') as f:
-            objection_handling = f.read()
+        # Check if lead has previously emailed us
+        previous_interactions = lead_sheet.get("analysis", {}).get("previous_interactions", {})
+        has_emailed_us = previous_interactions.get("last_response", "") not in ["No recent response", "Opened emails but no direct reply", "No data available", "Error retrieving data"]
+        logger.debug(f"Has the lead previously emailed us? {has_emailed_us}")
+
+        # Load objection handling content if lead has emailed us
+        objection_handling = ""
+        if has_emailed_us:
+            with open('docs/templates/objection_handling.txt', 'r') as f:
+                objection_handling = f.read()
+            logger.debug("Objection handling content loaded")
+        else:
+            logger.debug("Objection handling content not loaded (lead has not emailed us)")
 
         # Modify system message to use our subject templates
         system_message = (
@@ -339,6 +344,7 @@ def personalize_email_with_xai(
             "Rewrite and personalize the body while maintaining the core message. "
             "When mentioning facilities, ONLY reference amenities listed in 'club_details'. "
             "DO NOT modify the subject line - it will be handled separately. "
+            "DO NOT reference any promotions or offers mentioned in previous emails. "
             "Format response as:\n"
             "Subject: [keep original subject]\n\n"
             "Body:\n[personalized body]"
@@ -355,12 +361,13 @@ def personalize_email_with_xai(
             "interaction_history": summary if summary else "No previous interactions",
             "club_details": club_info if club_info else "",
             "recent_news": news_summary if news_summary else "",
-            "objection_handling": objection_handling,
+            "objection_handling": objection_handling if has_emailed_us else "",
             "original_email": {
                 "subject": subject,
                 "body": body
             }
         }
+        logger.debug(f"Context block: {json.dumps(context_block, indent=2)}")
 
         # Build user message with clear sections
         user_message = (

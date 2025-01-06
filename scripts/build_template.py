@@ -131,20 +131,46 @@ def build_outreach_email(
             }
         )
         
-        template_dir = PROJECT_ROOT / 'docs' / 'templates'
+        # Update template mapping to include variations
         template_map = {
-            'general_manager': 'general_manager_initial_outreach.md',
-            'food_beverage': 'fb_manager_initial_outreach.md',
-            'golf_professional': 'golf_ops_initial_outreach.md',
-            'owner': 'owner_initial_outreach.md',
-            'membership': 'membership_director_initial_outreach.md'
+            'general_manager': [
+                'general_manager_initial_outreach_1.md',
+                'general_manager_initial_outreach_2.md',
+                'general_manager_initial_outreach_3.md'
+            ],
+            'food_beverage': [
+                'fb_manager_initial_outreach_1.md',
+                'fb_manager_initial_outreach_2.md',
+                'fb_manager_initial_outreach_3.md'
+            ],
+            'golf_professional': [
+                'golf_ops_initial_outreach_1.md',
+                'golf_ops_initial_outreach_2.md',
+                'golf_ops_initial_outreach_3.md'
+            ],
+            'owner': [
+                'owner_initial_outreach_1.md',
+                'owner_initial_outreach_2.md',
+                'owner_initial_outreach_3.md'
+            ],
+            'membership': [
+                'membership_director_initial_outreach_1.md',
+                'membership_director_initial_outreach_2.md',
+                'membership_director_initial_outreach_3.md'
+            ]
         }
         
-        template_file = template_map.get(profile_type, 'general_manager_initial_outreach.md')
+        template_dir = PROJECT_ROOT / 'docs' / 'templates'
+        
+        # Get list of template variations for the profile type, defaulting to general_manager
+        template_variations = template_map.get(profile_type, template_map['general_manager'])
+        
+        # Randomly select one of the three variations
+        template_file = random.choice(template_variations)
         template_path = template_dir / template_file
         
         # Log template selection
-        logger.debug(f"Selected template: {template_path}")
+        logger.debug(f"Selected template variation: {template_path}")
         
         if template_path.exists():
             with open(template_path, 'r', encoding='utf-8') as f:
