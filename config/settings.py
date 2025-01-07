@@ -144,6 +144,7 @@ USE_RANDOM_LEAD = os.getenv("USE_RANDOM_LEAD", "false")
 print(f"USE_RANDOM_LEAD before conversion: {USE_RANDOM_LEAD}")
 USE_RANDOM_LEAD = USE_RANDOM_LEAD.lower() == "true"
 print(f"USE_RANDOM_LEAD after conversion: {USE_RANDOM_LEAD}")
+USE_LEADS_LIST = os.getenv('USE_LEADS_LIST', 'false').lower() == 'true'
 TEST_EMAIL = get_env_var("TEST_EMAIL", required=False, default="test@example.com")
 
 # Add this with the other settings
@@ -186,6 +187,7 @@ __all__ = [
     'API_ENDPOINTS',
     'MARKET_RESEARCH_API',
     'USE_RANDOM_LEAD',
+    'USE_LEADS_LIST',
     'TEST_EMAIL',
     'CREATE_FOLLOWUP_DRAFT'
 ]

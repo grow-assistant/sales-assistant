@@ -21,7 +21,7 @@ from utils.xai_integration import (
 from utils.gmail_integration import create_draft, store_draft_info
 from scripts.build_template import build_outreach_email
 from scripts.job_title_categories import categorize_job_title
-from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START, USE_RANDOM_LEAD, TEST_EMAIL, CREATE_FOLLOWUP_DRAFT
+from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START, USE_RANDOM_LEAD, TEST_EMAIL, CREATE_FOLLOWUP_DRAFT, USE_LEADS_LIST
 from scheduling.extended_lead_storage import upsert_full_lead
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.sql_lookup import build_lead_sheet_from_sql
@@ -192,29 +192,43 @@ def get_random_lead_email() -> str:
         logger.error(f"Error getting random lead: {e}")
         return TEST_EMAIL
 
+def get_lead_from_csv() -> str:
+    """Get a random lead email from the leads.csv file."""
+    try:
+        csv_path = PROJECT_ROOT / 'docs' / 'leads.csv'
+        logger.debug(f"Reading leads from: {csv_path}")
+        
+        with open(csv_path, 'r') as file:
+            leads = [line.strip() for line in file if line.strip()]
+            
+        if not leads:
+            logger.warning("No leads found in leads.csv, falling back to TEST_EMAIL")
+            return TEST_EMAIL
+            
+        email = random.choice(leads)
+        logger.info(f"Selected lead from CSV: {email}")
+        return email
+        
+    except FileNotFoundError:
+        logger.error(f"leads.csv not found at {csv_path}")
+        return TEST_EMAIL
+    except Exception as e:
+        logger.error(f"Error reading from leads.csv: {e}")
+        return TEST_EMAIL
+
 def get_lead_email() -> str:
-    """Get lead email either randomly or via user input based on settings."""
+    """Get lead email based on settings configuration."""
     # Add debug logging
     logger.debug(f"USE_RANDOM_LEAD setting is: {USE_RANDOM_LEAD}")
+    logger.debug(f"USE_LEADS_LIST setting is: {USE_LEADS_LIST}")
     logger.debug(f"TEST_EMAIL setting is: {TEST_EMAIL}")
     
-    if USE_RANDOM_LEAD:
-        logger.debug("Using random lead selection")
-        try:
-            hubspot = HubspotService(HUBSPOT_API_KEY)
-            contacts = hubspot.get_random_contacts(count=1)
-            logger.debug(f"Retrieved contacts: {contacts}")
-            
-            if contacts and contacts[0].get('email'):
-                email = contacts[0]['email']
-                logger.info(f"Selected random lead: {email}")
-                return email
-            else:
-                logger.warning("No random lead found, falling back to TEST_EMAIL")
-                return TEST_EMAIL
-        except Exception as e:
-            logger.error(f"Error getting random lead: {e}")
-            return TEST_EMAIL
+    if USE_LEADS_LIST:
+        logger.debug("Using leads.csv for lead selection")
+        return get_lead_from_csv()
+    elif USE_RANDOM_LEAD:
+        logger.debug("Using random lead selection from HubSpot")
+        return get_random_lead_email()
     else:
         logger.debug("Using manual email input")
         while True:
