@@ -8,7 +8,7 @@ We're inviting 2–3 clubs to partner with us at no cost for 2025 to tailor our 
 
 Would a quick 10-minute call on Thursday at 2 PM or Friday at 10 AM work to explore this further? If another time is better, feel free to let me know.
 
-Best regards,
+Cheers,
 Ty
 
 Swoop Golf  

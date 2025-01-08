@@ -2,6 +2,7 @@ import os
 import base64
 import os.path
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from googleapiclient.discovery import build
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -42,15 +43,7 @@ def get_gmail_service():
     return build('gmail', 'v1', credentials=creds, cache_discovery=False)
 
 def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
-    """
-    Create a message for an email.
-    Args:
-        to: Email address of the receiver.
-        subject: The subject of the email.
-        body: The body of the email message.
-    Returns:
-        A dict containing a base64url-encoded 'raw' email object.
-    """
+    """Create an HTML-formatted email message."""
     try:
         # Validate inputs
         if not all([to, subject, body]):
@@ -66,14 +59,40 @@ def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
         body = str(body).strip()
 
         logger.debug(
-            "Creating email message",
+            "Creating HTML email message",
             extra={"to": to, "subject": subject, "body_length": len(body)},
         )
 
-        # Create the MIMEText message
-        message = MIMEText(body)
+        # Create the MIME Multipart message
+        message = MIMEMultipart('alternative')
         message["to"] = to
         message["subject"] = subject
+
+        # Format the HTML body with inline CSS
+        formatted_body = body.replace('\n\n', '</p><p>').replace('\n', '<br>')
+        html_body = f"""
+        <html>
+            <head>
+                <style>
+                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }}
+                    p {{ margin: 1em 0; }}
+                    .signature {{ margin-top: 20px; color: #666666; }}
+                    .company-info {{ margin-top: 10px; }}
+                </style>
+            </head>
+            <body>
+                <p>{formatted_body}</p>
+            </body>
+        </html>
+        """
+
+        # Create both plain text and HTML versions
+        text_part = MIMEText(body, 'plain')
+        html_part = MIMEText(html_body, 'html')
+
+        # Add both parts to the message
+        message.attach(text_part)  # Fallback plain text version
+        message.attach(html_part)  # Primary HTML version
 
         # Encode as base64url
         raw_message = message.as_string()
@@ -361,3 +380,17 @@ def search_inbound_messages_for_email(email_address: str, max_results: int = 1) 
             logger.error(f"Error fetching message {m['id']} from {email_address}: {e}")
 
     return snippets
+
+def get_signature() -> str:
+    """Return HTML-formatted signature block."""
+    return """
+        <div class="signature">
+            Best regards,<br>
+            Ty<br>
+            <div class="company-info">
+                Swoop Golf<br>
+                480-225-9702<br>
+                <a href="https://swoopgolf.com">swoopgolf.com</a>
+            </div>
+        </div>
+    """

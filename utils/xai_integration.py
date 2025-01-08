@@ -42,12 +42,14 @@ def get_email_rules() -> List[str]:
     """
     return [
         "# IMPORTANT: FOLLOW THESE RULES:\n",
-        f"**Personalization:** Reference club's specific amenities and any previous email responses.",
-        f"**Time Context:** Use relative date terms compared to Todays date to {date.today().strftime('%B %d, %Y')} to keep interactions relevant. When referencing past interactions, use general relative terms like 'when we last spoke' or 'in our previous conversation' rather than specific dates.",
+        "**Amenities:** ONLY reference amenities that are explicitly listed in club_details. Do not assume or infer any additional amenities.",
+        f"**Personalization:** Use only verified information from club_details.",
+        f"**Time Context:** Use relative date terms compared to Todays date to {date.today().strftime('%B %d, %Y')}.",
         "**Tone:** Professional but conversational, focusing on starting a dialogue.",
-        "**Closing:** End emails directly after your call-to-action. Avoid generic closing lines like 'Looking forward to hearing from you' or 'Hope to connect soon'.",
-        "**Previous Contact:** If the lead has never replied to our emails, do not reference any prior emails we have sent or mention any pilot programs/special offers.",
+        "**Closing:** End emails directly after your call-to-action.",
+        "**Previous Contact:** If no prior replies, do not reference previous emails or special offers.",
     ]
+
 def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1) -> str:
     """
     Sends request to xAI API with retry logic.
@@ -338,13 +340,15 @@ def personalize_email_with_xai(
         else:
             logger.debug("Objection handling content not loaded (lead has not emailed us)")
 
-        # Modify system message to use our subject templates
+        # Update system message to be more explicit
         system_message = (
             "You are an expert at personalizing sales emails for golf industry outreach. "
-            "Rewrite and personalize the body while maintaining the core message. "
-            "When mentioning facilities, ONLY reference amenities listed in 'club_details'. "
-            "DO NOT modify the subject line - it will be handled separately. "
-            "DO NOT reference any promotions or offers mentioned in previous emails. "
+            "CRITICAL RULES:\n"
+            "1. ONLY mention amenities that are EXPLICITLY listed in the 'club_details' section\n"
+            "2. DO NOT assume or infer any amenities not directly stated\n"
+            "3. DO NOT mention pools, tennis courts, or any features unless they appear in club_details\n"
+            "4. DO NOT modify the subject line\n"
+            "5. DO NOT reference any promotions from previous emails\n\n"
             "Format response as:\n"
             "Subject: [keep original subject]\n\n"
             "Body:\n[personalized body]"

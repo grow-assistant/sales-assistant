@@ -47,6 +47,8 @@ leads_service = LeadsService(data_gatherer)
 
 TIMEZONE_CSV_PATH = "docs/data/state_timezones.csv"
 
+leads_list = []  # Global variable to store the list of leads
+
 def load_state_timezones():
     """Load state timezones from CSV file."""
     state_timezones = {}
@@ -193,21 +195,31 @@ def get_random_lead_email() -> str:
         return TEST_EMAIL
 
 def get_lead_from_csv() -> str:
-    """Get a random lead email from the leads.csv file."""
+    """Get the next lead email from the shuffled list of leads."""
+    global leads_list  # Declare the variable as global
+    
     try:
-        csv_path = PROJECT_ROOT / 'docs' / 'leads.csv'
-        logger.debug(f"Reading leads from: {csv_path}")
+        if not leads_list:  # If the list is empty, reload from the CSV file
+            csv_path = PROJECT_ROOT / 'docs' / 'leads.csv'
+            logger.debug(f"Reading leads from: {csv_path}")
+            
+            with open(csv_path, 'r') as file:
+                leads_list = [line.strip() for line in file if line.strip()]
+            
+            if not leads_list:
+                logger.warning("No leads found in leads.csv, falling back to TEST_EMAIL")
+                return TEST_EMAIL
+            
+            random.shuffle(leads_list)  # Shuffle the list randomly
+            logger.info(f"Loaded and shuffled {len(leads_list)} leads from CSV")
         
-        with open(csv_path, 'r') as file:
-            leads = [line.strip() for line in file if line.strip()]
-            
-        if not leads:
-            logger.warning("No leads found in leads.csv, falling back to TEST_EMAIL")
+        if leads_list:
+            email = leads_list.pop(0)  # Get the next lead and remove it from the list
+            logger.info(f"Selected lead from CSV: {email}")
+            return email
+        else:
+            logger.warning("All leads processed, falling back to TEST_EMAIL")
             return TEST_EMAIL
-            
-        email = random.choice(leads)
-        logger.info(f"Selected lead from CSV: {email}")
-        return email
         
     except FileNotFoundError:
         logger.error(f"leads.csv not found at {csv_path}")
@@ -1018,6 +1030,43 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
         if 'conn' in locals():
             conn.close()
 
+def get_signature() -> str:
+    """Return standardized signature block."""
+    return "\n\nCheers,\nTy\n\nSwoop Golf\n480-225-9702\nswoopgolf.com"
+
+def personalize_email_with_xai(context: dict, original_email: dict) -> dict:
+    """Personalize email using xAI with signature preservation."""
+    try:
+        # Get AI response for personalization
+        response = _send_xai_request(context)
+        
+        if not response or 'body' not in response:
+            logger.error("Failed to get valid response from xAI")
+            return original_email
+            
+        # Clean up the email body:
+        # 1. Split at signature
+        email_body = response['body'].split('\n\nBest regards')[0]
+        
+        # 2. Fix line breaks:
+        # - Keep paragraph breaks (double newlines)
+        # - Remove single line breaks within paragraphs
+        paragraphs = email_body.split('\n\n')
+        cleaned_paragraphs = [p.replace('\n', ' ').strip() for p in paragraphs]
+        email_body = '\n\n'.join(cleaned_paragraphs)
+        
+        # 3. Add back the signature
+        email_body += get_signature()
+        
+        return {
+            'subject': response.get('subject', original_email['subject']),
+            'body': email_body
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in personalize_email_with_xai: {str(e)}")
+        return original_email
+
 if __name__ == "__main__":
     if CLEAR_LOGS_ON_START:
         clear_files_on_start()
@@ -1032,5 +1081,8 @@ if __name__ == "__main__":
     scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
     scheduler_thread.start()
     
-    # Start main workflow
-    main()
+    # Run main workflow 10 times
+    for i in range(3):
+        logger.info(f"Starting iteration {i+1} of 3")
+        main()
+        logger.info(f"Completed iteration {i+1} of 3")
