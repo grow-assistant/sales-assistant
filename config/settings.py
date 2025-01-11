@@ -134,7 +134,17 @@ API_ENDPOINTS: Dict[str, str] = {
 SEND_EMAILS = os.getenv('SEND_EMAILS', 'false').lower() == 'true'
 
 # Log cleanup control
-CLEAR_LOGS_ON_START = get_bool_env_var("CLEAR_LOGS_ON_START", default=False)
+def parse_bool(value: str) -> bool:
+    """Safely parse boolean from string"""
+    if isinstance(value, bool):
+        return value
+    return str(value).lower() in ('true', '1', 'yes', 'on')
+
+# Parse CLEAR_LOGS_ON_START with proper boolean conversion
+CLEAR_LOGS_ON_START = parse_bool(os.getenv('CLEAR_LOGS_ON_START', 'False'))
+
+# Log the actual value for debugging
+logger.debug(f"CLEAR_LOGS_ON_START initialized as: {CLEAR_LOGS_ON_START} ({type(CLEAR_LOGS_ON_START)})")
 
 # Add this with the other settings
 ENABLE_FOLLOWUPS = os.getenv('ENABLE_FOLLOWUPS', 'false').lower() == 'true'

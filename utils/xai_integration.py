@@ -275,7 +275,7 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
     Please provide a brief overview of {club_name} located in {location}. Include key facts such as:
     - Type of facility (Public, Private, Municipal, Semi-Private, Country Club, Resort, Management Company)
     - Does the club have a pool? (Answer with 'Yes' or 'No')
-    - Notable amenities or features (DO NOT include golf course or pro shop as these are assumed)
+    - Notable amenities or features (DO NOT include pro shop, fitness center, or dining facilities)
     - Any other relevant information
     
     Format your response with these exact headings:

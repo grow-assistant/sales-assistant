@@ -320,13 +320,27 @@ def main():
             lead_data = lead_sheet.get("lead_data", {})
             company_data = lead_data.get("company_data", {})
 
-            first_name = lead_data.get("properties", {}).get("firstname", "")
-            last_name = lead_data.get("properties", {}).get("lastname", "")
-            club_name = company_data.get("name", "").strip()
-            city = company_data.get("city", "").strip()
-            state = company_data.get("state", "").strip()
+            # Safely extract and clean data with null checks
+            first_name = (lead_data.get("properties", {}).get("firstname") or "").strip()
+            last_name = (lead_data.get("properties", {}).get("lastname") or "").strip()
+            
+            # Fix the NoneType error by ensuring company_data exists
+            company_data = company_data if isinstance(company_data, dict) else {}
+            club_name = (company_data.get("name") or "").strip()
+            city = (company_data.get("city") or "").strip()
+            state = (company_data.get("state") or "").strip()
 
-            # Replace the old season logic with new season snippet logic
+            # Add debug logging
+            logger.debug("Extracted lead data", extra={
+                'company_data': company_data,
+                'first_name': first_name,
+                'last_name': last_name,
+                'club_name': club_name,
+                'city': city,
+                'state': state
+            })
+
+            # Rest of the code remains the same
             current_month = datetime.now().month
             
             # Define peak season months based on state
@@ -1036,6 +1050,9 @@ def get_signature() -> str:
 
 
 if __name__ == "__main__":
+    # Log the value being used
+    logger.debug(f"Starting with CLEAR_LOGS_ON_START={CLEAR_LOGS_ON_START}")
+    
     if CLEAR_LOGS_ON_START:
         clear_files_on_start()
         # Only clear console if logs should be cleared
@@ -1049,7 +1066,7 @@ if __name__ == "__main__":
     scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
     scheduler_thread.start()
     
-    # Run main workflow 10 times
+    # Run main workflow 3 times
     for i in range(3):
         logger.info(f"Starting iteration {i+1} of 3")
         main()
