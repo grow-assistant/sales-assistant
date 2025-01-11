@@ -230,7 +230,13 @@ def get_lead_email(lead_id: str) -> str:
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        cursor.execute("SELECT email FROM leads WHERE lead_id = ?", (lead_id,))
+        # Updated query to use correct column names
+        cursor.execute("""
+            SELECT email 
+            FROM leads 
+            WHERE lead_id = ?
+        """, (lead_id,))
+        
         result = cursor.fetchone()
 
         if not result:
