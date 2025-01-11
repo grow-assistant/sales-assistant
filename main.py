@@ -1034,38 +1034,6 @@ def get_signature() -> str:
     """Return standardized signature block."""
     return "\n\nCheers,\nTy\n\nSwoop Golf\n480-225-9702\nswoopgolf.com"
 
-def personalize_email_with_xai(context: dict, original_email: dict) -> dict:
-    """Personalize email using xAI with signature preservation."""
-    try:
-        # Get AI response for personalization
-        response = _send_xai_request(context)
-        
-        if not response or 'body' not in response:
-            logger.error("Failed to get valid response from xAI")
-            return original_email
-            
-        # Clean up the email body:
-        # 1. Split at signature
-        email_body = response['body'].split('\n\nBest regards')[0]
-        
-        # 2. Fix line breaks:
-        # - Keep paragraph breaks (double newlines)
-        # - Remove single line breaks within paragraphs
-        paragraphs = email_body.split('\n\n')
-        cleaned_paragraphs = [p.replace('\n', ' ').strip() for p in paragraphs]
-        email_body = '\n\n'.join(cleaned_paragraphs)
-        
-        # 3. Add back the signature
-        email_body += get_signature()
-        
-        return {
-            'subject': response.get('subject', original_email['subject']),
-            'body': email_body
-        }
-        
-    except Exception as e:
-        logger.error(f"Error in personalize_email_with_xai: {str(e)}")
-        return original_email
 
 if __name__ == "__main__":
     if CLEAR_LOGS_ON_START:
