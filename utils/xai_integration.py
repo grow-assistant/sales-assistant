@@ -2,7 +2,7 @@
 
 import os
 import requests
-from typing import Tuple, Dict, Any, List
+from typing import Tuple, Dict, Any, List, Optional
 from datetime import datetime, date
 from utils.logging_setup import logger
 from dotenv import load_dotenv
@@ -11,6 +11,7 @@ import json
 import time
 from pathlib import Path
 import random
+import re
 
 load_dotenv()
 
@@ -21,8 +22,11 @@ ANALYSIS_TEMPERATURE = float(os.getenv("ANALYSIS_TEMPERATURE", "0.2"))
 EMAIL_TEMPERATURE = float(os.getenv("EMAIL_TEMPERATURE", "0.2"))
 
 # Simple caches to avoid repeated calls
-_news_cache = {}
-_club_info_cache = {}
+_cache = {
+    'news': {},
+    'club_info': {},
+    'icebreakers': {}
+}
 
 SUBJECT_TEMPLATES = [
     "Quick Chat, [FirstName]?",
@@ -151,10 +155,10 @@ def xai_news_search(club_name: str) -> tuple[str, str]:
         return "", ""
 
     # Check cache first
-    if club_name in _news_cache:
+    if club_name in _cache['news']:
         if DEBUG_MODE:
             logger.debug(f"Using cached news result for {club_name}")
-        news = _news_cache[club_name]
+        news = _cache['news'][club_name]
         icebreaker = _build_icebreaker_from_news(club_name, news)
         return news, icebreaker
 
@@ -181,7 +185,7 @@ def xai_news_search(club_name: str) -> tuple[str, str]:
     news = _send_xai_request(payload)
     logger.info(f"News search result for {club_name}:", extra={"news": news})
 
-    _news_cache[club_name] = news
+    _cache['news'][club_name] = news
 
     # Clean up awkward grammar if needed
     if news:
@@ -241,38 +245,65 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 # Club Info Search
 ##############################################################################
 
-def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> str:
+def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> Dict[str, Any]:
+    """
+    Search for club information using xAI.
+    
+    Args:
+        club_name: Name of the club
+        location: Club location 
+        amenities: Optional list of known amenities
+        
+    Returns:
+        Dict containing parsed club information:
+        {
+            'overview': str,  # Full response text
+            'facility_type': str,  # Classified facility type
+            'has_pool': str,  # Yes/No
+            'amenities': List[str]  # Extracted amenities
+        }
+    """
     cache_key = f"{club_name}_{location}"
-    if cache_key in _club_info_cache:
+    if cache_key in _cache['club_info']:
         logger.debug(f"Using cached club info for {club_name} in {location}")
-        return _club_info_cache[cache_key]
+        return _cache['club_info'][cache_key]
 
     logger.info(f"Searching for club info: {club_name} in {location}")
     amenity_str = ", ".join(amenities) if amenities else ""
+    
     prompt = f"""
     Please provide a brief overview of {club_name} located in {location}. Include key facts such as:
-    - Type of facility (private, semi-private, public, resort, country club, etc.) 
-    - Notable amenities or features, such as: {amenity_str}
+    - Type of facility (Public, Private, Municipal, Semi-Private, Country Club, Resort, Management Company)
+    - Does the club have a pool? (Answer with 'Yes' or 'No')
+    - Notable amenities or features (DO NOT include golf course or pro shop as these are assumed)
     - Any other relevant information
     
-    Also, please classify the facility into one of the following types at the end of your response:
-    - Private Course
-    - Semi-Private Course 
-    - Public Course
-    - Country Club
-    - Resort
-    - Other
+    Format your response with these exact headings:
+    OVERVIEW:
+    [Overview text]
     
-    Provide the classification on a new line starting with "Facility Type: ".
+    FACILITY TYPE:
+    [Type]
+    
+    HAS POOL:
+    [Yes/No]
+    
+    AMENITIES:
+    - [amenity 1]
+    - [amenity 2]
     """
 
     payload = {
         "messages": [
             {
                 "role": "system", 
-                "content": "You are a factual assistant that provides objective, data-focused overviews of golf clubs and country clubs. "
-                "Focus only on verifiable facts like location, type (private/public), number of holes, and amenities like pool, restaurant, tennis, etc. "
-                "Avoid mentioning course designers or architects. Avoid subjective descriptions or flowery language."
+                "content": (
+                    "You are a factual assistant that provides objective, data-focused overviews of clubs. "
+                    "Focus only on verifiable facts like location, type, amenities, etc. "
+                    "CRITICAL: DO NOT list golf course or pro shop as amenities as these are assumed. "
+                    "Only list additional amenities that are explicitly verified. "
+                    "Avoid subjective descriptions or flowery language."
+                )
             },
             {
                 "role": "user",
@@ -286,29 +317,60 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
     response = _send_xai_request(payload)
     logger.info(f"Club info search result for {club_name}:", extra={"info": response})
     
-    # Extract the facility type from the response
-    facility_type = extract_facility_type(response)
-    print(f"Classified facility type for {club_name}: {facility_type}")
+    # Parse structured response
+    parsed_info = _parse_club_response(response)
     
     # Cache the response
-    _club_info_cache[cache_key] = response
+    _cache['club_info'][cache_key] = parsed_info
+    
+    return parsed_info
 
-    return response
-
-def extract_facility_type(response: str) -> str:
-    response_lower = response.lower()
-    if "country club" in response_lower:
-        return "Country Club"
-    elif "private" in response_lower:
-        return "Private Course"
-    elif "semi-private" in response_lower:
-        return "Semi-Private Course"
-    elif "public" in response_lower:
-        return "Public Course"
-    elif "resort" in response_lower:
-        return "Resort"
-    else:
-        return "Other"
+def _parse_club_response(response: str) -> Dict[str, Any]:
+    """
+    Parse structured club information response.
+    
+    Args:
+        response: Raw response text from xAI
+        
+    Returns:
+        Dict containing parsed information
+    """
+    result = {
+        'overview': '',
+        'facility_type': 'Other',
+        'has_pool': 'No',
+        'amenities': []
+    }
+    
+    # Extract sections using regex
+    sections = {
+        'overview': re.search(r'OVERVIEW:\s*(.+?)(?=FACILITY TYPE:|$)', response, re.DOTALL),
+        'facility_type': re.search(r'FACILITY TYPE:\s*(.+?)(?=HAS POOL:|$)', response, re.DOTALL),
+        'has_pool': re.search(r'HAS POOL:\s*(.+?)(?=AMENITIES:|$)', response, re.DOTALL),
+        'amenities': re.search(r'AMENITIES:\s*(.+?)$', response, re.DOTALL)
+    }
+    
+    # Process each section
+    if sections['overview']:
+        result['overview'] = sections['overview'].group(1).strip()
+        
+    if sections['facility_type']:
+        result['facility_type'] = sections['facility_type'].group(1).strip()
+        
+    if sections['has_pool']:
+        pool_value = sections['has_pool'].group(1).strip().lower()
+        result['has_pool'] = 'Yes' if 'yes' in pool_value else 'No'
+        
+    if sections['amenities']:
+        amenities_text = sections['amenities'].group(1)
+        # Extract bullet points
+        result['amenities'] = [
+            a.strip('- ').strip() 
+            for a in amenities_text.split('\n') 
+            if a.strip('- ').strip()
+        ]
+    
+    return result
 
 ##############################################################################
 # Personalize Email
@@ -475,10 +537,10 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
     """
     cache_key = f"icebreaker:{club_name}:{recipient_name}"
 
-    if cache_key in _news_cache:
+    if cache_key in _cache['icebreakers']:
         if DEBUG_MODE:
             logger.debug(f"Using cached icebreaker for {club_name}")
-        return _news_cache[cache_key]
+        return _cache['icebreakers'][cache_key]
 
     payload = {
         "messages": [
@@ -503,7 +565,7 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
     response = _send_xai_request(payload, max_retries=3, retry_delay=1)
     logger.info(f"Generated icebreaker for {club_name}:", extra={"icebreaker": response})
 
-    _news_cache[cache_key] = response
+    _cache['icebreakers'][cache_key] = response
     return response
 
 def get_email_critique(email_subject: str, email_body: str, guidance: dict) -> str:

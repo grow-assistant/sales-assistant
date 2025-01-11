@@ -117,9 +117,8 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
         #   - xai_facilities_info goes in dbo.companies
         #   - xai_facilities_news goes in dbo.company_properties
         facilities_info = analysis_data.get("facilities", {}).get("response", "")
-        if facilities_info == "No recent news found.":  # Fix incorrect response
-            # Get the most recent facilities response from xAI logs
-            facilities_info = "- Golf Course: Yes\n- Pool: Yes\n- Tennis Courts: Yes\n- Membership Type: Private"
+        if facilities_info == "No recent news found.":
+            facilities_info = ""  # Just set to empty string instead of making assumptions
 
         # Get news separately
         research_data = analysis_data.get("research_data", {})
@@ -271,12 +270,12 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     company_hs_id,
                     company_hs_createdate,
                     company_hs_lastmodified,
-                    year_round,
-                    start_month,
-                    end_month,
-                    peak_season_start,
-                    peak_season_end,
-                    facilities_info
+                    str(year_round) if year_round else None,
+                    str(start_month) if start_month else None,
+                    str(end_month) if end_month else None,
+                    str(peak_season_start) if peak_season_start else None,
+                    str(peak_season_end) if peak_season_end else None,
+                    str(facilities_info) if facilities_info else None  # Convert to string
                 ))
                 
                 # Capture the new company_id
@@ -473,3 +472,10 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
             cursor.close()
         if 'conn' in locals():
             conn.close()
+
+system_message = (
+    "You are a factual assistant that provides objective, data-focused overviews of clubs. "
+    "CRITICAL: Only state amenities that are explicitly verified. If you are not certain "
+    "about an amenity, respond with 'Unknown' rather than making assumptions. Never infer "
+    "amenities based on club type or location."
+)
