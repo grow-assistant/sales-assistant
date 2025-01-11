@@ -278,3 +278,51 @@ class HubspotService:
         except Exception as e:
             logger.error(f"Error getting random contacts: {str(e)}")
             return []
+
+    def _make_hubspot_post(self, url: str, payload: dict) -> dict:
+        """
+        Make a POST request to HubSpot API with retries.
+        
+        Args:
+            url: The endpoint URL
+            payload: The request payload
+            
+        Returns:
+            dict: The JSON response from HubSpot
+        """
+        try:
+            response = requests.post(
+                url,
+                headers=self.headers,
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HubSpot API error: {str(e)}")
+            raise HubSpotError(f"Failed to make HubSpot POST request: {str(e)}")
+            
+    def _make_hubspot_get(self, url: str, params: dict = None) -> dict:
+        """
+        Make a GET request to HubSpot API with retries.
+        
+        Args:
+            url: The endpoint URL
+            params: Optional query parameters
+            
+        Returns:
+            dict: The JSON response from HubSpot
+        """
+        try:
+            response = requests.get(
+                url,
+                headers=self.headers,
+                params=params
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HubSpot API error: {str(e)}")
+            raise HubSpotError(f"Failed to make HubSpot GET request: {str(e)}")
