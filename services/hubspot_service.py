@@ -326,3 +326,27 @@ class HubspotService:
         except requests.exceptions.RequestException as e:
             logger.error(f"HubSpot API error: {str(e)}")
             raise HubSpotError(f"Failed to make HubSpot GET request: {str(e)}")
+
+    def _make_hubspot_patch(self, url: str, payload: dict) -> dict:
+        """
+        Make a PATCH request to HubSpot API with retries.
+        
+        Args:
+            url: The endpoint URL
+            payload: The request payload
+            
+        Returns:
+            dict: The JSON response from HubSpot
+        """
+        try:
+            response = requests.patch(
+                url,
+                headers=self.headers,
+                json=payload
+            )
+            response.raise_for_status()
+            return response.json()
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"HubSpot API error: {str(e)}")
+            raise HubSpotError(f"Failed to make HubSpot PATCH request: {str(e)}")
