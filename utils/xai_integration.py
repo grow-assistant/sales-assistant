@@ -966,8 +966,8 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         'club_type': re.search(r'CLUB TYPE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
         'facility_complexity': re.search(r'FACILITY COMPLEXITY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
         'geographic_seasonality': re.search(r'GEOGRAPHIC SEASONALITY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
-        'pool': re.search(r'POOL:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
-        'tennis': re.search(r'TENNIS COURTS:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+        'pool': re.search(r'(?:POOL|HAS POOL):\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+        'tennis': re.search(r'(?:TENNIS COURTS|HAS TENNIS):\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
         'holes': re.search(r'GOLF HOLES:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
     }
 
@@ -1010,21 +1010,29 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         elif 'management company' in club_type_lower:
             result['club_type'] = 'Management Company'
 
-    # Pool
-    if sections["pool"]:
-        pool_text = clean_value(sections["pool"].group(1)).lower()
-        if "yes" in pool_text:
-            result["has_pool"] = "Yes"
-        elif "no" in pool_text:
-            result["has_pool"] = "No"
+    # Keep existing pool detection
+    if sections['pool']:
+        pool_text = clean_value(sections['pool'].group(1)).lower()
+        logger.debug(f"Found pool text in section: {pool_text}")
+        if 'yes' in pool_text:
+            result['has_pool'] = 'Yes'
+            logger.debug("Pool found in standard section")
 
-    # Tennis
-    if sections["tennis"]:
-        tennis_text = clean_value(sections["tennis"].group(1)).lower()
-        if "yes" in tennis_text:
-            result["has_tennis_courts"] = "Yes"
-        elif "no" in tennis_text:
-            result["has_tennis_courts"] = "No"
+    # Add additional pool detection patterns
+    if result['has_pool'] != 'Yes':  # Only check if we haven't found a pool yet
+        pool_patterns = [
+            r'AMENITIES:.*?(?:^|\s)(?:pool|swimming pool|pools|swimming pools|aquatic)(?:\s|$).*?(?=\n[A-Z ]+?:|$)',
+            r'FACILITIES:.*?(?:^|\s)(?:pool|swimming pool|pools|swimming pools|aquatic)(?:\s|$).*?(?=\n[A-Z ]+?:|$)',
+            r'(?:^|\n)-\s*(?:pool|swimming pool|pools|swimming pools|aquatic)(?:\s|$)',
+            r'FEATURES:.*?(?:^|\s)(?:pool|swimming pool|pools|swimming pools|aquatic)(?:\s|$).*?(?=\n[A-Z ]+?:|$)'
+        ]
+        
+        for pattern in pool_patterns:
+            pool_match = re.search(pattern, response, re.IGNORECASE | re.MULTILINE)
+            if pool_match:
+                logger.debug(f"Found pool in additional pattern: {pool_match.group(0)}")
+                result['has_pool'] = 'Yes'
+                break
 
     # Process geographic seasonality
     if sections['geographic_seasonality']:
@@ -1054,7 +1062,49 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         elif 'two' in holes_text and '18' in holes_text:
             result['number_of_holes'] = 36
 
+    # Process facility complexity
+    if sections['facility_complexity']:
+        complexity = clean_value(sections['facility_complexity'].group(1)).lower()
+        logger.debug(f"Processing facility complexity: '{complexity}'")
+        
+        if 'single' in complexity or 'single-course' in complexity:
+            result['facility_complexity'] = 'Single-Course'
+        elif 'multi' in complexity or 'multi-course' in complexity:
+            result['facility_complexity'] = 'Multi-Course'
+        elif complexity and complexity != 'unknown':
+            # Log unexpected values for debugging
+            logger.warning(f"Unexpected facility complexity value: {complexity}")
+            
     logger.debug(f"Parsed segmentation result: {result}")
+
+    # Enhanced tennis detection
+    tennis_found = False
+    # First check standard TENNIS section
+    if sections['tennis']:
+        tennis_text = clean_value(sections['tennis'].group(1)).lower()
+        logger.debug(f"Found tennis text: {tennis_text}")
+        if 'yes' in tennis_text:
+            result['has_tennis_courts'] = 'Yes'
+            tennis_found = True
+            logger.debug("Tennis courts found in standard section")
+    
+    # If no tennis found in standard section, check additional patterns
+    if not tennis_found:
+        tennis_patterns = [
+            r'TENNIS COURTS:\s*(.+?)(?=\n[A-Z ]+?:|$)',
+            r'HAS TENNIS:\s*(.+?)(?=\n[A-Z ]+?:|$)',
+            r'AMENITIES:.*?(?:tennis|tennis courts?).*?(?=\n[A-Z ]+?:|$)'
+        ]
+        for pattern in tennis_patterns:
+            tennis_match = re.search(pattern, response, re.IGNORECASE | re.DOTALL)
+            if tennis_match:
+                tennis_text = clean_value(tennis_match.group(1) if tennis_match.groups() else tennis_match.group(0)).lower()
+                logger.debug(f"Found additional tennis text: {tennis_text}")
+                if any(word in tennis_text for word in ['yes', 'tennis']):
+                    result['has_tennis_courts'] = 'Yes'
+                    logger.debug("Tennis courts found in additional patterns")
+                    break
+
     return result
 
 def get_club_summary(club_name: str, location: str) -> str:
@@ -1068,41 +1118,28 @@ def get_club_summary(club_name: str, location: str) -> str:
     segmentation_info = xai_club_segmentation_search(club_name, location)
     club_info = xai_club_info_search(club_name, location)
 
+    # Get overview from club_info response
+    overview_match = re.search(r'OVERVIEW:\s*(.+?)(?=\n[A-Z ]+?:|$)', club_info.get('raw_response', ''), re.DOTALL)
+    overview = overview_match.group(1).strip() if overview_match else ""
+
     # Create strict system prompt based on verified info
     verified_info = {
         'type': segmentation_info.get('club_type', 'Unknown'),
         'holes': segmentation_info.get('number_of_holes', 0),
         'has_pool': segmentation_info.get('has_pool', 'No'),
-        'has_tennis': segmentation_info.get('has_tennis_courts', 'No')
+        'has_tennis': segmentation_info.get('has_tennis_courts', 'No'),
+        'overview': overview
     }
-
     payload = {
         "messages": [
             {
-                "role": "system", 
-                "content": (
-                    "You are a factual, concise club analyst. Your job is to generate short, objective summaries "
-                    "of golf or country club facilities.\n"
-                    "CRITICAL RULES:\n"
-                    "1. Do NOT mention designer names.\n"
-                    "2. Do NOT reference awards or rankings.\n"
-                    "3. ONLY include these VERIFIED facts in your summary:\n"
-                    f"- Facility Type: {verified_info['type']}\n"
-                    f"- Number of Holes: {verified_info['holes']}\n"
-                    f"- Has Pool: {verified_info['has_pool']}\n"
-                    f"- Has Tennis Courts: {verified_info['has_tennis']}\n"
-                    "4. If a property is 'Unknown' or '0', do NOT mention it.\n"
-                    "5. Keep the summary to a single paragraph.\n"
-                    "6. Do NOT add any unverified amenities or features."
-                ),
+                "role": "system",
+                "content": "You are a club analyst. Provide a simple one paragraph summary."
             },
             {
-                "role": "user",
-                "content": (
-                    f"Generate a factual summary for {club_name} in {location} using ONLY "
-                    "the verified information provided above. Do not add any other details."
-                ),
-            },
+                "role": "user", 
+                "content": f"Give me a one paragraph summary about {club_name} in {location}."
+            }
         ],
         "model": MODEL_NAME,
         "temperature": 0.0,

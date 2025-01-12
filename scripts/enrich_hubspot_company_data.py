@@ -3,6 +3,7 @@
 import sys
 import time
 from pathlib import Path
+from typing import List, Dict, Any
 
 # Add project root to path
 project_root = str(Path(__file__).parent.parent)
@@ -16,6 +17,15 @@ from utils.xai_integration import (
     xai_club_info_search,
     get_club_summary
 )
+from utils.logging_setup import logger
+
+# Add these constants after imports
+###########################
+# CONFIG / CONSTANTS
+###########################
+TEST_MODE = True  # Set to False for production
+TEST_LIMIT = 3    # Number of companies to process in test mode
+BATCH_SIZE = 25   # Companies per API request
 
 
 def get_facility_info(company_id: str) -> tuple[
@@ -206,24 +216,127 @@ def process_company(company_id: str):
         print("Unable to determine facility info - missing company name or location")
 
 
+def _search_companies_with_filters(hubspot: HubspotService, batch_size=25) -> List[Dict[str, Any]]:
+    """
+    Search for companies in HubSpot that need club type enrichment.
+    
+    Args:
+        hubspot: HubspotService instance
+        batch_size: Number of records per request
+        
+    Returns:
+        List of company records
+    """
+    url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
+    after = None
+    all_results = []
+
+    while True and (not TEST_MODE or len(all_results) < TEST_LIMIT):
+        # Build request payload with filters
+        payload = {
+            "limit": min(batch_size, TEST_LIMIT) if TEST_MODE else batch_size,
+            "properties": [
+                "name", 
+                "city", 
+                "state", 
+                "club_type",
+                "annualrevenue",
+                "facility_complexity",
+                "geographic_seasonality",
+                "has_pool",
+                "has_tennis_courts",
+                "number_of_holes",
+                "public_private_flag"
+            ],
+            "filterGroups": [
+                {
+                    "filters": [
+                        {
+                            "propertyName": "state",
+                            "operator": "EQ",
+                            "value": "MI"
+                        },
+                        {
+                            "propertyName": "club_type",
+                            "operator": "NOT_HAS_PROPERTY",
+                            "value": None
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        if after:
+            payload["after"] = after
+
+        try:
+            logger.info(f"Fetching companies (Test Mode: {TEST_MODE})")
+            response = hubspot._make_hubspot_post(url, payload)
+            if not response:
+                break
+
+            results = response.get("results", [])
+            
+            # Double-check state filter
+            results = [
+                r for r in results 
+                if r.get("properties", {}).get("state") == "MI"
+            ]
+            
+            all_results.extend(results)
+            
+            logger.info(f"Retrieved {len(all_results)} companies in MI so far")
+
+            # Handle pagination
+            paging = response.get("paging", {})
+            next_link = paging.get("next", {}).get("after")
+            if not next_link:
+                break
+            after = next_link
+
+        except Exception as e:
+            logger.error(f"Error fetching companies from HubSpot: {str(e)}")
+            break
+
+    # Ensure we don't exceed test limit
+    if TEST_MODE:
+        all_results = all_results[:TEST_LIMIT]
+        logger.info(f"Test mode: Returning {len(all_results)} MI companies")
+
+    return all_results
+
+
 def main():
-    company_ids = [
-        "15537398095", "15537380786", "15537395569", "15537388563", "15537370228", "15537390600", "15537388565", "15537368244",
-        "15537401414", "15537395568", "15537370227", "15537398094", "15537350070", "15537380785", "15537406736", "15537470002",
-        "15537350072", "15537458854", "15537370224", "15537350068", "15537386157", "15537368245", "15537375516", "15537388564"
-    ]
+    """Main function to process companies needing enrichment."""
+    try:
+        hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+        
+        # Get companies that need enrichment
+        companies = _search_companies_with_filters(hubspot)
+        
+        if not companies:
+            print("No companies found needing enrichment")
+            return
+            
+        print(f"\n=== Processing {len(companies)} companies ===\n")
+        
+        for i, company in enumerate(companies, 1):
+            company_id = company.get("id")
+            if not company_id:
+                continue
+                
+            print(f"\nProcessing company {i} of {len(companies)}")
+            process_company(company_id)
+            
+            # Don't sleep after the last company
+            if i < len(companies):
+                print("\nWaiting 5 seconds before next company...")
+                time.sleep(5)
+        
+        print("\n=== Completed processing all companies ===")
 
-    print(f"\n=== Processing {len(company_ids)} companies ===\n")
-    for i, company_id in enumerate(company_ids, 1):
-        print(f"\nProcessing company {i} of {len(company_ids)}")
-        process_company(company_id)
-
-        # Don't sleep after the last company
-        if i < len(company_ids):
-            print("\nWaiting 5 seconds before next company...")
-            time.sleep(5)
-
-    print("\n=== Completed processing all companies ===")
+    except Exception as e:
+        print(f"Error in main: {str(e)}")
 
 
 if __name__ == "__main__":
