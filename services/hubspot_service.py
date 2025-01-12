@@ -182,8 +182,14 @@ class HubspotService:
 &properties=createdate\
 &properties=hs_lastmodifieddate\
 &properties=hs_object_id\
-&properties=company_type\
-&properties=public_private_flag"
+&properties=club_type\
+&properties=facility_complexity\
+&properties=has_pool\
+&properties=has_tennis_courts\
+&properties=number_of_holes\
+&properties=geographic_seasonality\
+&properties=public_private_flag\
+&properties=club_info"
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
