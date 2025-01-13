@@ -9,6 +9,6 @@ One of our recent partners, Pinetree Country Club, saw a 40% decrease in average
 Cheers,
 Ty
 
-Swoop Golf
-480-225-9702
+Swoop Golf  
+480-225-9702  
 swoopgolf.com

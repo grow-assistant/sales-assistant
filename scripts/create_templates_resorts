@@ -1,0 +1,219 @@
+import os
+
+def main():
+    # Define the email templates for resorts, preserving references to “Pinetree Country Club.”
+    # Note that we've reintroduced references to poolside service, since many resorts offer this amenity.
+    # If you prefer not to reference pools, feel free to remove or edit those mentions.
+
+    templates = {
+        "fallback_1.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf has evolved beyond a golf-only service into a full resort concierge platform—managing poolside F&B, on-course deliveries, and to-go orders. Our goal is to enhance efficiency and keep your guests engaged in every corner of the resort without compromising the guest experience.
+
+We’re inviting 2–3 resorts to join us at no cost for 2025, to ensure we’re truly meeting your operational needs. For instance, at Pinetree Country Club, this approach helped reduce average order times by 40%, boosting guest satisfaction and minimizing delays.
+
+Interested in a quick chat on how this might work for [ResortName]? We’d love to share how Swoop can elevate your guests’ overall experience.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "fallback_2.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf has grown from a golf-only service into a resort-wide concierge platform—covering on-course deliveries, poolside F&B, and convenient to-go pickups. Our mission is to streamline operations, boost F&B revenue, and keep your guests delighted throughout their stay.
+
+At Pinetree Country Club, we helped lower average order times by 40%, delivering a more seamless service experience. Would you have a few minutes for a quick call to see if [ResortName] could achieve similar results?
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "fallback_3.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], I wanted to show how Swoop Golf now functions as a comprehensive resort concierge—managing everything from poolside and on-course F&B to quick to-go services. We designed the platform to keep operations efficient, so your guests can enjoy the resort amenities without unnecessary waits.
+
+At Pinetree Country Club, our approach helped reduce average order times by 40%, ensuring players and guests stay engaged in their activities. I’d love to connect for a brief conversation on how Swoop could support [ResortName] in a similar fashion. Would you be open to a 10-minute call next week?
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "fb_manager_initial_outreach_1.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf goes far beyond on-course ordering, offering a comprehensive platform that streamlines poolside F&B, snack-bar orders, and to-go requests. We built this to help your team serve resort guests efficiently, without juggling multiple systems.
+
+We're looking for 2–3 resorts to partner with in 2025 at no cost. One of our partners, Pinetree Country Club, saw a 54% boost in F&B revenue by making orders simple and accessible for visitors throughout their property.
+
+If you’re open to a quick chat, I’d love to see whether [ResortName] could benefit in the same way. Let me know a good time to connect, and I can share references or more details tailored to your needs.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "fb_manager_initial_outreach_2.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf’s platform has expanded into a full-resort solution—covering on-course deliveries, poolside F&B, and convenient to-go orders. By centralizing these services, we help resorts reduce operational bottlenecks, boost efficiency, and keep guests happy no matter where they are on the property.
+
+One of our recent partners, Pinetree Country Club, saw a 40% decrease in average order times. Let’s schedule a brief call to explore how Swoop could enhance [ResortName]’s operations. What does your availability look like next week?
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "fb_manager_initial_outreach_3.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf is poised to help [ResortName] boost guest satisfaction—from poolside and on-course orders to easy to-go pickups. By integrating these service points into a single platform, we help reduce wait times and operational complexity.
+
+At Pinetree Country Club, our platform delivered a 54% surge in F&B revenue—a success we’re confident can be replicated at [ResortName]. Would a quick 10-minute call on Thursday at 2 PM or Friday at 10 AM work to explore further? If another time suits you better, let me know.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "general_manager_initial_outreach_1.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], I wanted to share how Swoop Golf’s all-in-one concierge platform can simplify [ResortName]’s operations. From delivering on-course orders to poolside service and to-go pickups, it’s built to offer smooth service to your guests while reducing staff strain.
+
+We’re inviting 2–3 resorts to join us at no cost for 2025 to tailor our platform to each property’s unique needs. For example, at Pinetree Country Club, we helped increase F&B revenue by 54% and cut wait times by 40%. We believe [ResortName] could see similar results.
+
+Would a quick 10-minute call on Thursday at 2 PM or Friday at 10 AM work to explore this further? If another time is better, feel free to let me know.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "general_manager_initial_outreach_2.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], I’d love to introduce Swoop Golf’s platform to help [ResortName] deliver faster, more efficient F&B service—whether it’s at the pool, snack bar, or on-course. Our system unifies ordering and reduces staff burden, leading to a better guest experience and stronger profitability.
+
+We worked with a property that saw a 54% jump in F&B revenue and a 40% drop in wait times—a transformation we believe could also apply to [ResortName].
+
+Let’s set up a quick 10-minute call to see if our platform aligns with your goals. How does next Wednesday at 11 AM sound?
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "general_manager_initial_outreach_3.md": """Hey [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], I wanted to share how Swoop Golf’s resort-wide platform can elevate [ResortName]’s guest experience—from on-course deliveries to poolside ordering and more. By streamlining order flow, we help reduce wait times and strengthen your F&B revenue.
+
+Consider Pinetree Country Club: after launching Swoop Golf, they saw a 54% increase in F&B sales and a 40% reduction in wait times. Industry data suggests digital ordering solutions often drive a 20–40% boost in ancillary revenue, which can make a significant difference in your bottom line.
+
+Would a quick 10-minute call on Thursday at 2 PM or Friday at 10 AM work to discuss? If not, I’m happy to find another time.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "golf_ops_initial_outreach_1.md": """Hi [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf has evolved beyond standard on-course services into a full resort concierge platform—coordinating poolside F&B, on-course deliveries, and to-go pickups. Our aim is to maintain a smooth pace of play while enhancing your guests’ overall experience.
+
+We’re inviting 2–3 resorts to partner with us at no cost for 2025, ensuring we’re truly attuned to your operational needs. For instance, at Pinetree Country Club, our approach helped reduce average order times by 40%, keeping golfers happy and minimizing potential delays.
+
+Interested in a short chat to see how this might work for [ResortName]? We’d love to show you how Swoop can enhance your resort offerings.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "golf_ops_initial_outreach_2.md": """Hi [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf now functions as a single hub for your resort’s F&B needs—covering beverage cart deliveries, poolside orders, and quick to-go pickups. Our goal is to keep your guests engaged in every activity while boosting operational efficiency.
+
+We’re inviting 2–3 resorts to join us at no cost for 2025, tailoring our platform to best serve your property. For example, at Pinetree Country Club, we reduced average order times by 40%, improving the pace of play and overall satisfaction.
+
+I’d love to discuss how Swoop might fit [ResortName]’s needs. Would you have time for a quick call?
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+""",
+        "golf_ops_initial_outreach_3.md": """Hi [FirstName],
+
+[ICEBREAKER]
+
+[SEASON_VARIATION], Swoop Golf is now a full-scale resort solution—managing poolside F&B, on-course orders, and to-go pickups from one convenient system. We’re committed to enhancing efficiency so you can keep both golfers and non-golfing guests fully satisfied.
+
+We’re offering 2–3 resorts a no-cost partnership for 2025, ensuring the platform is perfectly aligned with your day-to-day operations. At Pinetree Country Club, we helped cut average order times by 40%, which made a significant impact on overall guest experience.
+
+If you’re interested in seeing how this could work for [ResortName], I’d be happy to set up a short conversation to walk you through our approach.
+
+Cheers,
+Ty
+
+Swoop Golf
+480-225-9702
+swoopgolf.com
+"""
+    }
+
+    # Create the output directory
+    output_dir = "docs/templates/resorts"
+    os.makedirs(output_dir, exist_ok=True)
+
+    # Write each template to its own .md file
+    for filename, content in templates.items():
+        filepath = os.path.join(output_dir, filename)
+        with open(filepath, "w", encoding="utf-8") as f:
+            f.write(content)
+        print(f"Created {filepath}")
+
+if __name__ == "__main__":
+    main()

@@ -23,7 +23,7 @@ from utils.logging_setup import logger
 ###########################
 # CONFIG / CONSTANTS
 ###########################
-TEST_MODE = True  # Set to False for production
+TEST_MODE = False  # Set to False for production
 TEST_LIMIT = 3    # Number of companies to process in test mode
 BATCH_SIZE = 25   # Companies per API request
 
@@ -219,89 +219,112 @@ def process_company(company_id: str):
 def _search_companies_with_filters(hubspot: HubspotService, batch_size=25) -> List[Dict[str, Any]]:
     """
     Search for companies in HubSpot that need club type enrichment.
-    
-    Args:
-        hubspot: HubspotService instance
-        batch_size: Number of records per request
-        
-    Returns:
-        List of company records
+    Processes one state at a time to avoid filter conflicts.
     """
-    url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
-    after = None
+    states = [
+         # "AZ",  # Year-Round Golf
+         # "GA",  # Year-Round Golf
+        "FL",  # Year-Round Golf
+        "MN",  # Short Summer Season
+        "WI",  # Short Summer Season
+        "MI",  # Short Summer Season
+        "ME",  # Short Summer Season
+        "VT",  # Short Summer Season
+        # "NH",  # Short Summer Season
+        # "MT",  # Short Summer Season
+        # "ND",  # Short Summer Season
+        # "SD"   # Short Summer Season
+    ]
     all_results = []
-
-    while True and (not TEST_MODE or len(all_results) < TEST_LIMIT):
-        # Build request payload with filters
-        payload = {
-            "limit": min(batch_size, TEST_LIMIT) if TEST_MODE else batch_size,
-            "properties": [
-                "name", 
-                "city", 
-                "state", 
-                "club_type",
-                "annualrevenue",
-                "facility_complexity",
-                "geographic_seasonality",
-                "has_pool",
-                "has_tennis_courts",
-                "number_of_holes",
-                "public_private_flag"
-            ],
-            "filterGroups": [
-                {
-                    "filters": [
-                        {
-                            "propertyName": "state",
-                            "operator": "EQ",
-                            "value": "MI"
-                        },
-                        {
-                            "propertyName": "club_type",
-                            "operator": "NOT_HAS_PROPERTY",
-                            "value": None
-                        }
-                    ]
-                }
-            ]
-        }
+    
+    for state in states:
+        logger.info(f"Searching for companies in {state}")
+        url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
+        after = None
         
-        if after:
-            payload["after"] = after
+        while True and (not TEST_MODE or len(all_results) < TEST_LIMIT):
+            # Build request payload with single state filter
+            payload = {
+                "limit": min(batch_size, TEST_LIMIT) if TEST_MODE else batch_size,
+                "properties": [
+                    "name", 
+                    "city", 
+                    "state", 
+                    "club_type",
+                    "annualrevenue",
+                    "facility_complexity",
+                    "geographic_seasonality",
+                    "has_pool",
+                    "has_tennis_courts",
+                    "number_of_holes",
+                    "public_private_flag"
+                ],
+                "filterGroups": [
+                    {
+                        "filters": [
+                            {
+                                "propertyName": "state",
+                                "operator": "EQ",
+                                "value": state
+                            },
+                            {
+                                "propertyName": "club_type",
+                                "operator": "NOT_HAS_PROPERTY",
+                                "value": None
+                            },
+                            {
+                                "propertyName": "annualrevenue",
+                                "operator": "GTE", 
+                                "value": "10000000"
+                            }
+                        ]
+                    }
+                ]
+            }
+            
+            if after:
+                payload["after"] = after
 
-        try:
-            logger.info(f"Fetching companies (Test Mode: {TEST_MODE})")
-            response = hubspot._make_hubspot_post(url, payload)
-            if not response:
+            try:
+                logger.info(f"Fetching companies in {state} (Test Mode: {TEST_MODE})")
+                response = hubspot._make_hubspot_post(url, payload)
+                if not response:
+                    break
+
+                results = response.get("results", [])
+                
+                # Double-check state filter
+                results = [
+                    r for r in results 
+                    if r.get("properties", {}).get("state") == state
+                ]
+                
+                all_results.extend(results)
+                
+                logger.info(f"Retrieved {len(all_results)} total companies so far ({len(results)} from {state})")
+
+                # Handle pagination
+                paging = response.get("paging", {})
+                next_link = paging.get("next", {}).get("after")
+                if not next_link:
+                    break
+                after = next_link
+
+                # Check if we've hit the test limit
+                if TEST_MODE and len(all_results) >= TEST_LIMIT:
+                    logger.info(f"Test mode: Reached limit of {TEST_LIMIT} companies")
+                    break
+
+            except Exception as e:
+                logger.error(f"Error fetching companies from HubSpot for {state}: {str(e)}")
                 break
 
-            results = response.get("results", [])
-            
-            # Double-check state filter
-            results = [
-                r for r in results 
-                if r.get("properties", {}).get("state") == "MI"
-            ]
-            
-            all_results.extend(results)
-            
-            logger.info(f"Retrieved {len(all_results)} companies in MI so far")
-
-            # Handle pagination
-            paging = response.get("paging", {})
-            next_link = paging.get("next", {}).get("after")
-            if not next_link:
-                break
-            after = next_link
-
-        except Exception as e:
-            logger.error(f"Error fetching companies from HubSpot: {str(e)}")
-            break
+        logger.info(f"Completed search for {state} - Found {len(all_results)} total companies")
 
     # Ensure we don't exceed test limit
     if TEST_MODE:
         all_results = all_results[:TEST_LIMIT]
-        logger.info(f"Test mode: Returning {len(all_results)} MI companies")
+        logger.info(f"Test mode: Returning {len(all_results)} companies total")
 
     return all_results
 
@@ -328,10 +351,10 @@ def main():
             print(f"\nProcessing company {i} of {len(companies)}")
             process_company(company_id)
             
-            # Don't sleep after the last company
-            if i < len(companies):
-                print("\nWaiting 5 seconds before next company...")
-                time.sleep(5)
+            # # Don't sleep after the last company
+            # if i < len(companies):
+            #     print("\nWaiting 5 seconds before next company...")
+            #     time.sleep(5)
         
         print("\n=== Completed processing all companies ===")
 

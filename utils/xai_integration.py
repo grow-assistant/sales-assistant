@@ -933,7 +933,7 @@ GOLF HOLES:
             {"role": "user", "content": prompt},
         ],
         "model": MODEL_NAME,
-        "temperature": 0.2,
+        "temperature": 0.0,
     }
 
     response = _send_xai_request(payload)

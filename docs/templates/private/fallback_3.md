@@ -9,6 +9,6 @@ At Pinetree Country Club, our approach helped lower average order times by 40%, 
 Cheers,
 Ty
 
-Swoop Golf
-480-225-9702
+Swoop Golf  
+480-225-9702  
 swoopgolf.com
