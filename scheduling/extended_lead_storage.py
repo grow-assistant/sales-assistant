@@ -222,6 +222,15 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                 company_id = existing_co[0]
                 company_hs_id = existing_co[1]
                 logger.debug(f"Company found (company_id={company_id}); updating HS fields + season data if needed.")
+                
+                # Convert any potential dictionaries to strings
+                facilities_info_str = json.dumps(facilities_info) if isinstance(facilities_info, dict) else str(facilities_info) if facilities_info else None
+                year_round_str = str(year_round) if year_round else None
+                start_month_str = str(start_month) if start_month else None
+                end_month_str = str(end_month) if end_month else None
+                peak_season_start_str = str(peak_season_start) if peak_season_start else None
+                peak_season_end_str = str(peak_season_end) if peak_season_end else None
+                
                 cursor.execute("""
                     UPDATE dbo.companies
                     SET city = ?,
@@ -242,16 +251,25 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     company_data.get("company_type", ""),
                     company_hs_createdate,
                     company_hs_lastmodified,
-                    year_round,
-                    start_month,
-                    end_month,
-                    peak_season_start,
-                    peak_season_end,
-                    facilities_info,
+                    year_round_str,
+                    start_month_str,
+                    end_month_str,
+                    peak_season_start_str,
+                    peak_season_end_str,
+                    facilities_info_str,
                     company_id
                 ))
             else:
                 logger.debug(f"No matching company; inserting new row for name={static_company_name}.")
+                
+                # Convert any potential dictionaries to strings
+                facilities_info_str = json.dumps(facilities_info) if isinstance(facilities_info, dict) else str(facilities_info) if facilities_info else None
+                year_round_str = str(year_round) if year_round else None
+                start_month_str = str(start_month) if start_month else None
+                end_month_str = str(end_month) if end_month else None
+                peak_season_start_str = str(peak_season_start) if peak_season_start else None
+                peak_season_end_str = str(peak_season_end) if peak_season_end else None
+                
                 cursor.execute("""
                     INSERT INTO dbo.companies (
                         name, city, state, company_type,
@@ -270,12 +288,12 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     company_hs_id,
                     company_hs_createdate,
                     company_hs_lastmodified,
-                    str(year_round) if year_round else None,
-                    str(start_month) if start_month else None,
-                    str(end_month) if end_month else None,
-                    str(peak_season_start) if peak_season_start else None,
-                    str(peak_season_end) if peak_season_end else None,
-                    str(facilities_info) if facilities_info else None  # Convert to string
+                    year_round_str,
+                    start_month_str,
+                    end_month_str,
+                    peak_season_start_str,
+                    peak_season_end_str,
+                    facilities_info_str
                 ))
                 
                 # Capture the new company_id
@@ -440,19 +458,31 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                         logger.debug(f"Email already exists for lead_id={lead_id}, draft_id={email.get('id')}")
                         continue
 
+                    # Map the email status
+                    status = 'sent' if email.get('status') == 'sent' else 'pending'
+                    
+                    # Convert timestamp to datetime if present
+                    send_date = None
+                    if email.get('timestamp'):
+                        try:
+                            send_date = parse_date(email.get('timestamp'))
+                        except:
+                            logger.warning(f"Could not parse timestamp: {email.get('timestamp')}")
+
                     cursor.execute("""
                         INSERT INTO emails (
                             lead_id, subject, body, 
-                            direction, status, timestamp, created_at
+                            status, actual_send_date, created_at,
+                            draft_id
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, GETDATE())
+                        VALUES (?, ?, ?, ?, ?, GETDATE(), ?)
                     """, (
                         lead_id,
                         email.get('subject'),
                         email.get('body_text'),
-                        email.get('direction'),
-                        email.get('status'),
-                        email.get('timestamp')
+                        status,
+                        send_date,
+                        email.get('id')
                     ))
                 
                 conn.commit()

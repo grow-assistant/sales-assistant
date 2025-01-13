@@ -6,6 +6,7 @@ import shutil
 import random
 from datetime import timedelta, datetime
 import json
+from typing import List, Dict, Any
 
 from utils.logging_setup import logger, workflow_step, setup_logging
 from utils.exceptions import LeadContextError
@@ -47,15 +48,13 @@ leads_service = LeadsService(data_gatherer)
 
 TIMEZONE_CSV_PATH = "docs/data/state_timezones.csv"
 
-leads_list = []  # Global variable to store the list of leads
-
 def load_state_timezones():
     """Load state timezones from CSV file."""
     state_timezones = {}
     with open(TIMEZONE_CSV_PATH, 'r') as file:
         reader = csv.DictReader(file)
         for row in reader:
-            state_code = row['state_code'].strip()      # matches CSV column name
+            state_code = row['state_code'].strip()
             state_timezones[state_code] = {
                 'dst': int(row['daylight_savings']),
                 'std': int(row['standard_time'])
@@ -85,15 +84,12 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         # Add emails with proper encoding handling and sort by timestamp
         for email in sorted(emails, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(email, dict):
-                date = email.get('timestamp', '').split('T')[0]  # Extract just the date
+                date = email.get('timestamp', '').split('T')[0]
                 subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
                 body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')
                 direction = email.get('direction', '')
-                
-                # Only include relevant parts of the email thread
-                body = body.split('On ')[0].strip()  # Take only the most recent part
-                
-                # Add clear indication of email direction
+
+                body = body.split('On ')[0].strip()
                 email_type = "from the lead" if direction == "INCOMING_EMAIL" else "to the lead"
                 
                 interaction = {
@@ -101,11 +97,11 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     'type': f'email {email_type}',
                     'direction': direction,
                     'subject': subject,
-                    'notes': body[:1000]  # Limit length to prevent token overflow
+                    'notes': body[:1000]
                 }
                 interactions.append(interaction)
         
-        # Add notes with proper encoding handling
+        # Add notes
         for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(note, dict):
                 date = note.get('timestamp', '').split('T')[0]
@@ -116,22 +112,19 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                     'type': 'note',
                     'direction': 'internal',
                     'subject': 'Internal Note',
-                    'notes': content[:1000]  # Limit length to prevent token overflow
+                    'notes': content[:1000]
                 }
                 interactions.append(interaction)
         
         if not interactions:
             return "No prior interactions found."
 
-        # Sort all interactions by date
         interactions.sort(key=lambda x: x['date'], reverse=True)
-        
-        # Take only the last 10 interactions to keep the context focused
         recent_interactions = interactions[:10]
         
         prompt = (
             "Please summarize these interactions, focusing on:\n"
-            "1. Most recent email FROM THE LEAD if there is one (note if no emails from lead exist)\n"
+            "1. Most recent email FROM THE LEAD if there is one\n"
             "2. Key points of interest or next steps discussed\n"
             "3. Overall progression of the conversation\n\n"
             "Recent Interactions:\n"
@@ -145,20 +138,18 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
             prompt += f"Content: {interaction['notes']}\n"
             prompt += "-" * 50 + "\n"
         
-        # Get summary from OpenAI
         try:
             openai.api_key = OPENAI_API_KEY
             response = openai.ChatCompletion.create(
                 model=MODEL_FOR_GENERAL,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions. Anything coming from Ty or Ryan is from Swoop, otherwise it's from the lead."},
+                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions. Anything from Ty or Ryan is from Swoop."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.0
             )
             
             summary = response.choices[0].message.content.strip()
-            # Remove debug logging, keep only essential info
             if DEBUG_MODE:
                 logger.info(f"Interaction Summary:\n{summary}")
             return summary
@@ -174,80 +165,184 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
 ###############################################################################
 # Main Workflow
 ###############################################################################
+def get_country_club_companies(hubspot: HubspotService, batch_size=25) -> List[Dict[str, Any]]:
+    """
+    Search for Country Club type companies in HubSpot.
+    """
+    logger.debug("Searching for Country Club type companies")
+    url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
+    all_results = []
+    after = None
+    
+    while True:
+        payload = {
+            "limit": batch_size,
+            "properties": [
+                "name", 
+                "city", 
+                "state", 
+                "club_type",
+                "facility_complexity",
+                "geographic_seasonality",
+                "has_pool",
+                "has_tennis_courts",
+                "number_of_holes",
+                "public_private_flag"
+            ],
+            "filterGroups": [
+                {
+                    "filters": [
+                        {
+                            "propertyName": "club_type",
+                            "operator": "EQ",
+                            "value": "Country Club"
+                        }
+                    ]
+                }
+            ]
+        }
+        
+        if after:
+            payload["after"] = after
+            
+        try:
+            response = hubspot._make_hubspot_post(url, payload)
+            if not response:
+                break
+                
+            results = response.get("results", [])
+            all_results.extend(results)
+            
+            logger.debug(f"Retrieved {len(all_results)} Country Clubs so far")
+            
+            # Handle pagination
+            paging = response.get("paging", {})
+            next_link = paging.get("next", {}).get("after")
+            if not next_link:
+                break
+            after = next_link
+            
+        except Exception as e:
+            logger.error(f"Error fetching Country Clubs from HubSpot: {str(e)}")
+            break
+    
+    logger.info(f"Found {len(all_results)} total Country Clubs")
+    return all_results
+
+def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict]:
+    """Get all leads/contacts associated with a company."""
+    try:
+        url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
+        payload = {
+            "filterGroups": [
+                {
+                    "filters": [
+                        {
+                            "propertyName": "associatedcompanyid",
+                            "operator": "EQ",
+                            "value": company_id
+                        }
+                    ]
+                }
+            ],
+            "properties": ["email", "firstname", "lastname", "jobtitle"],
+            "limit": 100
+        }
+        response = hubspot._make_hubspot_post(url, payload)
+        return response.get("results", [])
+    except Exception as e:
+        logger.error(f"Error getting leads for company {company_id}: {e}")
+        return []
+
 def get_random_lead_email() -> str:
-    """Get a random lead email from HubSpot."""
+    """Get a random lead email from Country Club companies in HubSpot."""
     try:
         hubspot = HubspotService(HUBSPOT_API_KEY)
+        url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
         
-        logger.debug("Calling hubspot.get_random_contacts()")
-        contacts = hubspot.get_random_contacts(count=1)
-        logger.debug(f"Received contacts: {contacts}")
+        # Search for Country Clubs specifically
+        payload = {
+            "filterGroups": [
+                {
+                    "filters": [
+                        {
+                            "propertyName": "club_type",
+                            "operator": "EQ",
+                            "value": "Country Club"
+                        },
+                        {
+                            "propertyName": "annualrevenue",
+                            "operator": "GTE",
+                            "value": "10000000"
+                        }
+                    ]
+                }
+            ],
+            "properties": [
+                "name",
+                "city",
+                "state",
+                "club_type",
+                "annualrevenue",
+                "facility_complexity",
+                "geographic_seasonality",
+                "has_pool",
+                "has_tennis_courts",
+                "number_of_holes",
+                "public_private_flag"
+            ],
+            "limit": 100
+        }
         
-        if contacts and contacts[0].get('email'):
-            email = contacts[0]['email']
-            logger.info(f"Selected random lead: {email}")
+        logger.debug("Searching for Country Club companies in HubSpot")
+        response = hubspot._make_hubspot_post(url, payload)
+        
+        if not response or not response.get("results"):
+            logger.warning("No Country Clubs found, falling back to TEST_EMAIL")
+            return TEST_EMAIL
+            
+        # Filter for clubs with valid contacts/leads
+        valid_clubs = []
+        for company in response.get("results", []):
+            company_id = company.get("id")
+            leads = get_leads_for_company(hubspot, company_id)
+            if leads:
+                valid_clubs.append((company, leads))
+        
+        if not valid_clubs:
+            logger.warning("No Country Clubs with leads found, falling back to TEST_EMAIL")
+            return TEST_EMAIL
+            
+        # Randomly select a club and lead
+        company, leads = random.choice(valid_clubs)
+        lead = random.choice(leads)
+        email = lead.get("email")
+        
+        company_name = company.get("properties", {}).get("name", "Unknown Club")
+        company_state = company.get("properties", {}).get("state", "Unknown State")
+        
+        if email:
+            logger.info(f"Selected lead ({email}) from Country Club: {company_name} in {company_state}")
             return email
         else:
-            logger.warning("No random lead found, falling back to TEST_EMAIL")
+            logger.warning("Selected lead has no email, falling back to TEST_EMAIL")
             return TEST_EMAIL
+            
     except Exception as e:
-        logger.error(f"Error getting random lead: {e}")
-        return TEST_EMAIL
-
-def get_lead_from_csv() -> str:
-    """Get the next lead email from the shuffled list of leads."""
-    global leads_list  # Declare the variable as global
-    
-    try:
-        if not leads_list:  # If the list is empty, reload from the CSV file
-            csv_path = PROJECT_ROOT / 'docs' / 'leads.csv'
-            logger.debug(f"Reading leads from: {csv_path}")
-            
-            with open(csv_path, 'r') as file:
-                leads_list = [line.strip() for line in file if line.strip()]
-            
-            if not leads_list:
-                logger.warning("No leads found in leads.csv, falling back to TEST_EMAIL")
-                return TEST_EMAIL
-            
-            random.shuffle(leads_list)  # Shuffle the list randomly
-            logger.info(f"Loaded and shuffled {len(leads_list)} leads from CSV")
-        
-        if leads_list:
-            email = leads_list.pop(0)  # Get the next lead and remove it from the list
-            logger.info(f"Selected lead from CSV: {email}")
-            return email
-        else:
-            logger.warning("All leads processed, falling back to TEST_EMAIL")
-            return TEST_EMAIL
-        
-    except FileNotFoundError:
-        logger.error(f"leads.csv not found at {csv_path}")
-        return TEST_EMAIL
-    except Exception as e:
-        logger.error(f"Error reading from leads.csv: {e}")
+        logger.error(f"Error getting random Country Club lead: {e}")
         return TEST_EMAIL
 
 def get_lead_email() -> str:
-    """Get lead email based on settings configuration."""
-    # Add debug logging
+    """Get lead email from HubSpot country clubs."""
     logger.debug(f"USE_RANDOM_LEAD setting is: {USE_RANDOM_LEAD}")
-    logger.debug(f"USE_LEADS_LIST setting is: {USE_LEADS_LIST}")
     logger.debug(f"TEST_EMAIL setting is: {TEST_EMAIL}")
     
-    if USE_LEADS_LIST:
-        logger.debug("Using leads.csv for lead selection")
-        return get_lead_from_csv()
-    elif USE_RANDOM_LEAD:
-        logger.debug("Using random lead selection from HubSpot")
-        return get_random_lead_email()
-    else:
-        logger.debug("Using manual email input")
-        while True:
-            email = input("\nPlease enter a lead's email address: ").strip()
-            if email:
-                return email
-            print("Email address cannot be empty. Please try again.")
+    if TEST_EMAIL:
+        logger.debug("Using TEST_EMAIL setting")
+        return TEST_EMAIL
+        
+    logger.debug("Getting random Country Club lead from HubSpot")
+    return get_random_lead_email()
 
 def main():
     """Main entry point for the sales assistant application."""
@@ -302,7 +397,6 @@ def main():
 
         # Step 4: Prepare lead context
         with workflow_step(4, "Preparing lead context"):
-            # Add logging for email data
             emails = lead_sheet.get("lead_data", {}).get("emails", [])
             logger.debug(f"Found {len(emails)} emails in lead sheet", extra={
                 "email_count": len(emails),
@@ -315,43 +409,64 @@ def main():
                 correlation_id=correlation_id
             )
 
-        # Step 5: Extract relevant data
+        # Step 5: Extract relevant data (updated for logging new fields)
         with workflow_step(5, "Extracting lead data"):
             lead_data = lead_sheet.get("lead_data", {})
             company_data = lead_data.get("company_data", {})
 
-            # Safely extract and clean data with null checks
+            # Safely extract data
             first_name = (lead_data.get("properties", {}).get("firstname") or "").strip()
             last_name = (lead_data.get("properties", {}).get("lastname") or "").strip()
             
-            # Fix the NoneType error by ensuring company_data exists
-            company_data = company_data if isinstance(company_data, dict) else {}
-            club_name = (company_data.get("name") or "").strip()
-            city = (company_data.get("city") or "").strip()
-            state = (company_data.get("state") or "").strip()
+            # *** NEW *** Pull in all 15 fields explicitly
+            name = company_data.get("name", "")
+            city = company_data.get("city", "")
+            state = company_data.get("state", "")
+            annual_revenue = company_data.get("annualrevenue", "")
+            created_date = company_data.get("createdate", "")
+            last_modified = company_data.get("hs_lastmodifieddate", "")
+            object_id = company_data.get("hs_object_id", "")
+            club_type = company_data.get("club_type", "")
+            facility_complexity = company_data.get("facility_complexity", "")
+            has_pool = company_data.get("has_pool", "")
+            has_tennis_courts = company_data.get("has_tennis_courts", "")
+            number_of_holes = company_data.get("number_of_holes", "")
+            geographic_seasonality = company_data.get("geographic_seasonality", "")
+            public_private_flag = company_data.get("public_private_flag", "")
+            club_info = company_data.get("club_info", "")
 
-            # Add debug logging
-            logger.debug("Extracted lead data", extra={
-                'company_data': company_data,
-                'first_name': first_name,
-                'last_name': last_name,
-                'club_name': club_name,
-                'city': city,
-                'state': state
+            # Add debug log verifying these fields
+            logger.debug("Pulled in HubSpot company fields", extra={
+                "company_name": name,
+                "city": city,
+                "state": state,
+                "annual_revenue": annual_revenue,
+                "created_date": created_date,
+                "last_modified": last_modified,
+                "object_id": object_id,
+                "club_type": club_type,
+                "facility_complexity": facility_complexity,
+                "has_pool": has_pool,
+                "has_tennis_courts": has_tennis_courts,
+                "number_of_holes": number_of_holes,
+                "geographic_seasonality": geographic_seasonality,
+                "public_private_flag": public_private_flag,
+                "club_info": club_info
             })
 
-            # Rest of the code remains the same
-            current_month = datetime.now().month
-            
-            # Define peak season months based on state
-            if state == "AZ":
-                start_peak_month = 0  # January
-                end_peak_month = 11   # December (year-round)
-            else:
-                start_peak_month = 5  # June
-                end_peak_month = 8    # September
+            # For usage in placeholders or further logic
+            club_name = name.strip()  # rename for clarity
+            logger.info(f"Successfully extracted {club_name} ({object_id}) located in {city}, {state}")
 
-            # Get the season state and appropriate snippet
+            # Proceed with existing placeholders logic:
+            current_month = datetime.now().month
+            if state == "AZ":
+                start_peak_month = 0
+                end_peak_month = 11
+            else:
+                start_peak_month = 5
+                end_peak_month = 8
+
             season_key = get_season_variation_key(
                 current_month=current_month,
                 start_peak_month=start_peak_month,
@@ -368,12 +483,9 @@ def main():
                 "Task": "Staff Onboarding",
                 "Topic": "On-Course Ordering Platform",
                 "YourName": "Ty",
-                "SEASON_VARIATION": season_text.rstrip(',')  # Remove trailing comma if present
+                "SEASON_VARIATION": season_text.rstrip(',')
             }
-            logger.debug("Placeholders built", extra={
-                **placeholders,
-                "season_key": season_key
-            })
+            logger.debug("Placeholders built", extra={**placeholders, "season_key": season_key})
 
         # Step 6: Gather additional personalization data
         with workflow_step(6, "Gathering personalization data"):
@@ -406,14 +518,10 @@ def main():
 
         # Step 8: Build initial outreach email
         with workflow_step(8, "Building email draft"):
-            # Get random subject template before xAI processing
             subject = get_random_subject_template()
-            
-            # Replace placeholders in subject
             for key, val in placeholders.items():
                 subject = subject.replace(f"[{key}]", val)
             
-            # Get body from template as usual
             _, body = build_outreach_email(
                 profile_type=profile_type,
                 last_interaction_days=last_interaction_days,
@@ -423,7 +531,6 @@ def main():
                 end_peak_month=8,
                 use_markdown_template=True
             )
-
             logger.debug("Loaded email template", extra={
                 "subject_template": subject,
                 "body_template": body
@@ -435,23 +542,19 @@ def main():
                     if icebreaker:
                         body = body.replace("[ICEBREAKER]", icebreaker)
                     else:
-                        # If no icebreaker generated, remove placeholder and extra newlines
                         body = body.replace("[ICEBREAKER]\n\n", "")
                         body = body.replace("[ICEBREAKER]\n", "")
                         body = body.replace("[ICEBREAKER]", "")
                 else:
-                    # No news, remove icebreaker placeholder and extra newlines
                     body = body.replace("[ICEBREAKER]\n\n", "")
                     body = body.replace("[ICEBREAKER]\n", "")
                     body = body.replace("[ICEBREAKER]", "")
             except Exception as e:
                 logger.error(f"Icebreaker generation error: {e}")
-                # Remove placeholder and extra newlines
                 body = body.replace("[ICEBREAKER]\n\n", "")
                 body = body.replace("[ICEBREAKER]\n", "")
                 body = body.replace("[ICEBREAKER]", "")
 
-            # Clean up any multiple consecutive newlines that might be left
             while "\n\n\n" in body:
                 body = body.replace("\n\n\n", "\n\n")
 
@@ -463,10 +566,8 @@ def main():
         # Step 9: Personalize with xAI
         with workflow_step(9, "Personalizing with AI"):
             try:
-                # Get lead email first to avoid reference error
                 lead_email = lead_data.get("email", email)
                 
-                # Get initial draft from xAI
                 subject, body = personalize_email_with_xai(
                     lead_sheet=lead_sheet,
                     subject=subject,
@@ -483,25 +584,21 @@ def main():
 
                 body = body.replace("**", "")  # Cleanup leftover bold
 
-                # Re-apply placeholders if xAI reintroduced them
                 for key, val in placeholders.items():
                     subject = subject.replace(f"[{key}]", val)
                     body = body.replace(f"[{key}]", val)
 
-                # Insert ICEBREAKER if we have news
                 if has_news:
                     try:
                         icebreaker = _build_icebreaker_from_news(club_name, news_result)
                         if icebreaker:
                             body = body.replace("[ICEBREAKER]", icebreaker)
                         else:
-                            # If no icebreaker generated, just remove the placeholder
                             body = body.replace("[ICEBREAKER]", "")
                     except Exception as e:
                         logger.error(f"Icebreaker generation error: {e}")
                         body = body.replace("[ICEBREAKER]", "")
                 else:
-                    # No news, remove icebreaker placeholder
                     body = body.replace("[ICEBREAKER]", "")
 
                 logger.debug("Creating email draft", extra={
@@ -509,39 +606,17 @@ def main():
                     "to": lead_email,
                     "subject": subject
                 })
-                # # Get expert critique
-                # critique = get_email_critique(subject, body, {
-                #     "club_name": club_name,
-                #     "lead_name": first_name,
-                #     "interaction_history": interaction_summary,
-                #     "news": news_result,
-                #     "club_info": club_info_snippet
-                # })
-                
-                # if critique:
-                #     logger.info("Received email critique", extra={
-                #         "critique_length": len(critique)
-                #     })
-                    
-                #     # Revise email based on critique
-                #     subject, body = revise_email_with_critique(subject, body, critique)
-                #     logger.info("Email revised based on critique")
-                # else:
-                #     logger.warning("No critique received, using original version")
-
             except Exception as e:
                 logger.error(f"xAI personalization error: {e}")
                 subject, body = orig_subject, orig_body
 
         # Step 10: Create Gmail draft and save to database
         with workflow_step(10, "Creating Gmail draft"):
-            # Get the outreach window
             persona = profile_type
             club_tz = data_gatherer.get_club_timezone(state)
             conn = get_db_connection()
             cursor = conn.cursor()
             try:
-                # Get company_type from database
                 cursor.execute("""
                     SELECT company_type FROM companies 
                     WHERE name = ? AND city = ? AND state = ?
@@ -550,20 +625,17 @@ def main():
                 stored_company_type = result[0] if result else None
 
                 if stored_company_type:
-                    # Use stored company type if available
                     if "private" in stored_company_type.lower():
-                        club_type = "Private Clubs"
+                        local_club_type = "Private Clubs"
                     elif "semi-private" in stored_company_type.lower():
-                        club_type = "Semi-Private Clubs"
+                        local_club_type = "Semi-Private Clubs"
                     elif "public" in stored_company_type.lower() or "municipal" in stored_company_type.lower():
-                        club_type = "Public Clubs"
+                        local_club_type = "Public Clubs"
                     else:
-                        club_type = "Public Clubs"  # Default
+                        local_club_type = "Public Clubs"
                 else:
-                    # Fallback to HubSpot lookup if not in database
-                    _, club_type = data_gatherer.get_club_geography_and_type(club_name, city, state)
+                    _, local_club_type = data_gatherer.get_club_geography_and_type(club_name, city, state)
 
-                # Get geography
                 if state == "AZ":
                     geography = "Year-Round Golf"
                 else:
@@ -571,7 +643,7 @@ def main():
 
             except Exception as e:
                 logger.error(f"Error getting company type from database: {str(e)}")
-                geography, club_type = data_gatherer.get_club_geography_and_type(club_name, city, state)
+                geography, local_club_type = data_gatherer.get_club_geography_and_type(club_name, city, state)
             finally:
                 cursor.close()
                 conn.close()
@@ -583,49 +655,24 @@ def main():
             }
             
             try:
-                # Get structured timing data
-                best_months = get_best_month(geography)
-                best_time = get_best_time(persona)
-                best_days = get_best_day(persona)
-                
-                # print("\n=== Email Scheduling Logic ===")
-                # print(f"Lead Profile: {persona}")
-                # print(f"Geography: {geography}")
-                # print(f"State: {state}")
-                # print("\nOptimal Send Window:")
-                # print(f"- Months: {best_months}")
-                # print(f"- Days: {best_days} (0=Monday, 6=Sunday)")
-                # print(f"- Time: {best_time['start']}:00 - {best_time['end']}:00")
-                
-                # Pick random hour within the time window
                 from random import randint
-                target_hour = randint(best_time["start"], best_time["end"])
+                best_months = outreach_window["Best Month"]
+                best_time = outreach_window["Best Time"]
+                best_days = outreach_window["Best Day"]
                 
-                # Calculate the next occurrence
                 now = datetime.now()
-                
-                # print("\nScheduling Process:")
-                # print(f"1. Starting with tomorrow: {(now + timedelta(days=1)).strftime('%Y-%m-%d')}")
-                
-                # Start with tomorrow
                 target_date = now + timedelta(days=1)
                 
-                # Find the next valid month if current month isn't ideal
                 while target_date.month not in best_months:
-                    # print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
                     if target_date.month == 12:
                         target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
                     else:
                         target_date = target_date.replace(month=target_date.month + 1, day=1)
-                    # print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
                 
-                # Find the next valid day of week
                 while target_date.weekday() not in best_days:
-                    # print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
                     target_date += timedelta(days=1)
-                    # print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
                 
-                # Set the target time
+                target_hour = randint(best_time["start"], best_time["end"])
                 scheduled_send_date = target_date.replace(
                     hour=target_hour,
                     minute=randint(0, 59),
@@ -633,13 +680,8 @@ def main():
                     microsecond=0
                 )
                 
-                # Adjust for state's offset
                 state_offsets = STATE_TIMEZONES.get(state.upper())
                 scheduled_send_date = convert_to_club_timezone(scheduled_send_date, state_offsets)
-                
-                # print(f"\nFinal Schedule:")
-                # print(f"✅ Selected send time: {scheduled_send_date.strftime('%Y-%m-%d %H:%M:%S %Z')}")
-                # print("============================\n")
 
             except Exception as e:
                 logger.warning(f"Error calculating send date: {str(e)}. Using current time + 1 day", extra={
@@ -651,13 +693,11 @@ def main():
 
             if scheduled_send_date is None:
                 logger.warning("scheduled_send_date is None, setting default send date")
-                scheduled_send_date = datetime.now() + timedelta(days=1)  # Default to 1 day later
+                scheduled_send_date = datetime.now() + timedelta(days=1)
 
-            # First get the lead_id from the database
             conn = get_db_connection()
             cursor = conn.cursor()
             try:
-                # Get lead_id based on email
                 cursor.execute("""
                     SELECT lead_id FROM leads 
                     WHERE email = ?
@@ -667,7 +707,6 @@ def main():
                 if result:
                     lead_id = result[0]
                     
-                    # Create Gmail draft first
                     draft_result = create_draft(
                         sender="me",
                         to=lead_email,
@@ -678,7 +717,6 @@ def main():
                     )
 
                     if draft_result["status"] == "ok":
-                        # Store in database once
                         store_draft_info(
                             lead_id=lead_id,
                             draft_id=draft_result["draft_id"],
@@ -691,7 +729,6 @@ def main():
                         logger.info("Email draft saved to database", extra=logger_context)
                         
                         if CREATE_FOLLOWUP_DRAFT:
-                            # Get next sequence number
                             cursor.execute("""
                                 SELECT COALESCE(MAX(sequence_num), 0) + 1
                                 FROM emails 
@@ -743,12 +780,10 @@ def verify_templates():
     """Verify that required templates exist."""
     template_dir = PROJECT_ROOT / 'docs' / 'templates'
     
-    # Check if template directory exists
     if not template_dir.exists():
         logger.error(f"Template directory not found: {template_dir}")
         return
         
-    # Check for at least one template of each type
     template_types = {
         'general_manager': 'general_manager_initial_outreach_*.md',
         'fb_manager': 'fb_manager_initial_outreach_*.md',
@@ -765,7 +800,6 @@ def verify_templates():
 def calculate_send_date(geography, persona, state_code, season_data=None):
     """Calculate optimal send date based on geography and persona."""
     try:
-        # Get base timing data
         outreach_window = get_best_outreach_window(
             persona=persona,
             geography=geography,
@@ -776,35 +810,22 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         best_time = outreach_window["Best Time"]
         best_days = outreach_window["Best Day"]
         
-        # Start with tomorrow
         now = datetime.now()
         target_date = now + timedelta(days=1)
         
-        #print("\nScheduling Process:")
-        #print(f"1. Starting with tomorrow: {target_date.strftime('%Y-%m-%d')}")
-        
-        # Find the next valid month
         while target_date.month not in best_months:
-            #print(f"   ❌ Month {target_date.month} not in optimal months {best_months}")
             if target_date.month == 12:
                 target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
             else:
                 target_date = target_date.replace(month=target_date.month + 1, day=1)
-            #print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
         
-        # Find the next valid day of week
         while target_date.weekday() not in best_days:
-            #print(f"   ❌ Day {target_date.weekday()} not in optimal days {best_days}")
             target_date += timedelta(days=1)
-            #print(f"   ➡️ Advanced to: {target_date.strftime('%Y-%m-%d')}")
         
-        # Set time within the best window (9:00-11:00)
-        send_hour = best_time["start"]  # This will be 9
+        send_hour = best_time["start"]
         send_minute = random.randint(0, 59)
-        
-        # If we want to randomize the hour but ensure we stay before 11:00
-        if random.random() < 0.5:  # 50% chance to use hour 10 instead of 9
-            send_hour = 10
+        if random.random() < 0.5:
+            send_hour = min(send_hour + 1, best_time["end"])
             
         send_date = target_date.replace(
             hour=send_hour,
@@ -813,22 +834,14 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
             microsecond=0
         )
         
-        # Adjust for state's offset
         final_send_date = adjust_send_time(send_date, state_code)
-        
-        #print(f"\nFinal Schedule:")
-        #print(f"✅ Selected send time: {final_send_date.strftime('%Y-%m-%d %H:%M:%S')}")
-        #print("============================\n")
-        
         return final_send_date
         
     except Exception as e:
         logger.error(f"Error calculating send date: {str(e)}", exc_info=True)
-        # Return tomorrow at 10 AM as fallback
         return datetime.now() + timedelta(days=1, hours=10)
 
 def get_next_month_first_day(current_date):
-    """Helper function to get the first day of the next month"""
     if current_date.month == 12:
         return current_date.replace(year=current_date.year + 1, month=1, day=1)
     return current_date.replace(month=current_date.month + 1, day=1)
@@ -839,7 +852,6 @@ def clear_sql_tables():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # List of tables to clear (in order to handle foreign key constraints)
         tables = [
             'emails',
             'lead_properties',
@@ -848,7 +860,6 @@ def clear_sql_tables():
             'companies'
         ]
         
-        # Disable foreign key constraints for SQL Server
         cursor.execute("ALTER TABLE emails NOCHECK CONSTRAINT ALL")
         cursor.execute("ALTER TABLE lead_properties NOCHECK CONSTRAINT ALL")
         cursor.execute("ALTER TABLE company_properties NOCHECK CONSTRAINT ALL")
@@ -861,7 +872,6 @@ def clear_sql_tables():
             except Exception as e:
                 print(f"Error clearing table {table}: {e}")
         
-        # Re-enable foreign key constraints
         cursor.execute("ALTER TABLE emails CHECK CONSTRAINT ALL")
         cursor.execute("ALTER TABLE lead_properties CHECK CONSTRAINT ALL")
         cursor.execute("ALTER TABLE company_properties CHECK CONSTRAINT ALL")
@@ -877,14 +887,12 @@ def clear_sql_tables():
             conn.close()
 
 def clear_files_on_start():
-    """Clear log file, lead contexts, and SQL data if CLEAR_LOGS_ON_START is True"""
     from config.settings import CLEAR_LOGS_ON_START
     
     if not CLEAR_LOGS_ON_START:
         print("Skipping file cleanup - CLEAR_LOGS_ON_START is False")
         return
         
-    # Clear log file
     log_path = os.path.join(PROJECT_ROOT, 'logs', 'app.log')
     if os.path.exists(log_path):
         try:
@@ -893,7 +901,6 @@ def clear_files_on_start():
         except Exception as e:
             print(f"Failed to clear log file: {e}")
     
-    # Clear lead contexts directory
     lead_contexts_path = os.path.join(PROJECT_ROOT, 'lead_contexts')
     if os.path.exists(lead_contexts_path):
         try:
@@ -905,17 +912,14 @@ def clear_files_on_start():
         except Exception as e:
             print(f"Failed to clear lead contexts: {e}")
     
-    # Clear SQL tables
     clear_sql_tables()
 
 def schedule_followup(lead_id: int, email_id: int):
     """Schedule a follow-up email"""
     try:
-        # Get lead data first
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get original email data
         cursor.execute("""
             SELECT 
                 e.subject, e.body, e.created_at,
@@ -934,7 +938,6 @@ def schedule_followup(lead_id: int, email_id: int):
             
         orig_subject, orig_body, created_at, email, first_name, company_name, state = result
         
-        # Package original email data
         original_email = {
             'email': email,
             'first_name': first_name,
@@ -945,16 +948,14 @@ def schedule_followup(lead_id: int, email_id: int):
             'created_at': created_at
         }
         
-        # Generate the follow-up email content
         followup = generate_followup_email_xai(
             lead_id=lead_id,
             email_id=email_id,
-            sequence_num=2,  # Second email in sequence
-            original_email=original_email  # Pass the original email data
+            sequence_num=2,
+            original_email=original_email
         )
         
         if followup:
-            # Create Gmail draft for follow-up
             draft_result = create_draft(
                 sender="me",
                 to=followup.get('email'),
@@ -963,7 +964,6 @@ def schedule_followup(lead_id: int, email_id: int):
             )
             
             if draft_result["status"] == "ok":
-                # Save follow-up to database
                 store_draft_info(
                     lead_id=lead_id,
                     draft_id=draft_result["draft_id"],
@@ -997,7 +997,6 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Insert or update the email record
         cursor.execute(
             """
             UPDATE emails
@@ -1021,7 +1020,6 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
                 lead_id, 
                 sequence_num,
                 
-                # For the INSERT
                 lead_id,
                 subject,
                 body,
@@ -1050,23 +1048,19 @@ def get_signature() -> str:
 
 
 if __name__ == "__main__":
-    # Log the value being used
     logger.debug(f"Starting with CLEAR_LOGS_ON_START={CLEAR_LOGS_ON_START}")
     
     if CLEAR_LOGS_ON_START:
         clear_files_on_start()
-        # Only clear console if logs should be cleared
         os.system('cls' if os.name == 'nt' else 'clear')
     
     verify_templates()
     
-    # Start the scheduler silently
     from scheduling.followup_scheduler import start_scheduler
     import threading
     scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
     scheduler_thread.start()
     
-    # Run main workflow 3 times
     for i in range(3):
         logger.info(f"Starting iteration {i+1} of 3")
         main()

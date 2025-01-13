@@ -93,7 +93,7 @@ class HubspotService:
                     }
                 ],
                 "properties": ["hs_email_subject", "hs_email_text", "hs_email_direction",
-                             "hs_email_status", "hs_timestamp"]
+                               "hs_email_status", "hs_timestamp"]
             }
             if after:
                 payload["after"] = after
@@ -122,7 +122,6 @@ class HubspotService:
             
             except Exception as e:
                 raise HubSpotError(f"Error fetching emails for contact {contact_id}: {e}")
-
 
         return all_emails
 
@@ -171,25 +170,34 @@ class HubspotService:
             raise HubSpotError(f"Error fetching associated company ID: {str(e)}")
 
     def get_company_data(self, company_id: str) -> dict:
-        """Get company data."""
+        """
+        Get company data, including the 15 fields required:
+        name, city, state, annualrevenue, createdate, hs_lastmodifieddate,
+        hs_object_id, club_type, facility_complexity, has_pool,
+        has_tennis_courts, number_of_holes, geographic_seasonality,
+        public_private_flag, club_info.
+        """
         if not company_id:
             return {}
             
-        url = f"{self.companies_endpoint}/{company_id}?properties=name\
-&properties=city\
-&properties=state\
-&properties=annualrevenue\
-&properties=createdate\
-&properties=hs_lastmodifieddate\
-&properties=hs_object_id\
-&properties=club_type\
-&properties=facility_complexity\
-&properties=has_pool\
-&properties=has_tennis_courts\
-&properties=number_of_holes\
-&properties=geographic_seasonality\
-&properties=public_private_flag\
-&properties=club_info"
+        url = (
+            f"{self.companies_endpoint}/{company_id}?"
+            "properties=name"
+            "&properties=city"
+            "&properties=state"
+            "&properties=annualrevenue"
+            "&properties=createdate"
+            "&properties=hs_lastmodifieddate"
+            "&properties=hs_object_id"
+            "&properties=club_type"
+            "&properties=facility_complexity"
+            "&properties=has_pool"
+            "&properties=has_tennis_courts"
+            "&properties=number_of_holes"
+            "&properties=geographic_seasonality"
+            "&properties=public_private_flag"
+            "&properties=club_info"
+        )
         try:
             response = requests.get(url, headers=self.headers)
             response.raise_for_status()
