@@ -888,6 +888,7 @@ def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any
     prompt = f"""
 Classify {club_name} in {location} with precision:
 
+0. **OFFICIAL NAME**: What is the correct, official name of this facility?
 1. **CLUB TYPE**: Is it Private, Public - High Daily Fee, Public - Low Daily Fee, Municipal, Resort, Country Club, or Unknown?
 2. **FACILITY COMPLEXITY**: Single-Course, Multi-Course, or Unknown?
 3. **GEOGRAPHIC SEASONALITY**: Year-Round or Seasonal?
@@ -901,6 +902,9 @@ CRITICAL RULES:
 - **Use specific references for each answer where possible.**
 
 Format your response with these exact headings:
+OFFICIAL NAME:
+[Answer]
+
 CLUB TYPE:
 [Answer]
 
@@ -950,7 +954,15 @@ GOLF HOLES:
 
 def _parse_segmentation_response(response: str) -> Dict[str, Any]:
     """Parse the structured response from xAI segmentation search."""
+    def clean_value(text: str) -> str:
+        if "**Evidence**:" in text:
+            text = text.split("**Evidence**:")[0]
+        elif "- **Evidence**:" in text:
+            text = text.split("- **Evidence**:")[0]
+        return text.strip().split('\n')[0].strip()
+
     result = {
+        'name': '',
         'club_type': 'Unknown',
         'facility_complexity': 'Unknown',
         'geographic_seasonality': 'Unknown',
@@ -959,6 +971,11 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         'number_of_holes': 0,
         'analysis_text': ''
     }
+    
+    # Add name detection pattern
+    name_match = re.search(r'(?:OFFICIAL NAME|NAME):\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if name_match:
+        result['name'] = clean_value(name_match.group(1))
     
     logger.debug(f"Raw segmentation response:\n{response}")
     
@@ -970,13 +987,6 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         'tennis': re.search(r'(?:TENNIS COURTS|HAS TENNIS):\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
         'holes': re.search(r'GOLF HOLES:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
     }
-
-    def clean_value(text: str) -> str:
-        if "**Evidence**:" in text:
-            text = text.split("**Evidence**:")[0]
-        elif "- **Evidence**:" in text:
-            text = text.split("- **Evidence**:")[0]
-        return text.strip().split('\n')[0].strip()
 
     # Process club type with better matching
     if sections['club_type']:

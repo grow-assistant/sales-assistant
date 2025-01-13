@@ -26,6 +26,7 @@ from utils.logging_setup import logger
 TEST_MODE = False  # Set to False for production
 TEST_LIMIT = 3    # Number of companies to process in test mode
 BATCH_SIZE = 25   # Companies per API request
+TEST_COMPANY_ID = "15537469970"  # Set this to a specific company ID to test just that company
 
 
 def get_facility_info(company_id: str) -> tuple[
@@ -89,8 +90,16 @@ def determine_facility_type(company_name: str, location: str) -> dict:
     segmentation_info = xai_club_segmentation_search(company_name, location)
     club_summary = get_club_summary(company_name, location)
 
+    # Extract name from segmentation info first, then club info, then summary
+    official_name = (
+        segmentation_info.get("name") or 
+        club_info.get("official_name") or 
+        (club_summary.split(",")[0] if club_summary and "," in club_summary else None) or 
+        company_name
+    )
+
     full_info = {
-        "name": club_info.get("official_name", company_name),
+        "name": official_name,  # Use the extracted official name
         "club_type": segmentation_info.get("club_type", "Unknown"),
         "facility_complexity": segmentation_info.get("facility_complexity", "Unknown"),
         "geographic_seasonality": segmentation_info.get(
@@ -102,6 +111,10 @@ def determine_facility_type(company_name: str, location: str) -> dict:
         "club_info": club_summary,
     }
 
+    # Debug print to verify name extraction
+    print(f"Extracted official name: {official_name}")
+    print(f"Original name sources: segmentation={segmentation_info.get('name')}, club_info={club_info.get('official_name')}")
+
     return full_info
 
 
@@ -111,7 +124,7 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
     """
     try:
         property_value_mapping = {
-            "name": str,  # No mapping needed for name
+            "name": lambda x: str(x),  # Convert name to string
             "club_type": {
                 "Private": "Private Course",
                 "Public": "Public Course",
@@ -138,11 +151,15 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
                 # If there's a dictionary mapping for this property
                 if isinstance(property_value_mapping[key], dict):
                     mapped_updates[key] = property_value_mapping[key].get(value, value)
+                elif callable(property_value_mapping[key]):
+                    # If it's a function, call it
+                    mapped_updates[key] = property_value_mapping[key](value)
                 else:
                     mapped_updates[key] = value
             else:
                 mapped_updates[key] = value
 
+        print(f"Sending update to HubSpot with mapped values: {mapped_updates}")  # Debug print
         hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         url = f"{hubspot.companies_endpoint}/{company_id}"
         payload = {"properties": mapped_updates}
@@ -186,22 +203,19 @@ def process_company(company_id: str):
         # Update company name if different
         new_name = club_info.get("name")
         if new_name and new_name != name:
+            print(f"Updating company name from '{name}' to '{new_name}'")  # Debug print
             confirmed_updates["name"] = new_name
 
         # Update with explicit string comparisons for boolean fields
-        confirmed_updates.update(
-            {
-                "club_type": club_info.get("club_type", "Unknown"),
-                "facility_complexity": club_info.get("facility_complexity", "Unknown"),
-                "geographic_seasonality": club_info.get(
-                    "geographic_seasonality", "Unknown"
-                ),
-                # Compare strings directly
-                "has_pool": "Yes" if club_info.get("has_pool") == "Yes" else "No",
-                "has_tennis_courts": "Yes" if club_info.get("has_tennis_courts") == "Yes" else "No",
-                "number_of_holes": club_info.get("number_of_holes", 0),
-            }
-        )
+        confirmed_updates.update({
+            "name": club_info.get("name", name),  # Always include name in updates
+            "club_type": club_info.get("club_type", "Unknown"),
+            "facility_complexity": club_info.get("facility_complexity", "Unknown"),
+            "geographic_seasonality": club_info.get("geographic_seasonality", "Unknown"),
+            "has_pool": "Yes" if club_info.get("has_pool") == "Yes" else "No",
+            "has_tennis_courts": "Yes" if club_info.get("has_tennis_courts") == "Yes" else "No",
+            "number_of_holes": club_info.get("number_of_holes", 0),
+        })
 
         new_club_info = club_info.get("club_info")
         if new_club_info:
@@ -334,7 +348,14 @@ def main():
     try:
         hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         
-        # Get companies that need enrichment
+        # Check if we're processing a single test company
+        if TEST_COMPANY_ID:
+            print(f"\n=== Processing Single Test Company: {TEST_COMPANY_ID} ===\n")
+            process_company(TEST_COMPANY_ID)
+            print("\n=== Completed processing test company ===")
+            return
+            
+        # Regular batch processing
         companies = _search_companies_with_filters(hubspot)
         
         if not companies:
@@ -350,11 +371,6 @@ def main():
                 
             print(f"\nProcessing company {i} of {len(companies)}")
             process_company(company_id)
-            
-            # # Don't sleep after the last company
-            # if i < len(companies):
-            #     print("\nWaiting 5 seconds before next company...")
-            #     time.sleep(5)
         
         print("\n=== Completed processing all companies ===")
 
