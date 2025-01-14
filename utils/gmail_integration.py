@@ -15,32 +15,55 @@ from datetime import datetime
 from scheduling.database import get_db_connection
 from typing import Dict, Any
 from config import settings
+from pathlib import Path
+from config.settings import PROJECT_ROOT
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 def get_gmail_service():
-    """Authenticate and return a Gmail API service instance."""
+    """Get Gmail API service."""
     creds = None
-    if os.path.exists('token.json'):
-        try:
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-        except Exception as e:
-            logger.error(f"Error reading token.json: {e}")
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            try:
+    
+    # Use absolute paths from PROJECT_ROOT
+    credentials_path = Path(PROJECT_ROOT) / 'credentials' / 'credentials.json'
+    token_path = Path(PROJECT_ROOT) / 'credentials' / 'token.json'
+    
+    # Ensure credentials directory exists
+    credentials_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    try:
+        # Check if credentials exist
+        if not credentials_path.exists():
+            logger.error(f"Missing credentials file at {credentials_path}")
+            raise FileNotFoundError(
+                f"credentials.json is missing. Please place it in: {credentials_path}"
+            )
+            
+        # The file token.json stores the user's access and refresh tokens
+        if token_path.exists():
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+            
+        # If there are no (valid) credentials available, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
-            except RefreshError:
-                logger.error("Error refreshing token. Delete token.json and re-run authentication.")
-                raise
-        else:
-            flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
-        with open('token.json', 'w') as token:
-            token.write(creds.to_json())
-
-    return build('gmail', 'v1', credentials=creds, cache_discovery=False)
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(credentials_path), 
+                    SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+                
+            # Save the credentials for the next run
+            with open(token_path, 'w') as token:
+                token.write(creds.to_json())
+                
+        return build('gmail', 'v1', credentials=creds)
+        
+    except Exception as e:
+        logger.error(f"Error setting up Gmail service: {str(e)}")
+        raise
 
 def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
     """Create an HTML-formatted email message."""

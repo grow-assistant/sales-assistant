@@ -649,6 +649,10 @@ def get_company_by_id(hubspot: HubspotService, company_id: str) -> Dict:
 def main():
     """Main function to get companies and select a random lead."""
     try:
+        # Number of leads to process
+        LEADS_TO_PROCESS = 2
+        leads_processed = 0
+
         # Initialize HubSpot service
         hubspot = HubspotService(HUBSPOT_API_KEY)
         
@@ -662,6 +666,10 @@ def main():
             
         # Process leads in order of score (highest first)
         for lead in leads:
+            if leads_processed >= LEADS_TO_PROCESS:
+                print(f"\nCompleted processing {LEADS_TO_PROCESS} leads")
+                break
+
             lead_props = lead.get("properties", {})
             selected_lead = {
                 "id": lead.get("id"),
@@ -754,22 +762,22 @@ def main():
                 lead_email = lead_props.get("email", "")
                 
                 # Add debug logging for amenities
-                logger.debug(f"Raw amenity values - Pool: {company_props.get('has_pool')}, Tennis: {company_props.get('has_tennis_courts')}")
+                # logger.debug(f"Raw amenity values - Pool: {company_props.get('has_pool')}, Tennis: {company_props.get('has_tennis_courts')}")
 
                 # Build club info string from available properties
                 # club_info = f"{company_props.get('name', '')} is a {company_props.get('club_type', '')} located in {company_props.get('city', '')}, {company_props.get('state', '')}. "
                 club_info = ""
 
-                # Add amenities if present - handle different boolean formats
-                amenities = []
-                if str(company_props.get('has_pool', '')).lower() in ['true', 'yes', '1']:
-                    logger.debug("Adding pool to amenities")
-                    amenities.append('pool')
-                if str(company_props.get('has_tennis_courts', '')).lower() in ['true', 'yes', '1']:
-                    logger.debug("Adding tennis courts to amenities")
-                    amenities.append('tennis courts')
+                # # Add amenities if present - handle different boolean formats
+                # amenities = []
+                # if str(company_props.get('has_pool', '')).lower() in ['true', 'yes', '1']:
+                #     logger.debug("Adding pool to amenities")
+                #     amenities.append('pool')
+                # if str(company_props.get('has_tennis_courts', '')).lower() in ['true', 'yes', '1']:
+                #     logger.debug("Adding tennis courts to amenities")
+                #     amenities.append('tennis courts')
 
-                logger.debug(f"Final amenities list: {amenities}")
+                # logger.debug(f"Final amenities list: {amenities}")
 
                 # if amenities:
                 #     club_info += f"The club features {' and '.join(amenities)}. "
@@ -780,7 +788,6 @@ def main():
                     lead_sheet={
                         "lead_data": {
                             "firstname": lead_props.get("firstname", ""),
-                            "lastname": lead_props.get("lastname", ""),
                             "email": lead_props.get("email", ""),
                             "jobtitle": lead_props.get("jobtitle", ""),
                             "company": company_props.get("name", "")
@@ -877,7 +884,7 @@ def main():
             print("\nCompany Details:")
             print(f"Facility Complexity: {company_props.get('facility_complexity')}")
             print(f"Has Pool: {company_props.get('has_pool')}")
-            print(f"Has Tennis Courts: {company_props.get('has_tennis_courts')}")
+            # print(f"Has Tennis Courts: {company_props.get('has_tennis_courts')}")
             print(f"Number of Holes: {company_props.get('number_of_holes')}")
             print(f"Public/Private: {company_props.get('public_private_flag')}")
             print(f"Geographic Seasonality: {company_props.get('geographic_seasonality')}")
@@ -925,9 +932,12 @@ def main():
                 logger.error(f"Error creating/scheduling draft: {str(e)}")
                 print(f"✗ Error scheduling email: {str(e)}")
             
-            return
+            # After successful processing, increment counter
+            leads_processed += 1
+            print(f"\nProcessed {leads_processed} of {LEADS_TO_PROCESS} leads")
             
-        print("\nNo qualified companies found for high-scoring leads!")
+        if leads_processed == 0:
+            print("\nNo qualified companies found for high-scoring leads!")
         
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
