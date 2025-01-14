@@ -255,12 +255,16 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
         return []
 
 def get_random_lead_email() -> str:
-    """Get a random lead email from Country Club companies in HubSpot."""
+    """
+    Get a random lead email from "Country Club" companies in HubSpot.
+    Removed the additional 'annualrevenue' filter so we only check 
+    `club_type = "Country Club"`.
+    """
     try:
         hubspot = HubspotService(HUBSPOT_API_KEY)
         url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
         
-        # Search for Country Clubs specifically
+        # Search for Country Clubs specifically (NO annual revenue filter).
         payload = {
             "filterGroups": [
                 {
@@ -269,11 +273,6 @@ def get_random_lead_email() -> str:
                             "propertyName": "club_type",
                             "operator": "EQ",
                             "value": "Country Club"
-                        },
-                        {
-                            "propertyName": "annualrevenue",
-                            "operator": "GTE",
-                            "value": "10000000"
                         }
                     ]
                 }
@@ -294,7 +293,7 @@ def get_random_lead_email() -> str:
             "limit": 100
         }
         
-        logger.debug("Searching for Country Club companies in HubSpot")
+        logger.debug("Searching for Country Club companies in HubSpot (no annualrevenue filter)")
         response = hubspot._make_hubspot_post(url, payload)
         
         if not response or not response.get("results"):

@@ -50,9 +50,6 @@ def get_email_rules() -> List[str]:
     """
     return [
         "# IMPORTANT: FOLLOW THESE RULES:\n",
-        "**Amenities:** ONLY reference amenities that are explicitly listed in club_details. "
-        "Do not assume or infer any additional amenities.",
-        f"**Personalization:** Use only verified information from club_details.",
         f"**Time Context:** Use relative date terms compared to Today's date of {date.today().strftime('%B %d, %Y')}.",
         "**Tone:** Professional but conversational, focusing on starting a dialogue.",
         "**Closing:** End emails directly after your call-to-action.",
@@ -402,16 +399,11 @@ def personalize_email_with_xai(
     """
     try:
         previous_interactions = lead_sheet.get("analysis", {}).get("previous_interactions", {})
-        has_emailed_us = previous_interactions.get("last_response", "") not in [
-            "No recent response",
-            "Opened emails but no direct reply",
-            "No data available",
-            "Error retrieving data",
-        ]
-        logger.debug(f"Has the lead previously emailed us? {has_emailed_us}")
+        has_prior_emails = bool(lead_sheet.get("lead_data", {}).get("emails", []))
+        logger.debug(f"Has the lead previously emailed us? {has_prior_emails}")
 
         objection_handling = ""
-        if has_emailed_us:
+        if has_prior_emails:
             with open("docs/templates/objection_handling.txt", "r") as f:
                 objection_handling = f.read()
             logger.debug("Objection handling content loaded")
@@ -421,29 +413,22 @@ def personalize_email_with_xai(
         system_message = (
             "You are an expert at personalizing sales emails for golf industry outreach. "
             "CRITICAL RULES:\n"
-            "1. ONLY mention amenities that are EXPLICITLY listed in the 'club_details' section\n"
-            "2. DO NOT assume or infer any amenities not directly stated\n"
-            "3. DO NOT mention pools, tennis courts, or any features unless they appear in club_details\n"
-            "4. DO NOT modify the subject line\n"
-            "5. DO NOT reference any promotions from previous emails\n\n"
+            "1. DO NOT modify the subject line\n"
+            "2. DO NOT reference any promotions from previous emails\n\n"
             "Format response as:\n"
             "Subject: [keep original subject]\n\n"
             "Body:\n[personalized body]"
         )
 
-        context_block = {
-            "lead_info": {
-                "name": lead_sheet.get("first_name", ""),
-                "company": lead_sheet.get("company_name", ""),
-                "title": lead_sheet.get("job_title", ""),
-                "location": lead_sheet.get("state", ""),
-            },
-            "interaction_history": summary if summary else "No previous interactions",
-            "club_details": club_info if club_info else "",
-            "recent_news": news_summary if news_summary else "",
-            "objection_handling": objection_handling if has_emailed_us else "",
-            "original_email": {"subject": subject, "body": body},
-        }
+        lead_data = lead_sheet.get("lead_data", {})
+        company_data = lead_sheet.get("company_data", {})
+        
+        context_block = build_context_block(
+            interaction_history=summary if summary else "No previous interactions",
+            club_details=club_info if club_info else "",
+            objection_handling=objection_handling if has_prior_emails else "",
+            original_email={"subject": subject, "body": body},
+        )
         logger.debug(f"Context block: {json.dumps(context_block, indent=2)}")
 
         rules_text = "\n".join(get_email_rules())
@@ -451,12 +436,10 @@ def personalize_email_with_xai(
             f"CONTEXT:\n{json.dumps(context_block, indent=2)}\n\n"
             f"RULES:\n{rules_text}\n\n"
             "TASK:\n"
-            "1. Personalize email with provided context\n"
-            "2. Maintain professional but friendly tone\n"
-            "3. Keep paragraphs concise\n"
-            "4. Include relevant details from context\n"
-            "5. Address any potential objections using the objection handling guide\n"
-            "6. Return ONLY the subject and body"
+            "1. Keep the original email structure and flow\n"
+            "2. Add relevant context and personalization\n" 
+            "3. Maintain professional tone\n"
+            "4. Return ONLY the subject and body"
         )
 
         payload = {
@@ -585,106 +568,104 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
     _cache["icebreakers"][cache_key] = response
     return response
 
+# def get_email_critique(email_subject: str, email_body: str, guidance: dict) -> str:
+#     """
+#     Get expert critique of the email draft.
+#     """
+#     rules = get_email_rules()
+#     rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
+# 
+#     payload = {
+#         "messages": [
+#             {
+#                 "role": "system",
+#                 "content": (
+#                     "You are an expert at critiquing emails using specific rules. "
+#                     "Analyze the email draft and provide specific critiques focusing on:\n"
+#                     f"{rules_text}\n"
+#                     "Provide actionable recommendations for improvement."
+#                 ),
+#             },
+#             {
+#                 "role": "user",
+#                 "content": f"""
+#                 Original Email:
+#                 Subject: {email_subject}
+#                 
+#                 Body:
+#                 {email_body}
+#                 
+#                 Original Guidance:
+#                 {json.dumps(guidance, indent=2)}
+#                 
+#                 Please provide specific critiques and recommendations for improvement.
+#                 """,
+#             },
+#         ],
+#         "model": MODEL_NAME,
+#         "stream": False,
+#         "temperature": EMAIL_TEMPERATURE,
+#     }
+# 
+#     logger.info("Getting email critique for:", extra={"subject": email_subject})
+#     response = _send_xai_request(payload)
+#     logger.info("Email critique result:", extra={"critique": response})
+#     return response
 
-def get_email_critique(email_subject: str, email_body: str, guidance: dict) -> str:
-    """
-    Get expert critique of the email draft.
-    """
-    rules = get_email_rules()
-    rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
-
-    payload = {
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are an expert at critiquing emails using specific rules. "
-                    "Analyze the email draft and provide specific critiques focusing on:\n"
-                    f"{rules_text}\n"
-                    "Provide actionable recommendations for improvement."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"""
-                Original Email:
-                Subject: {email_subject}
-                
-                Body:
-                {email_body}
-                
-                Original Guidance:
-                {json.dumps(guidance, indent=2)}
-                
-                Please provide specific critiques and recommendations for improvement.
-                """,
-            },
-        ],
-        "model": MODEL_NAME,
-        "stream": False,
-        "temperature": EMAIL_TEMPERATURE,
-    }
-
-    logger.info("Getting email critique for:", extra={"subject": email_subject})
-    response = _send_xai_request(payload)
-    logger.info("Email critique result:", extra={"critique": response})
-    return response
-
-
-def revise_email_with_critique(email_subject: str, email_body: str, critique: str) -> tuple[str, str]:
-    """
-    Revise the email based on the critique.
-    Returns a tuple of (new_subject, new_body).
-    """
-    rules = get_email_rules()
-    rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
-
-    payload = {
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a renowned expert at cold email outreach, similar to Alex Berman. "
-                    "Apply your proven methodology to rewrite this email. "
-                    "Use all of your knowledge just as you teach in Cold Email University."
-                ),
-            },
-            {
-                "role": "user",
-                "content": f"""
-                Original Email:
-                Subject: {email_subject}
-                
-                Body:
-                {email_body}
-                
-                Instructions:
-                {rules_text}
-
-                Expert Critique:
-                {critique}
-                
-                Please rewrite the email incorporating these recommendations.
-                Format the response as:
-                Subject: [new subject]
-                
-                Body:
-                [new body]
-                """,
-            },
-        ],
-        "model": MODEL_NAME,
-        "stream": False,
-        "temperature": EMAIL_TEMPERATURE,
-    }
-
-    logger.info(
-        "Revising email with critique for:",
-        extra={"subject": email_subject},
-    )
-    result = _send_xai_request(payload)
-    logger.info("Email revision result:", extra={"result": result})
-    return _parse_xai_response(result)
+# def revise_email_with_critique(email_subject: str, email_body: str, critique: str) -> tuple[str, str]:
+#     """
+#     Revise the email based on the critique.
+#     Returns a tuple of (new_subject, new_body).
+#     """
+#     rules = get_email_rules()
+#     rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
+# 
+#     payload = {
+#         "messages": [
+#             {
+#                 "role": "system",
+#                 "content": (
+#                     "You are a renowned expert at cold email outreach, similar to Alex Berman. "
+#                     "Apply your proven methodology to rewrite this email. "
+#                     "Use all of your knowledge just as you teach in Cold Email University."
+#                 ),
+#             },
+#             {
+#                 "role": "user",
+#                 "content": f"""
+#                 Original Email:
+#                 Subject: {email_subject}
+#                 
+#                 Body:
+#                 {email_body}
+#                 
+#                 Instructions:
+#                 {rules_text}
+# 
+#                 Expert Critique:
+#                 {critique}
+#                 
+#                 Please rewrite the email incorporating these recommendations.
+#                 Format the response as:
+#                 Subject: [new subject]
+#                 
+#                 Body:
+#                 [new body]
+#                 """,
+#             },
+#         ],
+#         "model": MODEL_NAME,
+#         "stream": False,
+#         "temperature": EMAIL_TEMPERATURE,
+#     }
+# 
+#     logger.info(
+#         "Revising email with critique for:",
+#         extra={"subject": email_subject},
+#     )
+#     result = _send_xai_request(payload)
+#     logger.info("Email revision result:", extra={"result": result})
+#     return _parse_xai_response(result)
 
 
 def generate_followup_email_content(
@@ -1160,3 +1141,27 @@ def get_club_summary(club_name: str, location: str) -> str:
     logger.info("Generated club summary:", extra={"summary": response})
 
     return response.strip()
+
+def build_context_block(interaction_history=None, club_details=None, objection_handling=None, original_email=None):
+    context = {}
+    
+    # Only add non-empty fields
+    if interaction_history:
+        context["interaction_history"] = interaction_history
+    
+    if club_details:
+        context["club_details"] = club_details
+        
+    if objection_handling:
+        context["objection_handling"] = objection_handling
+        
+    if original_email:
+        context["original_email"] = {
+            "subject": original_email.get("subject", ""),
+            "body": original_email.get("body", "")
+        }
+        # Remove original_email if both subject and body are empty
+        if not context["original_email"]["subject"] and not context["original_email"]["body"]:
+            del context["original_email"]
+    
+    return context

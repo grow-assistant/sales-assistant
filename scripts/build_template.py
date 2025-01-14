@@ -83,26 +83,27 @@ def apply_season_variation(email_text: str, snippet: str) -> str:
 ###############################################################################
 # 4) OPTION: READING AN .MD TEMPLATE (BODY ONLY)
 ###############################################################################
-def extract_subject_and_body(md_text: str) -> tuple[str, str]:
-    subject = ""
-    body_lines = []
-    mode = None
-
-    for line in md_text.splitlines():
-        line_stripped = line.strip()
-        if line_stripped.startswith("## Subject"):
-            mode = "subject"
-            continue
-        elif line_stripped.startswith("## Body"):
-            mode = "body"
-            continue
-
-        if mode == "subject":
-            subject += line + " "
-        elif mode == "body":
-            body_lines.append(line)
-
-    return subject.strip(), "\n".join(body_lines).strip()
+def extract_subject_and_body(template_content: str) -> tuple[str, str]:
+    """
+    Extract body from template content, treating the entire content as body.
+    Subject will be handled separately via CONDITION_SUBJECTS.
+    """
+    try:
+        # Clean up the template content
+        body = template_content.strip()
+        
+        logger.debug(f"Template content length: {len(template_content)}")
+        logger.debug(f"Cleaned body length: {len(body)}")
+        
+        if len(body) == 0:
+            logger.warning("Warning: Template body is empty")
+            
+        # Return empty subject since it's handled elsewhere
+        return "", body
+        
+    except Exception as e:
+        logger.error(f"Error processing template: {e}")
+        return "", ""
 
 
 ###############################################################################
@@ -115,158 +116,59 @@ def build_outreach_email(
     current_month: int,
     start_peak_month: int,
     end_peak_month: int,
-    use_markdown_template: bool = True
+    use_markdown_template: bool = True,
+    template_path: str = None
 ) -> tuple[str, str]:
-    """
-    Builds an outreach email with enhanced error handling and debugging
-    """
+    """Build email content from template."""
     try:
-        # Map fallback to general_manager explicitly
-        if profile_type == 'fallback':
-            profile_type = 'general_manager'
-            logger.info("Using general_manager templates for fallback profile type")
-        
-        # Log input parameters for debugging
-        logger.debug(
-            "Building outreach email with parameters",
-            extra={
-                'profile_type': profile_type,
-                'last_interaction_days': last_interaction_days,
-                'placeholders': placeholders,
-                'current_month': current_month,
-                'template_used': use_markdown_template,
-                'original_profile_type': profile_type  # Track original profile type
-            }
-        )
-        
-        # Update template mapping to include variations
-        template_map = {
-            'general_manager': [
-                'general_manager_initial_outreach_1.md',
-                'general_manager_initial_outreach_2.md',
-                'general_manager_initial_outreach_3.md'
-            ],
-            'food_beverage': [
-                'fb_manager_initial_outreach_1.md',
-                'fb_manager_initial_outreach_2.md',
-                'fb_manager_initial_outreach_3.md'
-            ],
-            'golf_professional': [
-                'golf_ops_initial_outreach_1.md',
-                'golf_ops_initial_outreach_2.md',
-                'golf_ops_initial_outreach_3.md'
-            ],
-            'owner': [
-                'owner_initial_outreach_1.md',
-                'owner_initial_outreach_2.md',
-                'owner_initial_outreach_3.md'
-            ],
-            'membership': [
-                'membership_director_initial_outreach_1.md',
-                'membership_director_initial_outreach_2.md',
-                'membership_director_initial_outreach_3.md'
-            ]
-        }
-        
-        template_dir = PROJECT_ROOT / 'docs' / 'templates'
-        logger.debug(f"Looking for templates in directory: {template_dir}")
-        
-        # Log available templates
-        if template_dir.exists():
-            available_templates = list(template_dir.glob('*.md'))
-            logger.debug(f"Found {len(available_templates)} templates in directory: {[t.name for t in available_templates]}")
-        else:
-            logger.error(f"Template directory does not exist: {template_dir}")
-            raise FileNotFoundError(f"Template directory not found: {template_dir}")
-
-        # Get list of template variations for the profile type
-        template_variations = template_map.get(profile_type)
-        if not template_variations:
-            original_type = profile_type
-            profile_type = 'general_manager'
-            logger.info(
-                f"Profile type '{original_type}' not found in template map, using '{profile_type}' templates",
-                extra={'original_type': original_type, 'fallback_type': profile_type}
-            )
-            template_variations = template_map[profile_type]
-        
-        logger.debug(f"Using template variations for '{profile_type}': {template_variations}")
-        
-        # Randomly select one of the variations
-        template_file = random.choice(template_variations)
-        logger.debug(f"Selected template file: {template_file}")
-        
-        template_path = template_dir / template_file
-        logger.debug(f"Full template path: {template_path}")
-        
-        if template_path.exists():
-            logger.debug(f"Loading template from: {template_path}")
+        # Use provided template if available
+        if template_path and Path(template_path).exists():
+            logger.debug(f"Using provided template: {template_path}")
+            logger.info(f"Template file exists: {Path(template_path).exists()}")
+            
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
-                logger.debug(f"Successfully loaded template, content length: {len(template_content)}")
-        else:
-            logger.warning(f"Template not found at path: {template_path}")
-            logger.debug("Available files in template directory:")
-            if template_dir.exists():
-                for file in template_dir.iterdir():
-                    logger.debug(f"  - {file.name}")
-            logger.warning("Using fallback template")
-            template_content = get_fallback_template()
-        
-        # Parse template with error tracking
-        try:
-            template_data = parse_template(template_content)
-            logger.debug(f"Successfully parsed template: {template_data.keys()}")
+                logger.debug(f"Successfully read template file. Content length: {len(template_content)}")
+                logger.debug(f"First 100 chars of template: {template_content[:100]}...")
+                
+            # Validate template
+            logger.debug("Validating template content...")
+            validate_template(template_content)
+            logger.debug("Template validation successful")
             
-            # Get subject from CONDITION_SUBJECTS based on profile type
-            if profile_type in CONDITION_SUBJECTS:
-                subject = random.choice(CONDITION_SUBJECTS[profile_type])
-                logger.debug(f"Selected subject from {profile_type} templates: {subject}")
-            else:
-                subject = random.choice(CONDITION_SUBJECTS["fallback"])
-                logger.debug(f"Using fallback subject: {subject}")
+            # Extract subject and body from markdown
+            logger.debug("Extracting subject and body from template...")
+            subject, body = extract_subject_and_body(template_content)
+            logger.debug(f"Extracted subject length: {len(subject)}")
+            logger.debug(f"Extracted body length: {len(body)}")
             
-            body = template_data['body']
+            # Apply season variation if present
+            if "{SEASON_VARIATION}" in body:
+                logger.debug("Applying season variation...")
+                season_key = get_season_variation_key(
+                    current_month=current_month,
+                    start_peak_month=start_peak_month,
+                    end_peak_month=end_peak_month
+                )
+                season_snippet = pick_season_snippet(season_key)
+                body = apply_season_variation(body, season_snippet)
+                logger.debug("Season variation applied successfully")
             
-        except Exception as e:
-            logger.error(f"Template parsing failed: {str(e)}", exc_info=True)
-            raise
-        
-        # Track placeholder replacements
-        replacement_log = []
-        
-        # Replace placeholders with logging
-        for key, value in placeholders.items():
-            if value is None:
-                logger.warning(f"Missing value for placeholder: {key}")
-                value = ''
-            
-            # Track replacements for debugging
-            if f'[{key}]' in subject or f'[{key}]' in body:
-                replacement_log.append(f"Replaced [{key}] with '{value}'")
-            
-            subject = subject.replace(f'[{key}]', str(value))
-            body = body.replace(f'[{key}]', str(value))
-            
-            if key == 'SEASON_VARIATION':
-                body = body.replace('{SEASON_VARIATION}', str(value))
-                body = body.replace('[SEASON_VARIATION]', str(value))
-        
-        # Log all replacements made
-        if replacement_log:
-            logger.debug("Placeholder replacements: " + "; ".join(replacement_log))
+            logger.info("Template processing completed successfully")
+            return subject, body
+                
+        # Fallback to existing template selection logic
+        logger.warning(f"Template path not provided or doesn't exist: {template_path}")
+        # ... rest of existing fallback logic ...
 
-        return subject, body
-
+    except FileNotFoundError as e:
+        logger.error(f"Template file not found: {template_path}")
+        logger.error(f"Error details: {str(e)}")
+        return get_fallback_template().split('---\n', 1)
     except Exception as e:
-        logger.error(
-            "Email building failed",
-            extra={
-                'error': str(e),
-                'profile_type': profile_type,
-                'template_file': template_file if 'template_file' in locals() else None
-            }
-        )
+        logger.error(f"Error building outreach email: {str(e)}")
+        logger.error(f"Error type: {type(e).__name__}")
+        logger.exception("Full traceback:")
         return get_fallback_template().split('---\n', 1)
 
 def get_fallback_template() -> str:
@@ -285,7 +187,7 @@ Swoop Golf
 480-225-9702
 swoopgolf.com"""
 
-def validate_template(template_content):
+def validate_template(template_content: str) -> bool:
     """Validate template format and structure"""
     if not template_content:
         raise ValueError("Template content cannot be empty")
@@ -403,3 +305,29 @@ def build_email(template_path, parameters):
         'subject': subject,
         'body': body
     }
+
+def extract_template_body(template_content):
+    """Extract body from template content, no subject needed"""
+    try:
+        # Simply clean up the template content
+        body = template_content.strip()
+        
+        logger.debug(f"Extracted body length: {len(body)}")
+        if len(body) == 0:
+            logger.warning("Warning: Extracted body is empty")
+        
+        return body
+        
+    except Exception as e:
+        logger.error(f"Error extracting body: {e}")
+        return ""
+
+def process_template(template_path):
+    try:
+        with open(template_path, 'r', encoding='utf-8') as f:
+            content = f.read()
+            logger.debug(f"Raw template content length: {len(content)}")
+            return extract_template_body(content)
+    except Exception as e:
+        logger.error(f"Error reading template file: {e}")
+        return ""

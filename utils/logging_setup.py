@@ -59,9 +59,9 @@ def setup_logging():
     # File handler with increased size limit
     file_handler = RotatingFileHandler(
         'logs/app.log',
-        maxBytes=5*1024*1024,  # 5MB
-        backupCount=10,
-        encoding='utf-8'
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5,
+        delay=True  # Only create file when first record is written
     )
     file_handler.setFormatter(file_formatter)
     file_handler.setLevel(logging.DEBUG)

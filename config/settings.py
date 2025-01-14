@@ -155,7 +155,7 @@ print(f"USE_RANDOM_LEAD before conversion: {USE_RANDOM_LEAD}")
 USE_RANDOM_LEAD = USE_RANDOM_LEAD.lower() == "true"
 print(f"USE_RANDOM_LEAD after conversion: {USE_RANDOM_LEAD}")
 USE_LEADS_LIST = os.getenv('USE_LEADS_LIST', 'false').lower() == 'true'
-TEST_EMAIL = get_env_var("TEST_EMAIL", required=False, default="test@example.com")
+TEST_EMAIL = get_env_var("TEST_EMAIL", required=False, default=None)
 
 # Add this with the other settings
 CREATE_FOLLOWUP_DRAFT = os.getenv('CREATE_FOLLOWUP_DRAFT', 'false').lower() == 'true'
