@@ -381,7 +381,6 @@ def _parse_club_response(response: str) -> Dict[str, Any]:
 
     return result
 
-
 ##############################################################################
 # Personalize Email
 ##############################################################################
@@ -411,13 +410,7 @@ def personalize_email_with_xai(
             logger.debug("Objection handling content not loaded (lead has not emailed us)")
 
         system_message = (
-            "You are an expert at personalizing sales emails for golf industry outreach. "
-            "CRITICAL RULES:\n"
-            "1. DO NOT modify the subject line\n"
-            "2. DO NOT reference any promotions from previous emails\n\n"
-            "Format response as:\n"
-            "Subject: [keep original subject]\n\n"
-            "Body:\n[personalized body]"
+            "You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions."
         )
 
         lead_data = lead_sheet.get("lead_data", {})
@@ -433,11 +426,23 @@ def personalize_email_with_xai(
 
         rules_text = "\n".join(get_email_rules())
         user_message = (
+            "You are an expert at personalizing sales emails for golf industry outreach. "
+            "CRITICAL RULES:\n"
+            "1. DO NOT modify the subject line\n"
+            "2. DO NOT reference weather or seasonal conditions unless specifically provided\n"
+            "3. DO NOT reference any promotions from previous emails\n"
+            "4. Focus on the business value and problem-solving aspects\n"
+            "5. Avoid presumptive descriptions of club features or scenery\n"
+            "6. Keep references to club specifics brief and relevant to the service\n"
+            "7. Keep the tone professional and direct\n\n"
+            "Format response as:\n"
+            "Subject: [keep original subject]\n\n"
+            "Body:\n[personalized body]\n\n"
             f"CONTEXT:\n{json.dumps(context_block, indent=2)}\n\n"
             f"RULES:\n{rules_text}\n\n"
             "TASK:\n"
             "1. Keep the original email structure and flow\n"
-            "2. Add relevant context and personalization\n" 
+            "2. Add relevant context about the club's specific features\n"
             "3. Maintain professional tone\n"
             "4. Return ONLY the subject and body"
         )
