@@ -78,10 +78,13 @@ XAI_TOKEN = get_env_var("XAI_TOKEN", required=False, default="")
 MARKET_RESEARCH_API = get_env_var("MARKET_RESEARCH_API", required=False, default="")
 
 # Database Configuration
-DB_SERVER = get_env_var("DB_SERVER", required=False, default="localhost")
-DB_NAME = get_env_var("DB_NAME", required=False, default="swoop")
-DB_USER = get_env_var("DB_USER", required=False, default="postgres")
-DB_PASSWORD = get_env_var("DB_PASSWORD", required=False, default="")
+DB_SERVER = get_env_var("DB_SERVER", required=True)
+DB_NAME = get_env_var("DB_NAME", required=True)
+DB_USER = get_env_var("DB_USER", required=True)
+DB_PASSWORD = get_env_var("DB_PASSWORD", required=True)
+
+# Add debug logging for database settings
+logger.debug(f"Database settings loaded: SERVER={DB_SERVER}, DB={DB_NAME}, USER={DB_USER}")
 
 # Model Configuration
 MODEL_FOR_EMAILS = get_env_var("MODEL_FOR_EMAILS", default="gpt-4")

@@ -17,6 +17,7 @@ from typing import Dict, Any
 from config import settings
 from pathlib import Path
 from config.settings import PROJECT_ROOT
+from scheduling.extended_lead_storage import store_lead_email_info
 
 # If modifying these scopes, delete the file token.json.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
@@ -285,46 +286,16 @@ def store_draft_info(
     body: str,
     sequence_num: int = None,
 ):
-    """Store draft information in the database (emails table)."""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Inserting into existing 'emails' table
-        cursor.execute(
-            """
-            INSERT INTO emails (
-                lead_id,
-                draft_id,
-                scheduled_send_date,
-                subject,
-                body,
-                status,
-                sequence_num
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                lead_id,
-                draft_id,
-                scheduled_date,
-                subject,
-                body,
-                "draft",  # set initial status as draft
-                sequence_num,
-            ),
-        )
-
-        conn.commit()
-        logger.debug(f"Successfully stored draft info for lead_id={lead_id}")
-
-    except Exception as e:
-        logger.error(f"Error storing draft info: {str(e)}")
-        conn.rollback()
-    finally:
-        if "cursor" in locals():
-            cursor.close()
-        if "conn" in locals():
-            conn.close()
+    """Store draft information using the consolidated storage function."""
+    lead_sheet = {"lead_data": {"properties": {"hs_object_id": lead_id}}}
+    store_lead_email_info(
+        lead_sheet=lead_sheet,
+        draft_id=draft_id,
+        scheduled_date=scheduled_date,
+        subject=subject,
+        body=body,
+        sequence_num=sequence_num
+    )
 
 def send_message(sender, to, subject, message_text) -> Dict[str, Any]:
     """

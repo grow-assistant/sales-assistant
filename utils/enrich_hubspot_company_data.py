@@ -1,4 +1,4 @@
-# tests/test_hubspot_company_type.py
+ # tests/test_hubspot_company_type.py
 
 import sys
 import time
@@ -124,53 +124,132 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
     Updates the company's properties in HubSpot based on club segmentation info.
     """
     try:
+        # Debug input values
+        logger.debug("Input values for update:")
+        for key, value in confirmed_updates.items():
+            logger.debug(f"Field: {key}, Value: {value}, Type: {type(value)}")
+
+        # Map our internal property names to HubSpot property names
+        hubspot_property_mapping = {
+            "name": "name",
+            "club_type": "club_type",
+            "facility_complexity": "facility_complexity",
+            "geographic_seasonality": "geographic_seasonality",
+            "public_private_flag": "public_private_flag",
+            "has_pool": "has_pool",
+            "has_tennis_courts": "has_tennis_courts",
+            "number_of_holes": "number_of_holes",
+            "club_info": "club_info",
+            "season_start": "start_month",
+            "season_end": "end_month",
+            "peak_season_start_month": "peak_season_start_month",
+            "peak_season_end_month": "peak_season_end_month"
+        }
+
+        # Value transformations for HubSpot - EXACT matches for HubSpot enum values
         property_value_mapping = {
-            "name": lambda x: str(x),  # Convert name to string
             "club_type": {
-                "Private": "Private Course",
-                "Public": "Public Course",
-                "Municipal": "Municipal Course",
-                "Semi-Private": "Semi-Private Course",
-                "Resort": "Resort Course",
+                "Private": "Private",
+                "Public": "Public",
+                "Public - Low Daily Fee": "Public - Low Daily Fee",
+                "Municipal": "Municipal",
+                "Semi-Private": "Semi-Private",
+                "Resort": "Resort",
                 "Country Club": "Country Club",
                 "Private Country Club": "Country Club",
                 "Management Company": "Management Company",
-                "Unknown": "Unknown",
+                "Unknown": "Unknown"
             },
-            "public_private_flag": {
-                "Private": "Private",
-                "Public": "Public",
-                "Unknown": "Unknown",
+            "facility_complexity": {
+                "Single-Course": "Standard",  # Changed from Basic to Standard
+                "Multi-Course": "Multi-Course",
+                "Resort": "Resort",
+                "Unknown": "Unknown"
             },
-            "has_pool": {True: "Yes", False: "No", "Unknown": "Unknown"},
-            "has_tennis_courts": {True: "Yes", False: "No", "Unknown": "Unknown"},
+            "geographic_seasonality": {
+                "Year-Round Golf": "Year-Round",
+                "Peak Summer Season": "Peak Summer Season",
+                "Short Summer Season": "Short Summer Season",
+                "Unknown": "Unknown"  # Default value
+            }
         }
 
+        # Clean and map the updates
         mapped_updates = {}
-        for key, value in confirmed_updates.items():
-            if key in property_value_mapping:
-                # If there's a dictionary mapping for this property
-                if isinstance(property_value_mapping[key], dict):
-                    mapped_updates[key] = property_value_mapping[key].get(value, value)
-                elif callable(property_value_mapping[key]):
-                    # If it's a function, call it
-                    mapped_updates[key] = property_value_mapping[key](value)
-                else:
-                    mapped_updates[key] = value
-            else:
-                mapped_updates[key] = value
+        for internal_key, value in confirmed_updates.items():
+            hubspot_key = hubspot_property_mapping.get(internal_key)
+            if not hubspot_key:
+                logger.warning(f"No HubSpot mapping for property: {internal_key}")
+                continue
 
-        print(f"Sending update to HubSpot with mapped values: {mapped_updates}")  # Debug print
+            # Debug pre-transformation
+            logger.debug(f"Pre-transform - Key: {internal_key}, Value: {value}, Type: {type(value)}")
+
+            try:
+                # Apply enum value transformations first
+                if internal_key in property_value_mapping:
+                    original_value = value
+                    value = property_value_mapping[internal_key].get(str(value), value)
+                    logger.debug(f"Enum transformation for {internal_key}: {original_value} -> {value}")
+
+                # Type-specific handling
+                if internal_key in ["number_of_holes", "season_start", "season_end", "peak_season_start_month", "peak_season_end_month"]:
+                    original_value = value
+                    value = int(value) if str(value).isdigit() else 0
+                    logger.debug(f"Number conversion for {internal_key}: {original_value} -> {value}")
+                
+                elif internal_key in ["has_pool", "has_tennis_courts"]:
+                    original_value = value
+                    value = "Yes" if str(value).lower() in ["yes", "true"] else "No"
+                    logger.debug(f"Boolean conversion for {internal_key}: {original_value} -> {value}")
+                
+                elif internal_key == "club_info":
+                    original_length = len(str(value))
+                    value = str(value)[:5000]
+                    logger.debug(f"Text truncation for {internal_key}: {original_length} chars -> {len(value)} chars")
+
+            except Exception as e:
+                logger.error(f"Error transforming {internal_key}: {str(e)}")
+                continue
+
+            # Debug post-transformation
+            logger.debug(f"Post-transform - Key: {hubspot_key}, Value: {value}, Type: {type(value)}")
+            
+            mapped_updates[hubspot_key] = value
+
+        # Debug final payload
+        logger.debug("Final HubSpot payload:")
+        logger.debug(f"Company ID: {company_id}")
+        logger.debug("Properties:")
+        for key, value in mapped_updates.items():
+            logger.debug(f"  {key}: {value} (Type: {type(value)})")
+
+        # Send update to HubSpot with detailed error response
         hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         url = f"{hubspot.companies_endpoint}/{company_id}"
         payload = {"properties": mapped_updates}
 
-        print(f"Sending update to HubSpot: {payload}")  # Debug print
-        hubspot._make_hubspot_patch(url, payload)
-        return True
+        logger.info(f"Sending update to HubSpot: {payload}")
+        try:
+            response = hubspot._make_hubspot_patch(url, payload)
+            if response:
+                logger.info(f"Successfully updated company {company_id}")
+                return True
+            return False
+        except HubSpotError as api_error:
+            # Log the detailed error response from HubSpot
+            logger.error(f"HubSpot API Error Details:")
+            logger.error(f"Status Code: {getattr(api_error, 'status_code', 'Unknown')}")
+            logger.error(f"Response Body: {getattr(api_error, 'response_body', 'Unknown')}")
+            logger.error(f"Request Body: {payload}")
+            raise
 
     except HubSpotError as e:
-        print(f"Error updating company properties: {e}")
+        logger.error(f"Error updating company properties: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Unexpected error updating company properties: {str(e)}")
+        logger.exception("Full traceback:")
         return False
 
 
@@ -212,8 +291,8 @@ def determine_seasonality(state: str) -> dict:
         "geographic_seasonality": geography,
         "start_month": min(best_months) if best_months else "",
         "end_month": max(best_months) if best_months else "",
-        "peak_season_start": f"{min(best_months)}-01" if best_months else "",
-        "peak_season_end": f"{max(best_months)}-28" if best_months else ""
+        "peak_season_start_month": min(best_months) if best_months else "",
+        "peak_season_end_month": max(best_months) if best_months else ""
     }
 
 
@@ -259,6 +338,7 @@ def process_company(company_id: str):
             "has_pool": "Yes" if club_info.get("has_pool") == "Yes" else "No",
             "has_tennis_courts": "Yes" if club_info.get("has_tennis_courts") == "Yes" else "No",
             "number_of_holes": club_info.get("number_of_holes", 0),
+            "public_private_flag": public_private_flag
         })
 
         new_club_info = club_info.get("club_info")
@@ -273,8 +353,8 @@ def process_company(company_id: str):
             "geographic_seasonality": season_data["geographic_seasonality"],
             "season_start": season_data["start_month"],
             "season_end": season_data["end_month"],
-            "peak_season_start": season_data["peak_season_start"],
-            "peak_season_end": season_data["peak_season_end"]
+            "peak_season_start_month": season_data["peak_season_start_month"],
+            "peak_season_end_month": season_data["peak_season_end_month"]
         })
 
         success = update_company_properties(company_id, club_info, confirmed_updates)
@@ -327,7 +407,11 @@ def _search_companies_with_filters(hubspot: HubspotService, batch_size=25) -> Li
                     "has_pool",
                     "has_tennis_courts",
                     "number_of_holes",
-                    "public_private_flag"
+                    "public_private_flag",
+                    "start_month",
+                    "end_month",
+                    "peak_season_start_month",
+                    "peak_season_end_month"
                 ],
                 "filterGroups": [
                     {

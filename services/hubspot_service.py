@@ -175,7 +175,8 @@ class HubspotService:
         name, city, state, annualrevenue, createdate, hs_lastmodifieddate,
         hs_object_id, club_type, facility_complexity, has_pool,
         has_tennis_courts, number_of_holes, geographic_seasonality,
-        public_private_flag, club_info.
+        public_private_flag, club_info, peak_season_start_month,
+        peak_season_end_month, start_month, end_month.
         """
         if not company_id:
             return {}
@@ -196,7 +197,11 @@ class HubspotService:
             "&properties=number_of_holes"
             "&properties=geographic_seasonality"
             "&properties=public_private_flag"
-            "&properties=club_info"
+            "&properties=club_info",
+            "&properties=peak_season_start_month",
+            "&properties=peak_season_end_month",
+            "&properties=start_month",
+            "&properties=end_month"
         )
         try:
             response = requests.get(url, headers=self.headers)
@@ -350,25 +355,31 @@ class HubspotService:
             raise HubSpotError(f"Failed to make HubSpot GET request: {str(e)}")
 
     def _make_hubspot_patch(self, url: str, payload: dict) -> dict:
-        """
-        Make a PATCH request to HubSpot API with retries.
-        
-        Args:
-            url: The endpoint URL
-            payload: The request payload
-            
-        Returns:
-            dict: The JSON response from HubSpot
-        """
+        """Make a PATCH request to HubSpot API with detailed error handling."""
         try:
             response = requests.patch(
                 url,
-                headers=self.headers,
-                json=payload
+                json=payload,
+                headers=self.headers
             )
-            response.raise_for_status()
-            return response.json()
             
+            # Log the complete response for debugging
+            logger.debug(f"HubSpot Response Status: {response.status_code}")
+            logger.debug(f"HubSpot Response Headers: {response.headers}")
+            try:
+                logger.debug(f"HubSpot Response Body: {response.json()}")
+            except:
+                logger.debug(f"HubSpot Response Text: {response.text}")
+
+            if not response.ok:
+                error = HubSpotError(
+                    f"Failed to make HubSpot PATCH request: {response.status_code} {response.reason}"
+                )
+                error.status_code = response.status_code
+                error.response_body = response.text
+                raise error
+
+            return response.json()
+
         except requests.exceptions.RequestException as e:
-            logger.error(f"HubSpot API error: {str(e)}")
-            raise HubSpotError(f"Failed to make HubSpot PATCH request: {str(e)}")
+            raise HubSpotError(f"Network error during HubSpot PATCH request: {str(e)}")

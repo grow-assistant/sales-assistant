@@ -8,7 +8,7 @@ from utils.logging_setup import logger, setup_logging
 from datetime import datetime, timedelta
 import openai
 from utils.gmail_integration import create_draft, store_draft_info
-from scheduling.database import get_db_connection
+from scheduling.database import get_db_connection, store_email_draft
 from scheduling.followup_generation import generate_followup_email_xai
 from scripts.golf_outreach_strategy import get_best_outreach_window, get_best_month, get_best_time, get_best_day, adjust_send_time
 from utils.date_utils import convert_to_club_timezone
@@ -24,7 +24,7 @@ import os
 import shutil
 from contextlib import contextmanager
 import uuid
-from scheduling.extended_lead_storage import upsert_full_lead
+from scheduling.extended_lead_storage import store_lead_email_info
 from utils.exceptions import LeadContextError
 
 
@@ -103,21 +103,35 @@ def get_country_club_companies(hubspot: HubspotService, batch_size=25) -> List[D
                 "has_tennis_courts",
                 "number_of_holes",
                 "public_private_flag",
-                "club_info"
+                "club_info",
+                "peak_season_start_month",
+                "peak_season_end_month",
+                "start_month",
+                "end_month"
             ],
             "filterGroups": [
                 {
                     "filters": [
                         {
-                            "propertyName": "club_type",
+                            "propertyName": "hs_object_id", 
                             "operator": "EQ",
-                            "value": "Country Club"
+                            "value": "15537469970"
                         }
                     ]
                 }
             ]
+            # "filterGroups": [
+            #     {
+            #         "filters": [
+            #             {
+            #                 "propertyName": "club_type",
+            #                 "operator": "EQ", 
+            #                 "value": "Country Club"
+            #             }
+            #         ]
+            #     }
+            # ]
         }
-        
         if after:
             payload["after"] = after
             
@@ -197,7 +211,11 @@ def extract_lead_data(company_props: Dict, lead_props: Dict) -> Dict:
             "number_of_holes": company_props.get("number_of_holes", ""),
             "public_private_flag": company_props.get("public_private_flag", ""),
             "geographic_seasonality": company_props.get("geographic_seasonality", ""),
-            "club_info": company_props.get("club_info", "")
+            "club_info": company_props.get("club_info", ""),
+            "peak_season_start_month": company_props.get("peak_season_start_month", ""),
+            "peak_season_end_month": company_props.get("peak_season_end_month", ""),
+            "start_month": company_props.get("start_month", ""),
+            "end_month": company_props.get("end_month", "")
         },
         "lead_data": {
             "firstname": lead_props.get("firstname", ""),
@@ -656,7 +674,11 @@ def get_company_by_id(hubspot: HubspotService, company_id: str) -> Dict:
                 "has_tennis_courts",
                 "number_of_holes",
                 "public_private_flag",
-                "club_info"
+                "club_info",
+                "peak_season_start_month",
+                "peak_season_end_month",
+                "start_month",
+                "end_month"
             ]
         }
         response = hubspot._make_hubspot_get(url, params)
@@ -823,7 +845,7 @@ def main():
             # Step 7: Store lead data in database
             with workflow_step("7", "Upserting lead data into DB", workflow_context):
                 try:
-                    upsert_full_lead(lead_sheet, correlation_id=workflow_context['correlation_id'])
+                    store_lead_email_info(lead_sheet, correlation_id=workflow_context['correlation_id'])
                     logger.info("Successfully upserted lead data", extra=workflow_context)
                 except Exception as e:
                     logger.error(f"Database upsert failed: {str(e)}", extra=workflow_context)
@@ -910,6 +932,44 @@ def main():
                     state_code=company_props.get('state'),
                     season_data=None
                 )
+
+                # Store email draft in database
+                try:
+                    conn = get_db_connection()
+                    cursor = conn.cursor()
+                    
+                    # Create Gmail draft first
+                    draft_result = create_draft(
+                        sender="me",
+                        to=lead_data["email"],
+                        subject=subject,
+                        message_text=body
+                    )
+                    
+                    # Store in database
+                    store_email_draft(
+                        cursor=cursor,
+                        lead_id=int(lead_sheet['lead_data']['properties']['hs_object_id']),
+                        subject=subject,
+                        body=body,
+                        scheduled_send_date=send_date,
+                        sequence_num=1,  # Initial outreach
+                        draft_id=draft_result.get("draft_id"),
+                        status='draft'
+                    )
+                    
+                    conn.commit()
+                    logger.info(f"Email draft stored in database for lead {lead_data['email']}")
+                    
+                except Exception as e:
+                    logger.error(f"Failed to store email draft: {str(e)}")
+                    if 'conn' in locals():
+                        conn.rollback()
+                finally:
+                    if 'cursor' in locals():
+                        cursor.close()
+                    if 'conn' in locals():
+                        conn.close()
 
             # After successful processing, increment counter
             leads_processed += 1
