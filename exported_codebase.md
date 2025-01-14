@@ -27,6 +27,8 @@ import os
 import shutil
 from contextlib import contextmanager
 import uuid
+from scheduling.extended_lead_storage import upsert_full_lead
+from utils.exceptions import LeadContextError
 
 
 # Initialize logging and services
@@ -722,6 +724,81 @@ def main():
                 "email": lead_props.get("email", ""),
                 "lead_score": lead_props.get("lead_score", "0")
             }
+
+            # Get analysis data
+            analysis_data = {
+                "competitor_analysis": data_gatherer.get_competitor_analysis(
+                    company_props.get("name", ""),
+                    company_props.get("city", ""),
+                    company_props.get("state", "")
+                ),
+                "season_data": {
+                    "year_round": company_props.get("geographic_seasonality") == "Year-Round Golf",
+                    "start_month": company_props.get("season_start", ""),
+                    "end_month": company_props.get("season_end", ""),
+                    "peak_season_start": company_props.get("peak_season_start", ""),
+                    "peak_season_end": company_props.get("peak_season_end", "")
+                }
+            }
+
+            # Create lead_sheet with analysis data
+            lead_sheet = {
+                "metadata": {
+                    "status": "success",
+                    "correlation_id": workflow_context['correlation_id'],
+                    "lead_email": lead_data["email"]
+                },
+                "lead_data": {
+                    "email": lead_data["email"],
+                    "properties": {
+                        "firstname": lead_props.get("firstname", ""),
+                        "lastname": lead_props.get("lastname", ""),
+                        "jobtitle": lead_props.get("jobtitle", "General Manager"),
+                        "hs_object_id": lead_props.get("hs_object_id", ""),
+                        "createdate": lead_props.get("createdate", ""),
+                        "lastmodifieddate": lead_props.get("lastmodifieddate", ""),
+                        "lifecyclestage": lead_props.get("lifecyclestage", ""),
+                        "phone": lead_props.get("phone", "")
+                    },
+                    "company_data": {
+                        "name": company_props.get("name", ""),
+                        "city": company_props.get("city", ""),
+                        "state": company_props.get("state", ""),
+                        "company_type": company_props.get("club_type", ""),
+                        "hs_object_id": company_props.get("hs_object_id", ""),
+                        "createdate": company_props.get("createdate", ""),
+                        "lastmodifieddate": company_props.get("lastmodifieddate", ""),
+                        "annualrevenue": company_props.get("annualrevenue", "")
+                    }
+                },
+                "analysis": {
+                    "competitor_analysis": analysis_data.get("competitor_analysis", ""),
+                    "season_data": {
+                        "year_round": company_props.get("geographic_seasonality") == "Year-Round Golf",
+                        "start_month": company_props.get("season_start", ""),
+                        "end_month": company_props.get("season_end", ""),
+                        "peak_season_start": company_props.get("peak_season_start", ""),
+                        "peak_season_end": company_props.get("peak_season_end", "")
+                    },
+                    "facilities": {
+                        "response": company_props.get("club_info", "")
+                    },
+                    "research_data": {
+                        "recent_news": [
+                            {"snippet": personalization_data.get("news", "")}
+                        ] if personalization_data.get("news") else []
+                    }
+                }
+            }
+
+            # Upsert lead data into database
+            with workflow_step("6", "Upserting lead data into DB", workflow_context):
+                try:
+                    upsert_full_lead(lead_sheet, correlation_id=workflow_context['correlation_id'])
+                    logger.info("Successfully upserted lead data", extra=workflow_context)
+                except Exception as e:
+                    logger.error(f"Database upsert failed: {str(e)}", extra=workflow_context)
+                    continue
             
             # Gather personalization data
             print("Gathering personalization data...")
@@ -733,10 +810,7 @@ def main():
             
             # Summarize interactions
             print("Summarizing interactions...")
-            interaction_summary = summarize_lead_interactions({
-                "lead_data": lead_data,
-                "company_data": company_props
-            })
+            interaction_summary = summarize_lead_interactions(lead_sheet)
             print(f"\nInteraction Summary:\n{interaction_summary}")
             
             # Step 8: Build initial outreach email
@@ -823,6 +897,8 @@ def main():
         if leads_processed == 0:
             print("\nNo qualified companies found for high-scoring leads!")
         
+    except LeadContextError as e:
+        logger.error(f"Lead context error: {str(e)}")
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
         raise
@@ -836,1078 +912,6 @@ if __name__ == "__main__":
     
 
     main()
-
-
-
-
-## main_old.py
-
-import csv
-import logging
-from pathlib import Path
-import os
-import shutil
-import random
-from datetime import timedelta, datetime
-import json
-from typing import List, Dict, Any
-
-from utils.logging_setup import logger, workflow_step, setup_logging
-from utils.exceptions import LeadContextError
-from utils.xai_integration import (
-    personalize_email_with_xai,
-    _build_icebreaker_from_news,
-    get_email_critique,
-    revise_email_with_critique,
-    _send_xai_request,
-    MODEL_NAME,
-    get_random_subject_template
-)
-from utils.gmail_integration import create_draft, store_draft_info
-from scripts.build_template import build_outreach_email
-from scripts.job_title_categories import categorize_job_title
-from config.settings import DEBUG_MODE, HUBSPOT_API_KEY, PROJECT_ROOT, CLEAR_LOGS_ON_START, USE_RANDOM_LEAD, TEST_EMAIL, CREATE_FOLLOWUP_DRAFT, USE_LEADS_LIST
-from scheduling.extended_lead_storage import upsert_full_lead
-from scheduling.followup_generation import generate_followup_email_xai
-from scheduling.sql_lookup import build_lead_sheet_from_sql
-from services.leads_service import LeadsService
-from services.data_gatherer_service import DataGathererService
-import openai
-from config.settings import OPENAI_API_KEY, DEFAULT_TEMPERATURE, MODEL_FOR_GENERAL
-import uuid
-from scheduling.database import get_db_connection
-from scripts.golf_outreach_strategy import get_best_outreach_window, get_best_month, get_best_time, get_best_day, adjust_send_time
-from utils.date_utils import convert_to_club_timezone
-from utils.season_snippet import get_season_variation_key, pick_season_snippet
-from services.hubspot_service import HubspotService
-
-print(f"USE_RANDOM_LEAD: {os.getenv('USE_RANDOM_LEAD')}")
-
-# Initialize logging before creating DataGathererService instance
-setup_logging()
-
-# Initialize services
-data_gatherer = DataGathererService()
-leads_service = LeadsService(data_gatherer)
-
-TIMEZONE_CSV_PATH = "docs/data/state_timezones.csv"
-
-def load_state_timezones():
-    """Load state timezones from CSV file."""
-    state_timezones = {}
-    with open(TIMEZONE_CSV_PATH, 'r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            state_code = row['state_code'].strip()
-            state_timezones[state_code] = {
-                'dst': int(row['daylight_savings']),
-                'std': int(row['standard_time'])
-            }
-    logger.debug(f"Loaded timezone data for {len(state_timezones)} states")
-    return state_timezones
-
-STATE_TIMEZONES = load_state_timezones()
-
-###############################################################################
-# Summarize lead interactions
-###############################################################################
-def summarize_lead_interactions(lead_sheet: dict) -> str:
-    """
-    Collects all prior emails and notes from the lead_sheet,
-    then sends them to OpenAI to request a concise summary.
-    """
-    try:
-        # 1) Grab prior emails and notes from the lead_sheet
-        lead_data = lead_sheet.get("lead_data", {})
-        emails = lead_data.get("emails", [])
-        notes = lead_data.get("notes", [])
-        
-        # 2) Format the interactions for OpenAI
-        interactions = []
-        
-        # Add emails with proper encoding handling and sort by timestamp
-        for email in sorted(emails, key=lambda x: x.get('timestamp', ''), reverse=True):
-            if isinstance(email, dict):
-                date = email.get('timestamp', '').split('T')[0]
-                subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
-                body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')
-                direction = email.get('direction', '')
-
-                body = body.split('On ')[0].strip()
-                email_type = "from the lead" if direction == "INCOMING_EMAIL" else "to the lead"
-                
-                interaction = {
-                    'date': date,
-                    'type': f'email {email_type}',
-                    'direction': direction,
-                    'subject': subject,
-                    'notes': body[:1000]
-                }
-                interactions.append(interaction)
-        
-        # Add notes
-        for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
-            if isinstance(note, dict):
-                date = note.get('timestamp', '').split('T')[0]
-                content = note.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
-                
-                interaction = {
-                    'date': date,
-                    'type': 'note',
-                    'direction': 'internal',
-                    'subject': 'Internal Note',
-                    'notes': content[:1000]
-                }
-                interactions.append(interaction)
-        
-        if not interactions:
-            return "No prior interactions found."
-
-        interactions.sort(key=lambda x: x['date'], reverse=True)
-        recent_interactions = interactions[:10]
-        
-        prompt = (
-            "Please summarize these interactions, focusing on:\n"
-            "1. Most recent email FROM THE LEAD if there is one\n"
-            "2. Key points of interest or next steps discussed\n"
-            "3. Overall progression of the conversation\n\n"
-            "Recent Interactions:\n"
-        )
-        
-        for interaction in recent_interactions:
-            prompt += f"\nDate: {interaction['date']}\n"
-            prompt += f"Type: {interaction['type']}\n"
-            prompt += f"Direction: {interaction['direction']}\n"
-            prompt += f"Subject: {interaction['subject']}\n"
-            prompt += f"Content: {interaction['notes']}\n"
-            prompt += "-" * 50 + "\n"
-        
-        try:
-            openai.api_key = OPENAI_API_KEY
-            response = openai.ChatCompletion.create(
-                model=MODEL_FOR_GENERAL,
-                messages=[
-                    {"role": "system", "content": "You are a helpful assistant that summarizes business interactions. Anything from Ty or Ryan is from Swoop."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
-            )
-            
-            summary = response.choices[0].message.content.strip()
-            if DEBUG_MODE:
-                logger.info(f"Interaction Summary:\n{summary}")
-            return summary
-            
-        except Exception as e:
-            logger.error(f"Error getting summary from OpenAI: {str(e)}")
-            return "Error summarizing interactions."
-            
-    except Exception as e:
-        logger.error(f"Error in summarize_lead_interactions: {str(e)}")
-        return "Error processing interactions."
-
-###############################################################################
-# Main Workflow
-###############################################################################
-def get_country_club_companies(hubspot: HubspotService, batch_size=25) -> List[Dict[str, Any]]:
-    """
-    Search for Country Club type companies in HubSpot.
-    """
-    logger.debug("Searching for Country Club type companies")
-    url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
-    all_results = []
-    after = None
-    
-    while True:
-        payload = {
-            "limit": batch_size,
-            "properties": [
-                "name", 
-                "city", 
-                "state", 
-                "club_type",
-                "facility_complexity",
-                "geographic_seasonality",
-                "has_pool",
-                "has_tennis_courts",
-                "number_of_holes",
-                "public_private_flag"
-            ],
-            "filterGroups": [
-                {
-                    "filters": [
-                        {
-                            "propertyName": "club_type",
-                            "operator": "EQ",
-                            "value": "Country Club"
-                        }
-                    ]
-                }
-            ]
-        }
-        
-        if after:
-            payload["after"] = after
-            
-        try:
-            response = hubspot._make_hubspot_post(url, payload)
-            if not response:
-                break
-                
-            results = response.get("results", [])
-            all_results.extend(results)
-            
-            logger.debug(f"Retrieved {len(all_results)} Country Clubs so far")
-            
-            # Handle pagination
-            paging = response.get("paging", {})
-            next_link = paging.get("next", {}).get("after")
-            if not next_link:
-                break
-            after = next_link
-            
-        except Exception as e:
-            logger.error(f"Error fetching Country Clubs from HubSpot: {str(e)}")
-            break
-    
-    logger.info(f"Found {len(all_results)} total Country Clubs")
-    return all_results
-
-def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict]:
-    """Get all leads/contacts associated with a company."""
-    try:
-        url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
-        payload = {
-            "filterGroups": [
-                {
-                    "filters": [
-                        {
-                            "propertyName": "associatedcompanyid",
-                            "operator": "EQ",
-                            "value": company_id
-                        }
-                    ]
-                }
-            ],
-            "properties": ["email", "firstname", "lastname", "jobtitle"],
-            "limit": 100
-        }
-        response = hubspot._make_hubspot_post(url, payload)
-        return response.get("results", [])
-    except Exception as e:
-        logger.error(f"Error getting leads for company {company_id}: {e}")
-        return []
-
-def get_random_lead_email() -> str:
-    """
-    Get a random lead email from "Country Club" companies in HubSpot.
-    Removed the additional 'annualrevenue' filter so we only check 
-    `club_type = "Country Club"`.
-    """
-    try:
-        hubspot = HubspotService(HUBSPOT_API_KEY)
-        url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
-        
-        # Search for Country Clubs specifically (NO annual revenue filter).
-        payload = {
-            "filterGroups": [
-                {
-                    "filters": [
-                        {
-                            "propertyName": "club_type",
-                            "operator": "EQ",
-                            "value": "Country Club"
-                        }
-                    ]
-                }
-            ],
-            "properties": [
-                "name",
-                "city",
-                "state",
-                "club_type",
-                "annualrevenue",
-                "facility_complexity",
-                "geographic_seasonality",
-                "has_pool",
-                "has_tennis_courts",
-                "number_of_holes",
-                "public_private_flag"
-            ],
-            "limit": 100
-        }
-        
-        logger.debug("Searching for Country Club companies in HubSpot (no annualrevenue filter)")
-        response = hubspot._make_hubspot_post(url, payload)
-        
-        if not response or not response.get("results"):
-            logger.warning("No Country Clubs found, falling back to TEST_EMAIL")
-            return TEST_EMAIL
-            
-        # Filter for clubs with valid contacts/leads
-        valid_clubs = []
-        for company in response.get("results", []):
-            company_id = company.get("id")
-            leads = get_leads_for_company(hubspot, company_id)
-            if leads:
-                valid_clubs.append((company, leads))
-        
-        if not valid_clubs:
-            logger.warning("No Country Clubs with leads found, falling back to TEST_EMAIL")
-            return TEST_EMAIL
-            
-        # Randomly select a club and lead
-        company, leads = random.choice(valid_clubs)
-        lead = random.choice(leads)
-        email = lead.get("email")
-        
-        company_name = company.get("properties", {}).get("name", "Unknown Club")
-        company_state = company.get("properties", {}).get("state", "Unknown State")
-        
-        if email:
-            logger.info(f"Selected lead ({email}) from Country Club: {company_name} in {company_state}")
-            return email
-        else:
-            logger.warning("Selected lead has no email, falling back to TEST_EMAIL")
-            return TEST_EMAIL
-            
-    except Exception as e:
-        logger.error(f"Error getting random Country Club lead: {e}")
-        return TEST_EMAIL
-
-def get_lead_email() -> str:
-    """Get lead email from HubSpot country clubs."""
-    logger.debug(f"USE_RANDOM_LEAD setting is: {USE_RANDOM_LEAD}")
-    logger.debug(f"TEST_EMAIL setting is: {TEST_EMAIL}")
-    
-    if TEST_EMAIL:
-        logger.debug("Using TEST_EMAIL setting")
-        return TEST_EMAIL
-        
-    logger.debug("Getting random Country Club lead from HubSpot")
-    return get_random_lead_email()
-
-def main():
-    """Main entry point for the sales assistant application."""
-    correlation_id = str(uuid.uuid4())
-    logger_context = {"correlation_id": correlation_id}
-    
-    # Force debug logging at start
-    logger.setLevel(logging.DEBUG)
-    logger.debug("Starting main workflow", extra=logger_context)
-    logger.debug(f"USE_RANDOM_LEAD is set to: {USE_RANDOM_LEAD}")
-    
-    try:
-        # Step 1: Get lead email
-        with workflow_step(1, "Getting lead email"):
-            email = get_lead_email()
-            if not email:
-                logger.error("No email provided; exiting.", extra=logger_context)
-                return
-            logger.info(f"Using email: {email}")
-            logger_context["email"] = email
-
-        # Step 2: External data gathering
-        with workflow_step(2, "Gathering external data"):
-            lead_sheet = data_gatherer.gather_lead_data(email, correlation_id=correlation_id)
-            if not lead_sheet.get("metadata", {}).get("status") == "success":
-                logger.error("Failed to gather lead data", extra=logger_context)
-                return
-
-        # Step 3: Database operations
-        with workflow_step(3, "Saving to database"):
-            try:
-                logger.debug("Starting database upsert")
-                email_count = len(lead_sheet.get("lead_data", {}).get("emails", []))
-                logger.debug(f"Found {email_count} emails to store")
-                
-                upsert_full_lead(lead_sheet)
-                
-                logger.info(f"Successfully stored lead data including {email_count} emails")
-            except Exception as e:
-                logger.error("Database operation failed", 
-                            extra={**logger_context, "error": str(e)}, 
-                            exc_info=True)
-                raise
-
-        # Verify lead_sheet success
-        if lead_sheet.get("metadata", {}).get("status") != "success":
-            logger.error("Failed to prepare or retrieve lead context. Exiting.", extra={
-                "email": email,
-                "correlation_id": correlation_id
-            })
-            return
-
-        # Step 4: Prepare lead context
-        with workflow_step(4, "Preparing lead context"):
-            emails = lead_sheet.get("lead_data", {}).get("emails", [])
-            logger.debug(f"Found {len(emails)} emails in lead sheet", extra={
-                "email_count": len(emails),
-                "email_subjects": [e.get('subject', 'No subject') for e in emails]
-            })
-            
-            lead_context = leads_service.prepare_lead_context(
-                email, 
-                lead_sheet=lead_sheet,
-                correlation_id=correlation_id
-            )
-
-        # Step 5: Extract relevant data (updated for logging new fields)
-        with workflow_step(5, "Extracting lead data"):
-            lead_data = lead_sheet.get("lead_data", {})
-            company_data = lead_data.get("company_data", {})
-
-            # Safely extract data
-            first_name = (lead_data.get("properties", {}).get("firstname") or "").strip()
-            last_name = (lead_data.get("properties", {}).get("lastname") or "").strip()
-            
-            # *** NEW *** Pull in all 15 fields explicitly
-            name = company_data.get("name", "")
-            city = company_data.get("city", "")
-            state = company_data.get("state", "")
-            annual_revenue = company_data.get("annualrevenue", "")
-            created_date = company_data.get("createdate", "")
-            last_modified = company_data.get("hs_lastmodifieddate", "")
-            object_id = company_data.get("hs_object_id", "")
-            club_type = company_data.get("club_type", "")
-            facility_complexity = company_data.get("facility_complexity", "")
-            has_pool = company_data.get("has_pool", "")
-            has_tennis_courts = company_data.get("has_tennis_courts", "")
-            number_of_holes = company_data.get("number_of_holes", "")
-            geographic_seasonality = company_data.get("geographic_seasonality", "")
-            public_private_flag = company_data.get("public_private_flag", "")
-            club_info = company_data.get("club_info", "")
-
-            # Add debug log verifying these fields
-            logger.debug("Pulled in HubSpot company fields", extra={
-                "company_name": name,
-                "city": city,
-                "state": state,
-                "annual_revenue": annual_revenue,
-                "created_date": created_date,
-                "last_modified": last_modified,
-                "object_id": object_id,
-                "club_type": club_type,
-                "facility_complexity": facility_complexity,
-                "has_pool": has_pool,
-                "has_tennis_courts": has_tennis_courts,
-                "number_of_holes": number_of_holes,
-                "geographic_seasonality": geographic_seasonality,
-                "public_private_flag": public_private_flag,
-                "club_info": club_info
-            })
-
-            # For usage in placeholders or further logic
-            club_name = name.strip()  # rename for clarity
-            logger.info(f"Successfully extracted {club_name} ({object_id}) located in {city}, {state}")
-
-            # Proceed with existing placeholders logic:
-            current_month = datetime.now().month
-            if state == "AZ":
-                start_peak_month = 0
-                end_peak_month = 11
-            else:
-                start_peak_month = 5
-                end_peak_month = 8
-
-            season_key = get_season_variation_key(
-                current_month=current_month,
-                start_peak_month=start_peak_month,
-                end_peak_month=end_peak_month
-            )
-            season_text = pick_season_snippet(season_key)
-
-            placeholders = {
-                "FirstName": first_name,
-                "LastName": last_name,
-                "ClubName": club_name or "Your Club",
-                "DeadlineDate": "Oct 15th",
-                "Role": lead_data.get("jobtitle", "General Manager"),
-                "Task": "Staff Onboarding",
-                "Topic": "On-Course Ordering Platform",
-                "YourName": "Ty",
-                "SEASON_VARIATION": season_text.rstrip(',')
-            }
-            logger.debug("Placeholders built", extra={**placeholders, "season_key": season_key})
-
-        # Step 6: Gather additional personalization data
-        with workflow_step(6, "Gathering personalization data"):
-            club_info_snippet = data_gatherer.gather_club_info(club_name, city, state)
-            news_result = data_gatherer.gather_club_news(club_name)
-            has_news = False
-            if news_result:
-                if isinstance(news_result, tuple):
-                    news_text = news_result[0]
-                else:
-                    news_text = str(news_result)
-                has_news = "has not been" not in news_text.lower()
-
-            jobtitle_str = lead_data.get("jobtitle", "")
-            profile_type = categorize_job_title(jobtitle_str)
-
-        # Step 7: Summarize interactions
-        with workflow_step(7, "Summarizing interactions"):
-            interaction_summary = summarize_lead_interactions(lead_sheet)
-            logger.info("Interaction Summary:\n" + interaction_summary)
-
-            last_interaction = lead_data.get("properties", {}).get("hs_sales_email_last_replied", "")
-            last_interaction_days = 0
-            if last_interaction:
-                try:
-                    last_date = datetime.fromtimestamp(int(last_interaction)/1000)
-                    last_interaction_days = (datetime.now() - last_date).days
-                except (ValueError, TypeError):
-                    last_interaction_days = 0
-
-        # Step 8: Build initial outreach email
-        with workflow_step(8, "Building email draft"):
-            subject = get_random_subject_template()
-            for key, val in placeholders.items():
-                subject = subject.replace(f"[{key}]", val)
-            
-            _, body = build_outreach_email(
-                profile_type=profile_type,
-                last_interaction_days=last_interaction_days,
-                placeholders=placeholders,
-                current_month=9,
-                start_peak_month=5,
-                end_peak_month=8,
-                use_markdown_template=True
-            )
-            logger.debug("Loaded email template", extra={
-                "subject_template": subject,
-                "body_template": body
-            })
-
-            try:
-                if has_news and news_result and "has not been in the news" not in news_result.lower():
-                    icebreaker = _build_icebreaker_from_news(club_name, news_result)
-                    if icebreaker:
-                        body = body.replace("[ICEBREAKER]", icebreaker)
-                    else:
-                        body = body.replace("[ICEBREAKER]\n\n", "")
-                        body = body.replace("[ICEBREAKER]\n", "")
-                        body = body.replace("[ICEBREAKER]", "")
-                else:
-                    body = body.replace("[ICEBREAKER]\n\n", "")
-                    body = body.replace("[ICEBREAKER]\n", "")
-                    body = body.replace("[ICEBREAKER]", "")
-            except Exception as e:
-                logger.error(f"Icebreaker generation error: {e}")
-                body = body.replace("[ICEBREAKER]\n\n", "")
-                body = body.replace("[ICEBREAKER]\n", "")
-                body = body.replace("[ICEBREAKER]", "")
-
-            while "\n\n\n" in body:
-                body = body.replace("\n\n\n", "\n\n")
-
-            orig_subject, orig_body = subject, body
-            for key, val in placeholders.items():
-                subject = subject.replace(f"[{key}]", val)
-                body = body.replace(f"[{key}]", val)
-
-        # Step 9: Personalize with xAI
-        with workflow_step(9, "Personalizing with AI"):
-            try:
-                lead_email = lead_data.get("email", email)
-                
-                subject, body = personalize_email_with_xai(
-                    lead_sheet=lead_sheet,
-                    subject=subject,
-                    body=body,
-                    summary=interaction_summary,
-                    news_summary=news_result,
-                    club_info=club_info_snippet
-                )
-                
-                if not subject.strip():
-                    subject = orig_subject
-                if not body.strip():
-                    body = orig_body
-
-                body = body.replace("**", "")  # Cleanup leftover bold
-
-                for key, val in placeholders.items():
-                    subject = subject.replace(f"[{key}]", val)
-                    body = body.replace(f"[{key}]", val)
-
-                if has_news:
-                    try:
-                        icebreaker = _build_icebreaker_from_news(club_name, news_result)
-                        if icebreaker:
-                            body = body.replace("[ICEBREAKER]", icebreaker)
-                        else:
-                            body = body.replace("[ICEBREAKER]", "")
-                    except Exception as e:
-                        logger.error(f"Icebreaker generation error: {e}")
-                        body = body.replace("[ICEBREAKER]", "")
-                else:
-                    body = body.replace("[ICEBREAKER]", "")
-
-                logger.debug("Creating email draft", extra={
-                    **logger_context,
-                    "to": lead_email,
-                    "subject": subject
-                })
-            except Exception as e:
-                logger.error(f"xAI personalization error: {e}")
-                subject, body = orig_subject, orig_body
-
-        # Step 10: Create Gmail draft and save to database
-        with workflow_step(10, "Creating Gmail draft"):
-            persona = profile_type
-            club_tz = data_gatherer.get_club_timezone(state)
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            try:
-                cursor.execute("""
-                    SELECT company_type FROM companies 
-                    WHERE name = ? AND city = ? AND state = ?
-                """, (club_name, city, state))
-                result = cursor.fetchone()
-                stored_company_type = result[0] if result else None
-
-                if stored_company_type:
-                    if "private" in stored_company_type.lower():
-                        local_club_type = "Private Clubs"
-                    elif "semi-private" in stored_company_type.lower():
-                        local_club_type = "Semi-Private Clubs"
-                    elif "public" in stored_company_type.lower() or "municipal" in stored_company_type.lower():
-                        local_club_type = "Public Clubs"
-                    else:
-                        local_club_type = "Public Clubs"
-                else:
-                    _, local_club_type = data_gatherer.get_club_geography_and_type(club_name, city, state)
-
-                if state == "AZ":
-                    geography = "Year-Round Golf"
-                else:
-                    geography = data_gatherer.determine_geography(city, state)
-
-            except Exception as e:
-                logger.error(f"Error getting company type from database: {str(e)}")
-                geography, local_club_type = data_gatherer.get_club_geography_and_type(club_name, city, state)
-            finally:
-                cursor.close()
-                conn.close()
-
-            outreach_window = {
-                "Best Month": get_best_month(geography),
-                "Best Time": get_best_time(persona),
-                "Best Day": get_best_day(persona)
-            }
-            
-            try:
-                from random import randint
-                best_months = outreach_window["Best Month"]
-                best_time = outreach_window["Best Time"]
-                best_days = outreach_window["Best Day"]
-                
-                now = datetime.now()
-                target_date = now + timedelta(days=1)
-                
-                while target_date.month not in best_months:
-                    if target_date.month == 12:
-                        target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
-                    else:
-                        target_date = target_date.replace(month=target_date.month + 1, day=1)
-                
-                while target_date.weekday() not in best_days:
-                    target_date += timedelta(days=1)
-                
-                target_hour = randint(best_time["start"], best_time["end"])
-                scheduled_send_date = target_date.replace(
-                    hour=target_hour,
-                    minute=randint(0, 59),
-                    second=0,
-                    microsecond=0
-                )
-                
-                state_offsets = STATE_TIMEZONES.get(state.upper())
-                scheduled_send_date = convert_to_club_timezone(scheduled_send_date, state_offsets)
-
-            except Exception as e:
-                logger.warning(f"Error calculating send date: {str(e)}. Using current time + 1 day", extra={
-                    "error": str(e),
-                    "fallback_date": (datetime.now() + timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S"),
-                    "is_optimal_time": False
-                })
-                scheduled_send_date = datetime.now() + timedelta(days=1)
-
-            if scheduled_send_date is None:
-                logger.warning("scheduled_send_date is None, setting default send date")
-                scheduled_send_date = datetime.now() + timedelta(days=1)
-
-            conn = get_db_connection()
-            cursor = conn.cursor()
-            try:
-                cursor.execute("""
-                    SELECT lead_id FROM leads 
-                    WHERE email = ?
-                """, (lead_email,))
-                result = cursor.fetchone()
-                
-                if result:
-                    lead_id = result[0]
-                    
-                    draft_result = create_draft(
-                        sender="me",
-                        to=lead_email,
-                        subject=subject,
-                        message_text=body,
-                        lead_id=lead_id,
-                        sequence_num=1
-                    )
-
-                    if draft_result["status"] == "ok":
-                        store_draft_info(
-                            lead_id=lead_id,
-                            draft_id=draft_result["draft_id"],
-                            scheduled_date=scheduled_send_date,
-                            subject=subject,
-                            body=body,
-                            sequence_num=1
-                        )
-                        conn.commit()
-                        logger.info("Email draft saved to database", extra=logger_context)
-                        
-                        if CREATE_FOLLOWUP_DRAFT:
-                            cursor.execute("""
-                                SELECT COALESCE(MAX(sequence_num), 0) + 1
-                                FROM emails 
-                                WHERE lead_id = ?
-                            """, (lead_id,))
-                            next_seq = cursor.fetchone()[0]
-                            
-                            cursor.execute("""
-                                SELECT email_id 
-                                FROM emails 
-                                WHERE draft_id = ? AND lead_id = ?
-                            """, (draft_result["draft_id"], lead_id))
-                            email_id = cursor.fetchone()[0]
-                            
-                            followup_data = generate_followup_email_xai(lead_id, email_id, next_seq)
-                            if followup_data:
-                                schedule_followup(lead_id, email_id)
-                            else:
-                                logger.warning("No follow-up data generated")
-                        else:
-                            logger.info("Follow-up draft creation is disabled via CREATE_FOLLOWUP_DRAFT setting")
-                    else:
-                        logger.error("Failed to create Gmail draft", extra=logger_context)
-                else:
-                    logger.error("Could not find lead_id for email", extra={
-                        **logger_context,
-                        "email": lead_email
-                    })
-                    
-            except Exception as e:
-                logger.error("Database operation failed", 
-                            extra={**logger_context, "error": str(e)},
-                            exc_info=True)
-                conn.rollback()
-                raise
-            finally:
-                cursor.close()
-                conn.close()
-
-    except LeadContextError as e:
-        logger.error(f"Lead context error: {str(e)}", extra=logger_context)
-    except Exception as e:
-        logger.error("Workflow failed", 
-                    extra={**logger_context, "error": str(e)}, 
-                    exc_info=True)
-        raise
-
-def verify_templates():
-    """Verify that required templates exist."""
-    template_dir = PROJECT_ROOT / 'docs' / 'templates'
-    
-    if not template_dir.exists():
-        logger.error(f"Template directory not found: {template_dir}")
-        return
-        
-    template_types = {
-        'general_manager': 'general_manager_initial_outreach_*.md',
-        'fb_manager': 'fb_manager_initial_outreach_*.md',
-        'fallback': 'fallback_*.md'
-    }
-    
-    for type_name, pattern in template_types.items():
-        templates = list(template_dir.glob(pattern))
-        if not templates:
-            logger.warning(f"No {type_name} templates found matching pattern: {pattern}")
-        else:
-            logger.debug(f"Found {len(templates)} {type_name} templates: {[t.name for t in templates]}")
-
-def calculate_send_date(geography, persona, state_code, season_data=None):
-    """Calculate optimal send date based on geography and persona."""
-    try:
-        outreach_window = get_best_outreach_window(
-            persona=persona,
-            geography=geography,
-            season_data=season_data
-        )
-        
-        best_months = outreach_window["Best Month"]
-        best_time = outreach_window["Best Time"]
-        best_days = outreach_window["Best Day"]
-        
-        now = datetime.now()
-        target_date = now + timedelta(days=1)
-        
-        while target_date.month not in best_months:
-            if target_date.month == 12:
-                target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
-            else:
-                target_date = target_date.replace(month=target_date.month + 1, day=1)
-        
-        while target_date.weekday() not in best_days:
-            target_date += timedelta(days=1)
-        
-        send_hour = best_time["start"]
-        send_minute = random.randint(0, 59)
-        if random.random() < 0.5:
-            send_hour = min(send_hour + 1, best_time["end"])
-            
-        send_date = target_date.replace(
-            hour=send_hour,
-            minute=send_minute,
-            second=0,
-            microsecond=0
-        )
-        
-        final_send_date = adjust_send_time(send_date, state_code)
-        return final_send_date
-        
-    except Exception as e:
-        logger.error(f"Error calculating send date: {str(e)}", exc_info=True)
-        return datetime.now() + timedelta(days=1, hours=10)
-
-def get_next_month_first_day(current_date):
-    if current_date.month == 12:
-        return current_date.replace(year=current_date.year + 1, month=1, day=1)
-    return current_date.replace(month=current_date.month + 1, day=1)
-
-def clear_sql_tables():
-    """Clear all records from SQL tables"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        tables = [
-            'emails',
-            'lead_properties',
-            'company_properties',
-            'leads',
-            'companies'
-        ]
-        
-        cursor.execute("ALTER TABLE emails NOCHECK CONSTRAINT ALL")
-        cursor.execute("ALTER TABLE lead_properties NOCHECK CONSTRAINT ALL")
-        cursor.execute("ALTER TABLE company_properties NOCHECK CONSTRAINT ALL")
-        cursor.execute("ALTER TABLE leads NOCHECK CONSTRAINT ALL")
-        
-        for table in tables:
-            try:
-                cursor.execute(f"DELETE FROM dbo.{table}")
-                print(f"Cleared table: {table}")
-            except Exception as e:
-                print(f"Error clearing table {table}: {e}")
-        
-        cursor.execute("ALTER TABLE emails CHECK CONSTRAINT ALL")
-        cursor.execute("ALTER TABLE lead_properties CHECK CONSTRAINT ALL")
-        cursor.execute("ALTER TABLE company_properties CHECK CONSTRAINT ALL")
-        cursor.execute("ALTER TABLE leads CHECK CONSTRAINT ALL")
-        
-        conn.commit()
-        print("All SQL tables cleared")
-        
-    except Exception as e:
-        print(f"Failed to clear SQL tables: {e}")
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def clear_files_on_start():
-    from config.settings import CLEAR_LOGS_ON_START
-    
-    if not CLEAR_LOGS_ON_START:
-        print("Skipping file cleanup - CLEAR_LOGS_ON_START is False")
-        return
-        
-    log_path = os.path.join(PROJECT_ROOT, 'logs', 'app.log')
-    if os.path.exists(log_path):
-        try:
-            open(log_path, 'w').close()
-            print("Log file cleared")
-        except Exception as e:
-            print(f"Failed to clear log file: {e}")
-    
-    lead_contexts_path = os.path.join(PROJECT_ROOT, 'lead_contexts')
-    if os.path.exists(lead_contexts_path):
-        try:
-            for filename in os.listdir(lead_contexts_path):
-                file_path = os.path.join(lead_contexts_path, filename)
-                if os.path.isfile(file_path):
-                    os.unlink(file_path)
-            print("Lead contexts cleared")
-        except Exception as e:
-            print(f"Failed to clear lead contexts: {e}")
-    
-    clear_sql_tables()
-
-def schedule_followup(lead_id: int, email_id: int):
-    """Schedule a follow-up email"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute("""
-            SELECT 
-                e.subject, e.body, e.created_at,
-                l.email, l.first_name,
-                c.name, c.state
-            FROM emails e
-            JOIN leads l ON e.lead_id = l.lead_id
-            LEFT JOIN companies c ON l.company_id = c.company_id
-            WHERE e.email_id = ? AND e.lead_id = ?
-        """, (email_id, lead_id))
-        
-        result = cursor.fetchone()
-        if not result:
-            logger.error(f"No email found for email_id={email_id}")
-            return
-            
-        orig_subject, orig_body, created_at, email, first_name, company_name, state = result
-        
-        original_email = {
-            'email': email,
-            'first_name': first_name,
-            'name': company_name,
-            'state': state,
-            'subject': orig_subject,
-            'body': orig_body,
-            'created_at': created_at
-        }
-        
-        followup = generate_followup_email_xai(
-            lead_id=lead_id,
-            email_id=email_id,
-            sequence_num=2,
-            original_email=original_email
-        )
-        
-        if followup:
-            draft_result = create_draft(
-                sender="me",
-                to=followup.get('email'),
-                subject=followup.get('subject'),
-                message_text=followup.get('body')
-            )
-            
-            if draft_result["status"] == "ok":
-                store_draft_info(
-                    lead_id=lead_id,
-                    draft_id=draft_result["draft_id"],
-                    scheduled_date=followup.get('scheduled_send_date'),
-                    subject=followup.get('subject'),
-                    body=followup.get('body'),
-                    sequence_num=followup.get('sequence_num', 2)
-                )
-                logger.info(f"Follow-up email scheduled with draft_id {draft_result.get('draft_id')}")
-            else:
-                logger.error("Failed to create Gmail draft for follow-up")
-        else:
-            logger.error("Failed to generate follow-up email content")
-            
-    except Exception as e:
-        logger.error(f"Error scheduling follow-up: {str(e)}", exc_info=True)
-        if 'conn' in locals():
-            conn.rollback()
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-
-def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft_id):
-    """
-    Persists the draft info (subject, body, scheduled send date, etc.) to the 'emails' table.
-    """
-    try:
-        logger.debug(f"[store_draft_info] Attempting to store draft info for lead_id={lead_id}, scheduled_date={scheduled_date}")
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            """
-            UPDATE emails
-            SET subject = ?, body = ?, scheduled_send_date = ?, sequence_num = ?, draft_id = ?
-            WHERE lead_id = ? AND sequence_num = ?
-            
-            IF @@ROWCOUNT = 0
-            BEGIN
-                INSERT INTO emails
-                    (lead_id, subject, body, scheduled_send_date, sequence_num, draft_id, status)
-                VALUES
-                    (?, ?, ?, ?, ?, ?, 'draft')
-            END
-            """,
-            (
-                subject, 
-                body,
-                scheduled_date,
-                sequence_num,
-                draft_id,
-                lead_id, 
-                sequence_num,
-                
-                lead_id,
-                subject,
-                body,
-                scheduled_date,
-                sequence_num,
-                draft_id
-            )
-        )
-        
-        conn.commit()
-        logger.debug(f"[store_draft_info] Successfully wrote scheduled_date={scheduled_date} for lead_id={lead_id}, draft_id={draft_id}")
-        
-    except Exception as e:
-        logger.error(f"[store_draft_info] Failed to store draft info: {str(e)}")
-        conn.rollback()
-        raise
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-
-def get_signature() -> str:
-    """Return standardized signature block."""
-    return "\n\nCheers,\nTy\n\nSwoop Golf\n480-225-9702\nswoopgolf.com"
-
-
-if __name__ == "__main__":
-    logger.debug(f"Starting with CLEAR_LOGS_ON_START={CLEAR_LOGS_ON_START}")
-    
-    if CLEAR_LOGS_ON_START:
-        clear_files_on_start()
-        os.system('cls' if os.name == 'nt' else 'clear')
-    
-    verify_templates()
-    
-    from scheduling.followup_scheduler import start_scheduler
-    import threading
-    scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
-    scheduler_thread.start()
-    
-    for i in range(3):
-        logger.info(f"Starting iteration {i+1} of 3")
-        main()
-        logger.info(f"Completed iteration {i+1} of 3")
 
 
 
@@ -2208,15 +1212,7 @@ def safe_parse_date(date_str):
 
 def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
     """
-    Upsert the lead and related company data into SQL:
-      1) leads (incl. hs_object_id, hs_createdate, hs_lastmodifieddate)
-      2) lead_properties (phone, lifecyclestage, competitor_analysis, etc.)
-      3) companies (incl. hs_object_id, hs_createdate, hs_lastmodifieddate, plus season data)
-      4) company_properties (annualrevenue, xai_facilities_news)
-    
-    Args:
-        lead_sheet: Dictionary containing lead and company data
-        correlation_id: Optional correlation ID for tracing operations
+    Upsert the lead and related company data into SQL.
     """
     if correlation_id is None:
         correlation_id = f"upsert_{lead_sheet.get('lead_data', {}).get('email', 'unknown')}"
@@ -2224,13 +1220,16 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
     cursor = conn.cursor()
 
     try:
+        # Initialize company_id at the start
+        company_id = None
+        
         # == Extract relevant fields from the JSON ==
         metadata = lead_sheet.get("metadata", {})
         lead_data = lead_sheet.get("lead_data", {})
         analysis_data = lead_sheet.get("analysis", {})
         company_data = lead_data.get("company_data", {})
 
-        # 1) Basic lead info
+        # Basic lead info
         email = lead_data.get("email") or metadata.get("lead_email", "")
         if not email:
             logger.error("No email found in lead_sheet; cannot upsert lead.", extra={
@@ -2239,57 +1238,38 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
             })
             return
 
-        logger.debug("Upserting lead", extra={
-            "email": email,
-            "correlation_id": correlation_id,
-            "operation": "upsert_lead"
-        })
-
         # Access properties from lead_data structure
         lead_properties = lead_data.get("properties", {})
         first_name = lead_properties.get("firstname", "")
         last_name = lead_properties.get("lastname", "")
         role = lead_properties.get("jobtitle", "")
 
-        # 2) HubSpot lead-level data
+        # HubSpot lead-level data
         lead_hs_id = lead_properties.get("hs_object_id", "")
         lead_created_str = lead_properties.get("createdate", "")
         lead_lastmod_str = lead_properties.get("lastmodifieddate", "")
-
         lead_hs_createdate = safe_parse_date(lead_created_str)
         lead_hs_lastmodified = safe_parse_date(lead_lastmod_str)
 
-        # 3) Company static data
+        # Company static data
         static_company_name = company_data.get("name", "")
         static_city = company_data.get("city", "")
         static_state = company_data.get("state", "")
 
-        # 4) Company HubSpot data
+        # Company HubSpot data
         company_hs_id = company_data.get("hs_object_id", "")
         company_created_str = company_data.get("createdate", "")
         company_lastmod_str = company_data.get("lastmodifieddate", "")
-
         company_hs_createdate = safe_parse_date(company_created_str)
         company_hs_lastmodified = safe_parse_date(company_lastmod_str)
 
-        # 5) lead_properties (dynamic)
+        # lead_properties (dynamic)
         phone = lead_data.get("phone")
-        cleaned_phone = clean_phone_number(phone) if phone is not None else None
+        cleaned_phone = clean_phone_number(phone) if phone else None
         lifecyclestage = lead_properties.get("lifecyclestage", "")
-
         competitor_analysis = analysis_data.get("competitor_analysis", "")
-        # Convert competitor_analysis to JSON string if it's a dictionary
-        if isinstance(competitor_analysis, dict):
-            competitor_analysis = json.dumps(competitor_analysis)
 
-        # Per request: do NOT save competitor_analysis (set blank)
-        competitor_analysis = ""
-
-        # Attempt to parse "last_response" as needed; storing None for now
-        last_resp_str = analysis_data.get("previous_interactions", {}).get("last_response", "")
-        last_response_date = None  # "Responded 1148 days ago" is not ISO, so we keep it as None
-
-        # 6) Season data (stored in companies)
+        # Season data
         season_data = analysis_data.get("season_data", {})
         year_round = season_data.get("year_round", "")
         start_month = season_data.get("start_month", "")
@@ -2297,43 +1277,29 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
         peak_season_start = season_data.get("peak_season_start", "")
         peak_season_end = season_data.get("peak_season_end", "")
 
-        # 7) Other company_properties (dynamic)
+        # Company dynamic data
         annualrevenue = company_data.get("annualrevenue", "")
-
-        # 8) xAI Facilities Data
-        #   - xai_facilities_info goes in dbo.companies
-        #   - xai_facilities_news goes in dbo.company_properties
-        facilities_info = analysis_data.get("facilities", {}).get("response", "")
-        if facilities_info == "No recent news found.":
-            facilities_info = ""  # Just set to empty string instead of making assumptions
-
-        # Get news separately
-        research_data = analysis_data.get("research_data", {})
         facilities_news = ""
-        if research_data.get("recent_news"):
+        if "research_data" in analysis_data and analysis_data["research_data"].get("recent_news"):
             try:
-                news_item = research_data["recent_news"][0]
+                news_item = analysis_data["research_data"]["recent_news"][0]
                 if isinstance(news_item, dict):
-                    facilities_news = str(news_item.get("snippet", ""))[:500]  # Limit length
-            except (IndexError, KeyError, TypeError):
-                logger.warning("Could not extract facilities news from research data")
+                    facilities_news = str(news_item.get("snippet", ""))[:500]
+            except (IndexError, KeyError):
+                logger.warning("Could not extract facilities news")
 
-        # Get the company overview separately
-        research_data = analysis_data.get("research_data", {})
-        company_overview = research_data.get("company_overview", "")
+        # Additional facilities info
+        facilities_info = analysis_data.get("facilities", {}).get("response", "")
 
-        # ==========================================================
-        # 1. Upsert into leads (static fields + HS fields)
-        # ==========================================================
-        existing_company_id = None  # Initialize before the query
-        cursor.execute("SELECT lead_id, company_id, hs_object_id FROM dbo.leads WHERE email = ?", (email,))
+        # == UPSERT OPERATIONS ==
+
+        # 1. Upsert into leads first
+        cursor.execute("SELECT lead_id, company_id FROM dbo.leads WHERE email = ?", (email,))
         row = cursor.fetchone()
 
         if row:
             lead_id = row[0]
-            existing_company_id = row[1]  # Will update if found
-            lead_hs_id = row[2]
-            logger.debug(f"Lead with email={email} found (lead_id={lead_id}); updating record.")
+            existing_company_id = row[1]
             cursor.execute("""
                 UPDATE dbo.leads
                 SET first_name = ?,
@@ -2345,84 +1311,42 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                     status = 'active'
                 WHERE lead_id = ?
             """, (
-                first_name,
-                last_name,
-                role,
-                lead_hs_id,
-                lead_hs_createdate,
-                lead_hs_lastmodified,
+                first_name, last_name, role,
+                lead_hs_id, lead_hs_createdate, lead_hs_lastmodified,
                 lead_id
             ))
         else:
-            logger.debug(f"Lead with email={email} not found; inserting new record.")
             cursor.execute("""
                 INSERT INTO dbo.leads (
-                    email,
-                    first_name,
-                    last_name,
-                    role,
-                    status,
-                    hs_object_id,
-                    hs_createdate,
-                    hs_lastmodifieddate
+                    email, first_name, last_name, role,
+                    status, hs_object_id, hs_createdate, hs_lastmodifieddate
                 )
                 OUTPUT Inserted.lead_id
                 VALUES (?, ?, ?, ?, 'active', ?, ?, ?)
             """, (
-                email,
-                first_name,
-                last_name,
-                role,
-                lead_hs_id,
-                lead_hs_createdate,
-                lead_hs_lastmodified
+                email, first_name, last_name, role,
+                lead_hs_id, lead_hs_createdate, lead_hs_lastmodified
             ))
-            
-            # Capture the new lead_id
             result = cursor.fetchone()
             lead_id = result[0] if result else None
+            existing_company_id = None
             
             if not lead_id:
                 raise ValueError("Failed to get lead_id after insertion")
-            
-            conn.commit()
-            logger.info("Successfully inserted new lead record", extra={
-                "email": email,
-                "lead_id": lead_id,
-                "hs_object_id": lead_hs_id
-            })
 
-        # ==========================================================
-        # 2. Upsert into companies (static fields + HS fields + season data)
-        # ==========================================================
-        if not static_company_name.strip():
-            logger.debug("No company name found, skipping upsert for companies.")
-        else:
+        # 2. Upsert into companies if we have company data
+        if static_company_name:
             cursor.execute("""
-                SELECT company_id, hs_object_id
-                FROM dbo.companies
+                SELECT company_id FROM dbo.companies 
                 WHERE name = ? AND city = ? AND state = ?
             """, (static_company_name, static_city, static_state))
-            existing_co = cursor.fetchone()
+            company_row = cursor.fetchone()
 
-            if existing_co:
-                company_id = existing_co[0]
-                company_hs_id = existing_co[1]
-                logger.debug(f"Company found (company_id={company_id}); updating HS fields + season data if needed.")
-                
-                # Convert any potential dictionaries to strings
-                facilities_info_str = json.dumps(facilities_info) if isinstance(facilities_info, dict) else str(facilities_info) if facilities_info else None
-                year_round_str = str(year_round) if year_round else None
-                start_month_str = str(start_month) if start_month else None
-                end_month_str = str(end_month) if end_month else None
-                peak_season_start_str = str(peak_season_start) if peak_season_start else None
-                peak_season_end_str = str(peak_season_end) if peak_season_end else None
-                
+            if company_row:
+                company_id = company_row[0]
                 cursor.execute("""
                     UPDATE dbo.companies
-                    SET city = ?,
-                        state = ?,
-                        company_type = ?,
+                    SET hs_object_id = ?,
                         hs_createdate = ?,
                         hs_lastmodifieddate = ?,
                         year_round = ?,
@@ -2433,262 +1357,112 @@ def upsert_full_lead(lead_sheet: dict, correlation_id: str = None) -> None:
                         xai_facilities_info = ?
                     WHERE company_id = ?
                 """, (
-                    static_city,
-                    static_state,
-                    company_data.get("company_type", ""),
-                    company_hs_createdate,
-                    company_hs_lastmodified,
-                    year_round_str,
-                    start_month_str,
-                    end_month_str,
-                    peak_season_start_str,
-                    peak_season_end_str,
-                    facilities_info_str,
-                    company_id
+                    company_hs_id, company_hs_createdate, company_hs_lastmodified,
+                    year_round, start_month, end_month,
+                    peak_season_start, peak_season_end,
+                    facilities_info, company_id
                 ))
             else:
-                logger.debug(f"No matching company; inserting new row for name={static_company_name}.")
-                
-                # Convert any potential dictionaries to strings
-                facilities_info_str = json.dumps(facilities_info) if isinstance(facilities_info, dict) else str(facilities_info) if facilities_info else None
-                year_round_str = str(year_round) if year_round else None
-                start_month_str = str(start_month) if start_month else None
-                end_month_str = str(end_month) if end_month else None
-                peak_season_start_str = str(peak_season_start) if peak_season_start else None
-                peak_season_end_str = str(peak_season_end) if peak_season_end else None
-                
                 cursor.execute("""
                     INSERT INTO dbo.companies (
-                        name, city, state, company_type,
+                        name, city, state,
                         hs_object_id, hs_createdate, hs_lastmodifieddate,
                         year_round, start_month, end_month,
                         peak_season_start, peak_season_end,
                         xai_facilities_info
                     )
                     OUTPUT Inserted.company_id
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    static_company_name,
-                    static_city,
-                    static_state,
-                    company_data.get("company_type", ""),
-                    company_hs_id,
-                    company_hs_createdate,
-                    company_hs_lastmodified,
-                    year_round_str,
-                    start_month_str,
-                    end_month_str,
-                    peak_season_start_str,
-                    peak_season_end_str,
-                    facilities_info_str
+                    static_company_name, static_city, static_state,
+                    company_hs_id, company_hs_createdate, company_hs_lastmodified,
+                    year_round, start_month, end_month,
+                    peak_season_start, peak_season_end,
+                    facilities_info
                 ))
-                
-                # Capture the new company_id
                 result = cursor.fetchone()
                 company_id = result[0] if result else None
-                
-                if not company_id:
-                    raise ValueError("Failed to get company_id after insertion")
-                
-                conn.commit()
-                logger.info("Successfully inserted new company record", extra={
-                    "company_name": static_company_name,
-                    "company_id": company_id,
-                    "hs_object_id": company_hs_id
-                })
 
-            # If we have a company_id, ensure leads.company_id is updated
-            logger.debug("Updating lead's company_id", extra={
-                "lead_id": lead_id,
-                "company_id": company_id,
-                "email": email
-            })
-            if company_id:
-                if not existing_company_id or existing_company_id != company_id:
-                    logger.debug(f"Updating lead with lead_id={lead_id} to reference company_id={company_id}.")
-                    cursor.execute("""
-                        UPDATE dbo.leads
-                        SET company_id = ?
-                        WHERE lead_id = ?
-                    """, (company_id, lead_id))
-                    conn.commit()
-
-        # ==========================================================
-        # 3. Upsert into lead_properties (phone, lifecycle, competitor, etc.)
-        # ==========================================================
-        cursor.execute("""
-            SELECT property_id FROM dbo.lead_properties WHERE lead_id = ?
-        """, (lead_id,))
-        lp_row = cursor.fetchone()
-
-        if lp_row:
-            prop_id = lp_row[0]
-            logger.debug("Updating existing lead properties", extra={
-                "lead_id": lead_id,
-                "property_id": prop_id,
-                "phone": phone,
-                "lifecyclestage": lifecyclestage,
-                "last_response_date": last_response_date
-            })
-            cursor.execute("""
-                UPDATE dbo.lead_properties
-                SET phone = ?,
-                    lifecyclestage = ?,
-                    competitor_analysis = ?,
-                    last_response_date = ?,
-                    last_modified = GETDATE()
-                WHERE property_id = ?
-            """, (
-                phone,
-                lifecyclestage,
-                competitor_analysis,
-                last_response_date,
-                prop_id
-            ))
+            # Only update lead's company_id if we have both IDs
+            if company_id and lead_id:
+                cursor.execute("""
+                    UPDATE dbo.leads
+                    SET company_id = ?
+                    WHERE lead_id = ?
+                """, (company_id, lead_id))
         else:
-            logger.debug(f"No lead_properties row found; inserting new one for lead_id={lead_id}.")
-            cursor.execute("""
-                INSERT INTO dbo.lead_properties (
-                    lead_id, phone, lifecyclestage, competitor_analysis,
-                    last_response_date, last_modified
-                )
-                VALUES (?, ?, ?, ?, ?, GETDATE())
-            """, (
-                lead_id,
-                phone,
-                lifecyclestage,
-                competitor_analysis,
-                last_response_date
-            ))
-        conn.commit()
+            # If no new company data, use existing company_id from lead
+            company_id = existing_company_id
 
-        # ==========================================================
-        # 4. Upsert into company_properties (dynamic fields)
-        #    No competitor_analysis is saved here (store blank).
-        #    Make sure xai_facilities_news is saved.
-        # ==========================================================
+        # 3. Upsert into lead_properties if we have a lead_id
+        if lead_id:
+            cursor.execute("""
+                SELECT property_id FROM dbo.lead_properties 
+                WHERE lead_id = ?
+            """, (lead_id,))
+            prop_row = cursor.fetchone()
+
+            if prop_row:
+                cursor.execute("""
+                    UPDATE dbo.lead_properties
+                    SET phone = ?,
+                        lifecyclestage = ?,
+                        competitor_analysis = ?,
+                        last_modified = GETDATE()
+                    WHERE lead_id = ?
+                """, (cleaned_phone, lifecyclestage, competitor_analysis, lead_id))
+            else:
+                cursor.execute("""
+                    INSERT INTO dbo.lead_properties (
+                        lead_id, phone, lifecyclestage,
+                        competitor_analysis, last_modified
+                    )
+                    VALUES (?, ?, ?, ?, GETDATE())
+                """, (lead_id, cleaned_phone, lifecyclestage, competitor_analysis))
+
+        # 4. Upsert into company_properties only if we have a company_id
         if company_id:
             cursor.execute("""
-                SELECT property_id FROM dbo.company_properties WHERE company_id = ?
+                SELECT property_id FROM dbo.company_properties 
+                WHERE company_id = ?
             """, (company_id,))
-            cp_row = cursor.fetchone()
+            comp_prop_row = cursor.fetchone()
 
-            if cp_row:
-                cp_id = cp_row[0]
-                logger.debug("Updating existing company properties", extra={
-                    "company_id": company_id,
-                    "property_id": cp_id,
-                    "annualrevenue": annualrevenue,
-                    "has_facilities_news": facilities_news is not None
-                })
+            if comp_prop_row:
                 cursor.execute("""
                     UPDATE dbo.company_properties
                     SET annualrevenue = ?,
                         xai_facilities_news = ?,
                         last_modified = GETDATE()
-                    WHERE property_id = ?
-                """, (
-                    annualrevenue,
-                    facilities_news,
-                    cp_id
-                ))
+                    WHERE company_id = ?
+                """, (annualrevenue, facilities_news, company_id))
             else:
-                logger.debug(f"No company_properties row found; inserting new one for company_id={company_id}.")
                 cursor.execute("""
                     INSERT INTO dbo.company_properties (
-                        company_id,
-                        annualrevenue,
-                        xai_facilities_news,
-                        last_modified
+                        company_id, annualrevenue,
+                        xai_facilities_news, last_modified
                     )
                     VALUES (?, ?, ?, GETDATE())
-                """, (
-                    company_id,
-                    str(annualrevenue) if annualrevenue else None,
-                    str(facilities_news)[:500] if facilities_news else None  # Limit length and ensure string
-                ))
-            conn.commit()
+                """, (company_id, annualrevenue, facilities_news))
 
-        logger.info("Successfully completed lead and company upsert", extra={
+        conn.commit()
+        logger.info("Successfully completed lead upsert", extra={
             "email": email,
+            "correlation_id": correlation_id,
             "lead_id": lead_id,
-            "company_id": company_id if company_id else None,
-            "has_lead_properties": bool(lp_row),
-            "has_company_properties": bool(cp_row) if company_id else False
+            "company_id": company_id
         })
 
-        # Add email storage
-        try:
-            with get_db_connection() as conn:
-                cursor = conn.cursor()
-                
-                # Get lead_id for the email records
-                lead_email = lead_sheet["lead_data"]["properties"]["email"]
-                cursor.execute("SELECT lead_id FROM leads WHERE email = ?", (lead_email,))
-                lead_id = cursor.fetchone()[0]
-                
-                # Insert emails - Add check for existing draft
-                emails = lead_sheet.get("lead_data", {}).get("emails", [])
-                for email in emails:
-                    # Skip drafts - these are handled by store_draft_info
-                    if email.get('status') == 'draft':
-                        logger.debug(f"Skipping draft email for lead_id={lead_id}, will be handled by store_draft_info")
-                        continue
-
-                    # Check if email already exists
-                    cursor.execute("""
-                        SELECT email_id FROM emails 
-                        WHERE lead_id = ? AND draft_id = ?
-                    """, (lead_id, email.get('id')))
-                    
-                    if cursor.fetchone():
-                        logger.debug(f"Email already exists for lead_id={lead_id}, draft_id={email.get('id')}")
-                        continue
-
-                    # Map the email status
-                    status = 'sent' if email.get('status') == 'sent' else 'pending'
-                    
-                    # Convert timestamp to datetime if present
-                    send_date = None
-                    if email.get('timestamp'):
-                        try:
-                            send_date = parse_date(email.get('timestamp'))
-                        except:
-                            logger.warning(f"Could not parse timestamp: {email.get('timestamp')}")
-
-                    cursor.execute("""
-                        INSERT INTO emails (
-                            lead_id, subject, body, 
-                            status, actual_send_date, created_at,
-                            draft_id
-                        )
-                        VALUES (?, ?, ?, ?, ?, GETDATE(), ?)
-                    """, (
-                        lead_id,
-                        email.get('subject'),
-                        email.get('body_text'),
-                        status,
-                        send_date,
-                        email.get('id')
-                    ))
-                
-                conn.commit()
-                logger.info("Successfully stored email records")
-                
-        except Exception as e:
-            logger.error(f"Failed to store emails: {str(e)}")
-            raise
-
-        logger.info(f"Successfully stored {len(emails)} email records")
-
     except Exception as e:
-        logger.error(f"Error in upsert_full_lead: {str(e)}", exc_info=True)
+        logger.error(f"Error in upsert_full_lead: {str(e)}", extra={
+            "correlation_id": correlation_id,
+            "email": email
+        })
+        conn.rollback()
         raise
     finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
+        cursor.close()
+        conn.close()
 
 system_message = (
     "You are a factual assistant that provides objective, data-focused overviews of clubs. "
@@ -2696,890 +1470,6 @@ system_message = (
     "about an amenity, respond with 'Unknown' rather than making assumptions. Never infer "
     "amenities based on club type or location."
 )
-
-
-
-
-## scheduling\followup_generation.py
-
-# followup_generation.py
-
-from scheduling.database import get_db_connection
-from utils.gmail_integration import create_draft
-from utils.logging_setup import logger
-from scripts.golf_outreach_strategy import get_best_outreach_window, adjust_send_time
-from datetime import datetime, timedelta
-import random
-from utils.xai_integration import get_random_subject_template
-
-def generate_followup_email_xai(
-    lead_id: int, 
-    email_id: int = None, 
-    sequence_num: int = None,
-    original_email: dict = None
-) -> dict:
-    """Generate a follow-up email using xAI"""
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Get the most recent email if not provided
-        if not original_email:
-            cursor.execute("""
-                SELECT TOP 1
-                    l.email,
-                    l.first_name,
-                    c.name,
-                    e.subject,
-                    e.body,
-                    e.created_at,
-                    c.state
-                FROM emails e
-                JOIN leads l ON l.lead_id = e.lead_id
-                LEFT JOIN companies c ON l.company_id = c.company_id
-                WHERE e.lead_id = ?
-                AND e.sequence_num = 1
-                ORDER BY e.created_at DESC
-            """, (lead_id,))
-            
-            row = cursor.fetchone()
-            if not row:
-                logger.error(f"No original email found for lead_id={lead_id}")
-                return None
-
-            email, first_name, company_name, subject, body, created_at, state = row
-            original_email = {
-                'email': email,
-                'first_name': first_name,
-                'name': company_name,
-                'subject': subject,
-                'body': body,
-                'created_at': created_at,
-                'state': state
-            }
-
-        # If original_email is provided, use that instead of querying
-        if original_email:
-            email = original_email.get('email')
-            first_name = original_email.get('first_name')
-            company_name = original_email.get('name', 'your club')
-            state = original_email.get('state')
-            orig_subject = original_email.get('subject')
-            orig_body = original_email.get('body')
-            orig_date = original_email.get('created_at', datetime.now())
-            
-            # Get original scheduled send date
-            cursor.execute("""
-                SELECT TOP 1 scheduled_send_date 
-                FROM emails 
-                WHERE lead_id = ? AND sequence_num = 1
-                ORDER BY created_at DESC
-            """, (lead_id,))
-            result = cursor.fetchone()
-            orig_scheduled_date = result[0] if result else orig_date
-        else:
-            # Query for required fields
-            query = """
-                SELECT 
-                    l.email,
-                    l.first_name,
-                    c.state,
-                    c.name,
-                    e.subject,
-                    e.body,
-                    e.created_at
-                FROM leads l
-                LEFT JOIN companies c ON l.company_id = c.company_id
-                LEFT JOIN emails e ON l.lead_id = e.lead_id
-                WHERE l.lead_id = ? AND e.email_id = ?
-            """
-            cursor.execute(query, (lead_id, email_id))
-            result = cursor.fetchone()
-            
-            if not result:
-                logger.error(f"No lead found for lead_id={lead_id}")
-                return None
-
-            email, first_name, state, company_name, orig_subject, orig_body, orig_date = result
-            company_name = company_name or 'your club'
-            
-            # Get original scheduled send date
-            cursor.execute("""
-                SELECT scheduled_send_date 
-                FROM emails 
-                WHERE email_id = ?
-            """, (email_id,))
-            result = cursor.fetchone()
-            orig_scheduled_date = result[0] if result and result[0] else orig_date
-
-        # If orig_scheduled_date is still None, default to orig_date
-        if orig_scheduled_date is None:
-            logger.warning("orig_scheduled_date is None, defaulting to orig_date")
-            orig_scheduled_date = orig_date
-
-        # Validate required fields
-        if not email:
-            logger.error("Missing required field: email")
-            return None
-
-        # Use RE: with original subject
-        subject = f"RE: {orig_subject}"
-
-        # Format the follow-up email body
-        body = (
-            f"Following up about improving operations at {company_name}. "
-            f"Would you have 10 minutes this week for a brief call?\n\n"
-            f"Best regards,\n"
-            f"Ty\n\n"
-            f"Swoop Golf\n"
-            f"480-225-9702\n"
-            f"swoopgolf.com\n\n"
-            f"-------- Original Message --------\n"
-            f"Date: {orig_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Subject: {orig_subject}\n"
-            f"To: {email}\n\n"
-            f"{orig_body}"
-        )
-
-        # Calculate base date (3 days after original scheduled date)
-        base_date = orig_scheduled_date + timedelta(days=3)
-        
-        # Get optimal send window
-        outreach_window = get_best_outreach_window(
-            persona="general",
-            geography="US",
-        )
-        
-        best_time = outreach_window["Best Time"]
-        best_days = outreach_window["Best Day"]
-        
-        # Adjust to next valid day while preserving the 3-day minimum gap
-        while base_date.weekday() not in best_days or base_date < (orig_scheduled_date + timedelta(days=3)):
-            base_date += timedelta(days=1)
-        
-        # Set time within the best window
-        send_hour = best_time["start"]
-        if random.random() < 0.5:  # 50% chance to use later hour
-            send_hour += 1
-            
-        send_date = base_date.replace(
-            hour=send_hour,
-            minute=random.randint(0, 59),
-            second=0,
-            microsecond=0
-        )
-        
-        # Adjust for timezone
-        send_date = adjust_send_time(send_date, state) if state else send_date
-
-        logger.debug(f"[followup_generation] Potential scheduled_send_date for lead_id={lead_id} (1st email) is: {send_date}")
-
-        # Calculate base date (3 days after original scheduled date)
-        base_date = orig_scheduled_date + timedelta(days=3)
-        
-        # Get optimal send window
-        outreach_window = get_best_outreach_window(
-            persona="general",
-            geography="US",
-        )
-        
-        best_time = outreach_window["Best Time"]
-        best_days = outreach_window["Best Day"]
-        
-        # Adjust to next valid day while preserving the 3-day minimum gap
-        while base_date.weekday() not in best_days or base_date < (orig_scheduled_date + timedelta(days=3)):
-            base_date += timedelta(days=1)
-        
-        # Set time within the best window
-        send_hour = best_time["start"]
-        if random.random() < 0.5:  # 50% chance to use later hour
-            send_hour += 1
-            
-        send_date = base_date.replace(
-            hour=send_hour,
-            minute=random.randint(0, 59),
-            second=0,
-            microsecond=0
-        )
-        
-        # Adjust for timezone
-        send_date = adjust_send_time(send_date, state) if state else send_date
-
-        logger.debug(f"[followup_generation] Potential scheduled_send_date for lead_id={lead_id} (follow-up) is: {send_date}")
-
-        return {
-            'email': email,
-            'subject': subject,
-            'body': body,
-            'scheduled_send_date': send_date,
-            'sequence_num': sequence_num or 2,
-            'lead_id': lead_id,
-            'first_name': first_name,
-            'state': state
-        }
-
-    except Exception as e:
-        logger.error(f"Error generating follow-up: {str(e)}", exc_info=True)
-        return None
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-
-
-
-
-## scheduling\followup_scheduler.py
-
-# scheduling/followup_scheduler.py
-
-import datetime
-import time
-from apscheduler.schedulers.background import BackgroundScheduler
-from scheduling.database import get_db_connection, store_email_draft
-from scheduling.followup_generation import generate_followup_email_xai
-from utils.gmail_integration import create_draft
-from utils.logging_setup import logger
-from config.settings import SEND_EMAILS, ENABLE_FOLLOWUPS
-import logging
-
-def check_and_send_followups():
-    """Check for and send any pending follow-up emails"""
-    if not ENABLE_FOLLOWUPS:
-        logger.info("Follow-up emails are disabled via ENABLE_FOLLOWUPS setting")
-        return
-
-    logger.debug("Running check_and_send_followups")
-
-    try:
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        # Get leads needing follow-up with all required fields
-        cursor.execute("""
-            SELECT 
-                e.lead_id,
-                e.email_id,
-                l.email,
-                l.first_name,
-                c.name,
-                e.subject,
-                e.body,
-                e.created_at,
-                c.state
-            FROM emails e
-            JOIN leads l ON l.lead_id = e.lead_id
-            LEFT JOIN companies c ON l.company_id = c.company_id
-            WHERE e.sequence_num = 1
-            AND e.status = 'sent'
-            AND l.email IS NOT NULL
-            AND NOT EXISTS (
-                SELECT 1 FROM emails e2 
-                WHERE e2.lead_id = e.lead_id 
-                AND e2.sequence_num = 2
-            )
-        """)
-        
-        for row in cursor.fetchall():
-            lead_id, email_id, email, first_name, company_name, subject, body, created_at, state = row
-            
-            # Package original email data
-            original_email = {
-                'email': email,
-                'first_name': first_name,
-                'name': company_name,
-                'subject': subject,
-                'body': body,
-                'created_at': created_at,
-                'state': state
-            }
-            
-            # Generate follow-up content
-            followup_data = generate_followup_email_xai(
-                lead_id=lead_id,
-                email_id=email_id,
-                sequence_num=2,
-                original_email=original_email
-            )
-            
-            if followup_data and followup_data.get('scheduled_send_date'):
-                # Create Gmail draft
-                draft_result = create_draft(
-                    sender="me",
-                    to=followup_data['email'],
-                    subject=followup_data['subject'],
-                    message_text=followup_data['body']
-                )
-
-                if draft_result and draft_result.get("status") == "ok":
-                    # Store in database with scheduled_send_date
-                    store_email_draft(
-                        cursor,
-                        lead_id=lead_id,
-                        subject=followup_data['subject'],
-                        body=followup_data['body'],
-                        scheduled_send_date=followup_data['scheduled_send_date'],
-                        sequence_num=followup_data['sequence_num'],
-                        draft_id=draft_result["draft_id"],
-                        status='draft'
-                    )
-                    conn.commit()
-                    logger.info(f"Follow-up scheduled for lead_id={lead_id} at {followup_data['scheduled_send_date']}")
-            else:
-                logger.error(f"Missing scheduled_send_date for lead_id={lead_id}")
-
-    except Exception as e:
-        logger.exception("Error in followup scheduler")
-        if 'conn' in locals():
-            conn.rollback()
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
-
-def start_scheduler():
-    """Initialize and start the follow-up scheduler"""
-    try:
-        scheduler = BackgroundScheduler()
-        scheduler.add_job(
-            check_and_send_followups,
-            'interval',
-            minutes=15,
-            id='check_and_send_followups',
-            next_run_time=datetime.datetime.now()
-        )
-        
-        # Suppress initial scheduler messages
-        logging.getLogger('apscheduler').setLevel(logging.WARNING)
-        
-        scheduler.start()
-        logger.info("Follow-up scheduler initialized")
-        
-    except Exception as e:
-        logger.error(f"Failed to start scheduler: {e}")
-
-if __name__ == "__main__":
-    start_scheduler()
-
-
-
-
-## scripts\build_template.py
-
-# scripts/build_template.py
-
-import os
-import random
-from utils.doc_reader import DocReader
-from utils.logging_setup import logger
-from utils.season_snippet import get_season_variation_key, pick_season_snippet
-from pathlib import Path
-from config.settings import PROJECT_ROOT
-from utils.xai_integration import _send_xai_request
-
-###############################################################################
-# 1) ROLE-BASED SUBJECT-LINE DICTIONARY
-###############################################################################
-CONDITION_SUBJECTS = {
-    "general_manager": [
-        "Quick Question for [FirstName]",
-        "New Ways to Elevate [ClubName]'s Operations",
-        "Boost [ClubName]'s Efficiency with Swoop",
-        "Need Assistance with [Task]? – [FirstName]"
-    ],
-    "fnb_manager": [
-        "Ideas for Increasing F&B Revenue at [ClubName]",
-        "Quick Note for [FirstName] about On-Demand Service",
-        "A Fresh Take on [ClubName]'s F&B Operations"
-    ],
-    "golf_ops": [
-        "Keeping [ClubName] Rounds on Pace: Quick Idea",
-        "New Golf Ops Tools for [ClubName]",
-        "Quick Question for [FirstName] – On-Course Efficiency"
-    ],
-    # New line: If job title doesn't match any known category,
-    # we map it to this fallback template
-    "fallback": [
-        "Enhancing Your Club's Efficiency with Swoop",
-        "Is [ClubName] Looking to Modernize?"
-    ]
-}
-
-
-###############################################################################
-# 2) PICK SUBJECT LINE BASED ON LEAD ROLE & LAST INTERACTION
-###############################################################################
-def pick_subject_line_based_on_lead(
-    lead_role: str,
-    last_interaction_days: int,
-    placeholders: dict
-) -> str:
-    """
-    Choose a subject line from CONDITION_SUBJECTS based on the lead role
-    and the days since last interaction. Then replace placeholders.
-    """
-    # 1) Decide which subject lines to use based on role
-    if lead_role in CONDITION_SUBJECTS:
-        subject_variations = CONDITION_SUBJECTS[lead_role]
-    else:
-        subject_variations = CONDITION_SUBJECTS["fallback"]
-
-    # 2) Example condition: if lead is "older" than 60 days, pick the first subject
-    #    otherwise pick randomly.
-    if last_interaction_days > 60:
-        chosen_template = subject_variations[0]
-    else:
-        chosen_template = random.choice(subject_variations)
-
-    # 3) Replace placeholders in the subject
-    for key, val in placeholders.items():
-        chosen_template = chosen_template.replace(f"[{key}]", val)
-
-    return chosen_template
-
-
-###############################################################################
-# 3) SEASON VARIATION LOGIC (OPTIONAL)
-###############################################################################
-def apply_season_variation(email_text: str, snippet: str) -> str:
-    """
-    Replaces {SEASON_VARIATION} in an email text with the chosen snippet.
-    """
-    return email_text.replace("{SEASON_VARIATION}", snippet)
-
-
-###############################################################################
-# 4) OPTION: READING AN .MD TEMPLATE (BODY ONLY)
-###############################################################################
-def extract_subject_and_body(template_content: str) -> tuple[str, str]:
-    """
-    Extract body from template content, treating the entire content as body.
-    Subject will be handled separately via CONDITION_SUBJECTS.
-    """
-    try:
-        # Clean up the template content
-        body = template_content.strip()
-        
-        logger.debug(f"Template content length: {len(template_content)}")
-        logger.debug(f"Cleaned body length: {len(body)}")
-        
-        if len(body) == 0:
-            logger.warning("Warning: Template body is empty")
-            
-        # Return empty subject since it's handled elsewhere
-        return "", body
-        
-    except Exception as e:
-        logger.error(f"Error processing template: {e}")
-        return "", ""
-
-
-###############################################################################
-# 5) MAIN FUNCTION FOR BUILDING EMAIL
-###############################################################################
-def build_outreach_email(
-    profile_type: str,
-    last_interaction_days: int,
-    placeholders: dict,
-    current_month: int,
-    start_peak_month: int,
-    end_peak_month: int,
-    use_markdown_template: bool = True,
-    template_path: str = None
-) -> tuple[str, str]:
-    """Build email content from template."""
-    try:
-        # Use provided template if available
-        if template_path and Path(template_path).exists():
-            logger.debug(f"Using provided template: {template_path}")
-            logger.info(f"Template file exists: {Path(template_path).exists()}")
-            
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template_content = f.read()
-                logger.debug(f"Successfully read template file. Content length: {len(template_content)}")
-                logger.debug(f"First 100 chars of template: {template_content[:100]}...")
-                
-            # Validate template
-            logger.debug("Validating template content...")
-            validate_template(template_content)
-            logger.debug("Template validation successful")
-            
-            # Extract subject and body from markdown
-            logger.debug("Extracting subject and body from template...")
-            subject, body = extract_subject_and_body(template_content)
-            logger.debug(f"Extracted subject length: {len(subject)}")
-            logger.debug(f"Extracted body length: {len(body)}")
-            
-            # Apply season variation if present
-            if "{SEASON_VARIATION}" in body:
-                logger.debug("Applying season variation...")
-                season_key = get_season_variation_key(
-                    current_month=current_month,
-                    start_peak_month=start_peak_month,
-                    end_peak_month=end_peak_month
-                )
-                season_snippet = pick_season_snippet(season_key)
-                body = apply_season_variation(body, season_snippet)
-                logger.debug("Season variation applied successfully")
-            
-            logger.info("Template processing completed successfully")
-            return subject, body
-                
-        # Fallback to existing template selection logic
-        logger.warning(f"Template path not provided or doesn't exist: {template_path}")
-        # ... rest of existing fallback logic ...
-
-    except FileNotFoundError as e:
-        logger.error(f"Template file not found: {template_path}")
-        logger.error(f"Error details: {str(e)}")
-        return get_fallback_template().split('---\n', 1)
-    except Exception as e:
-        logger.error(f"Error building outreach email: {str(e)}")
-        logger.error(f"Error type: {type(e).__name__}")
-        logger.exception("Full traceback:")
-        return get_fallback_template().split('---\n', 1)
-
-def get_fallback_template() -> str:
-    """Returns a basic fallback template if all other templates fail."""
-    return """Connecting About Club Services
----
-Hi [FirstName],
-
-I wanted to reach out about how we're helping clubs like [ClubName] enhance their member experience through our comprehensive platform.
-
-Would you be open to a brief conversation to explore if our solution might be a good fit for your needs?
-
-Best regards,
-[YourName]
-Swoop Golf
-480-225-9702
-swoopgolf.com"""
-
-def validate_template(template_content: str) -> bool:
-    """Validate template format and structure"""
-    if not template_content:
-        raise ValueError("Template content cannot be empty")
-    
-    # Basic validation that template has some content
-    lines = template_content.strip().split('\n')
-    if len(lines) < 2:  # At least need greeting and body
-        raise ValueError("Template must have sufficient content")
-    
-    return True
-
-def build_template(template_path):
-    try:
-        with open(template_path, 'r') as f:
-            template_content = f.read()
-            
-        # Validate template before processing
-        validate_template(template_content)
-        
-        # Rest of the template building logic...
-        # ...
-    except Exception as e:
-        logger.error(f"Error building template from {template_path}: {str(e)}")
-        raise
-
-def get_xai_icebreaker(club_name: str, recipient_name: str) -> str:
-    """
-    Get personalized icebreaker from xAI with proper error handling and debugging
-    """
-    try:
-        # Log the request parameters
-        logger.debug(f"Requesting xAI icebreaker for club: {club_name}, recipient: {recipient_name}")
-        
-        # Create the payload for xAI request
-        payload = {
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are writing from Swoop Golf's perspective, reaching out to golf clubs about our technology platform."
-                },
-                {
-                    "role": "user",
-                    "content": f"Create a brief, professional icebreaker for {club_name}. Focus on improving their operations and member experience. Keep it concise."
-                }
-            ],
-            "model": "grok-2-1212",
-            "stream": False,
-            "temperature": 0.1
-        }
-        
-        # Use _send_xai_request directly with recipient email
-        response = _send_xai_request(payload, timeout=10)
-        
-        if not response:
-            raise ValueError("Empty response from xAI service")
-            
-        cleaned_response = response.strip()
-        
-        if len(cleaned_response) < 10:
-            raise ValueError(f"Response too short ({len(cleaned_response)} chars)")
-            
-        if '[' in cleaned_response or ']' in cleaned_response:
-            logger.warning("Response contains unresolved template variables")
-        
-        if cleaned_response.lower().startswith(('hi', 'hello', 'dear')):
-            logger.warning("Response appears to be a full greeting instead of an icebreaker")
-            
-        return cleaned_response
-        
-    except Exception as e:
-        logger.warning(
-            "Failed to get xAI icebreaker",
-            extra={
-                'error': str(e),
-                'club_name': club_name,
-                'recipient_name': recipient_name
-            }
-        )
-        return "I wanted to reach out about enhancing your club's operations"  # Fallback icebreaker
-
-def parse_template(template_content):
-    """Parse template content - subject lines are handled separately via CONDITION_SUBJECTS"""
-    logger.debug(f"Parsing template content of length: {len(template_content)}")
-    lines = template_content.strip().split('\n')
-    logger.debug(f"Template contains {len(lines)} lines")
-    
-    # Just return the body content directly
-    result = {
-        'subject': None,  # Subject will be set from CONDITION_SUBJECTS
-        'body': template_content.strip()
-    }
-    
-    logger.debug(f"Parsed template - Body length: {len(result['body'])}")
-    return result
-
-def build_email(template_path, parameters):
-    """Build email from template and parameters"""
-    with open(template_path, 'r') as f:
-        template_content = f.read()
-    
-    template_data = parse_template(template_content)
-    
-    # Replace parameters in both subject and body
-    subject = template_data['subject']
-    body = template_data['body']
-    
-    for key, value in parameters.items():
-        subject = subject.replace(f'[{key}]', str(value))
-        body = body.replace(f'[{key}]', str(value))
-        # Handle season variation differently since it uses curly braces
-        if key == 'SEASON_VARIATION':
-            body = body.replace('{SEASON_VARIATION}', str(value))
-    
-    return {
-        'subject': subject,
-        'body': body
-    }
-
-def extract_template_body(template_content):
-    """Extract body from template content, no subject needed"""
-    try:
-        # Simply clean up the template content
-        body = template_content.strip()
-        
-        logger.debug(f"Extracted body length: {len(body)}")
-        if len(body) == 0:
-            logger.warning("Warning: Extracted body is empty")
-        
-        return body
-        
-    except Exception as e:
-        logger.error(f"Error extracting body: {e}")
-        return ""
-
-def process_template(template_path):
-    try:
-        with open(template_path, 'r', encoding='utf-8') as f:
-            content = f.read()
-            logger.debug(f"Raw template content length: {len(content)}")
-            return extract_template_body(content)
-    except Exception as e:
-        logger.error(f"Error reading template file: {e}")
-        return ""
-
-
-
-## scripts\golf_outreach_strategy.py
-
-"""
-Scripts for determining optimal outreach timing based on club and contact attributes.
-"""
-from typing import Dict, Any
-import csv
-import logging
-from datetime import datetime, timedelta
-import os
-
-logger = logging.getLogger(__name__)
-
-def load_state_offsets():
-    """Load state hour offsets from CSV file."""
-    offsets = {}
-    csv_path = os.path.join('docs', 'data', 'state_timezones.csv')
-    
-    with open(csv_path, 'r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            state = row['state_code']
-            offsets[state] = {
-                'dst': int(row['daylight_savings']),
-                'std': int(row['standard_time'])
-            }
-    return offsets
-
-STATE_OFFSETS = load_state_offsets()
-
-def adjust_send_time(send_time: datetime, state_code: str) -> datetime:
-    """Adjust send time based on state's hour offset."""
-    if not state_code:
-        logger.warning("No state code provided, using original time")
-        return send_time
-        
-    offsets = STATE_OFFSETS.get(state_code.upper())
-    if not offsets:
-        logger.warning(f"No offset data for state {state_code}, using original time")
-        return send_time
-    
-    # Determine if we're in DST
-    is_dst = datetime.now().astimezone().dst() != timedelta(0)
-    offset_hours = offsets['dst'] if is_dst else offsets['std']
-    
-    # Apply offset
-    adjusted_time = send_time + timedelta(hours=offset_hours)
-    logger.debug(f"Adjusted time from {send_time} to {adjusted_time} for state {state_code} (offset: {offset_hours}h)")
-    return adjusted_time
-
-def get_best_month(geography: str, club_type: str = None, season_data: dict = None) -> list:
-    """
-    Determine best outreach months based on geography/season and club type.
-    """
-    current_month = datetime.now().month
-    
-    # If we have season data, use it as primary decision factor
-    if season_data:
-        peak_start = season_data.get('peak_season_start', '')
-        peak_end = season_data.get('peak_season_end', '')
-        
-        if peak_start and peak_end:
-            peak_start_month = int(peak_start.split('-')[0])
-            peak_end_month = int(peak_end.split('-')[0])
-            
-            logger.debug(f"Peak season: {peak_start_month} to {peak_end_month}")
-            
-            # For winter peak season (crossing year boundary)
-            if peak_start_month > peak_end_month:
-                if current_month >= peak_start_month or current_month <= peak_end_month:
-                    # We're in peak season, target shoulder season
-                    return [9]  # September (before peak starts)
-                else:
-                    # We're in shoulder season
-                    return [1]  # January
-            # For summer peak season
-            else:
-                if peak_start_month <= current_month <= peak_end_month:
-                    # We're in peak season, target shoulder season
-                    return [peak_start_month - 1] if peak_start_month > 1 else [12]
-                else:
-                    # We're in shoulder season
-                    return [1]  # January
-    
-    # Fallback to geography-based matrix
-    month_matrix = {
-        "Year-Round Golf": [1, 9],      # January or September
-        "Peak Winter Season": [9],       # September
-        "Peak Summer Season": [2],       # February
-        "Short Summer Season": [1],      # January
-        "Shoulder Season Focus": [2, 10]  # February or October
-    }
-    
-    return month_matrix.get(geography, [1, 9])
-
-def get_best_time(persona: str) -> dict:
-    """
-    Determine best time of day based on persona.
-    Returns a dict with start and end hours in 24-hour format.
-    """
-    time_windows = {
-        "General Manager": {"start": 9, "end": 11},  # 9am-11am
-        "Membership Director": {"start": 13, "end": 15},  # 1pm-3pm
-        "Food & Beverage Director": {"start": 10, "end": 12},  # 10am-12pm
-        "Golf Professional": {"start": 8, "end": 10},  # 8am-10am
-        "Superintendent": {"start": 7, "end": 9}  # 7am-9am
-    }
-    
-    # Convert persona to title case to handle different formats
-    persona = " ".join(word.capitalize() for word in persona.split("_"))
-    return time_windows.get(persona, {"start": 9, "end": 11})
-
-def get_best_day(persona: str) -> list:
-    """
-    Determine best days of week based on persona.
-    Returns a list of day numbers (0 = Monday, 6 = Sunday)
-    """
-    day_mappings = {
-        "General Manager": [1, 3],  # Tuesday, Thursday
-        "Membership Director": [2, 3],  # Wednesday, Thursday
-        "Food & Beverage Director": [2, 3],  # Wednesday, Thursday
-        "Golf Professional": [1, 2],  # Tuesday, Wednesday
-        "Superintendent": [1, 2]  # Tuesday, Wednesday
-    }
-    
-    # Convert persona to title case to handle different formats
-    persona = " ".join(word.capitalize() for word in persona.split("_"))
-    return day_mappings.get(persona, [1, 3])
-
-def get_best_outreach_window(persona: str, geography: str, club_type: str = None, season_data: dict = None) -> Dict[str, Any]:
-    """Get the optimal outreach window based on persona and geography."""
-    best_months = get_best_month(geography, club_type, season_data)
-    best_time = get_best_time(persona)
-    best_days = get_best_day(persona)
-    
-    logger.debug(f"Calculated base outreach window", extra={
-        "persona": persona,
-        "geography": geography,
-        "best_months": best_months,
-        "best_time": best_time,
-        "best_days": best_days
-    })
-    
-    return {
-        "Best Month": best_months,
-        "Best Time": best_time,
-        "Best Day": best_days
-    }
-
-def calculate_send_date(geography: str, profile_type: str, state: str, preferred_days: list, preferred_time: dict) -> datetime:
-    """
-    Calculate the next appropriate send date based on outreach window and preferred days/time.
-    """
-    outreach_window = get_best_outreach_window(geography, profile_type)
-    best_months = outreach_window["Best Month"]
-    
-    # Find the next preferred day of week
-    today = datetime.now().date()
-    days_ahead = [(day - today.weekday()) % 7 for day in preferred_days]
-    next_preferred_day = min(days_ahead)
-    
-    # Adjust to next month if needed
-    if today.month not in best_months:
-        target_month = min(best_months)
-        if today.month > target_month:
-            target_year = today.year + 1
-        else:
-            target_year = today.year
-        target_date = datetime(target_year, target_month, 1)
-    else:
-        target_date = today + timedelta(days=next_preferred_day)
-    
-    # Apply preferred time
-    target_date = target_date.replace(hour=preferred_time["start"])
-    
-    return target_date
 
 
 
@@ -4134,111 +2024,6 @@ class DataGathererService:
         if not city or not state:
             return "Unknown"
         return f"{city}, {state}"
-
-
-
-
-## utils\logging_setup.py
-
-import logging
-import sys
-from logging.handlers import RotatingFileHandler
-from typing import Optional
-from contextlib import contextmanager
-from config.settings import DEBUG_MODE
-import json
-
-class StepLogger(logging.Logger):
-    def step_complete(self, step_number: int, message: str):
-        self.info(f"✓ Step {step_number}: {message}")
-        
-    def step_start(self, step_number: int, message: str):
-        self.debug(f"Starting Step {step_number}: {message}")
-
-def setup_logging():
-    # Register custom logger class
-    logging.setLoggerClass(StepLogger)
-    
-    # Clear existing handlers
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
-    
-    # Configure formatters with more detail
-    console_formatter = logging.Formatter('%(message)s')
-    file_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s\n'
-        'File: [%(pathname)s:%(lineno)d]\n'
-        '%(extra_data)s'  # New field for extra data
-    )
-    
-    # Add custom filter to handle extra data
-    class DetailedExtraDataFilter(logging.Filter):
-        def filter(self, record):
-            if not hasattr(record, 'extra_data'):
-                record.extra_data = ''
-            elif record.extra_data:
-                if isinstance(record.extra_data, dict):
-                    # Pretty print with increased depth and width
-                    record.extra_data = '\n' + json.dumps(
-                        record.extra_data,
-                        indent=2,
-                        ensure_ascii=False,  # Properly handle Unicode
-                        default=str  # Handle non-serializable objects
-                    )
-                    # Add separator lines for readability
-                    record.extra_data = (
-                        '\n' + '='*80 + '\n' +
-                        record.extra_data +
-                        '\n' + '='*80
-                    )
-            return True
-
-    # Console handler (INFO and above)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(console_formatter)
-    console_handler.setLevel(logging.INFO)
-    
-    # File handler with increased size limit
-    file_handler = RotatingFileHandler(
-        'logs/app.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5,
-        delay=True  # Only create file when first record is written
-    )
-    file_handler.setFormatter(file_formatter)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.addFilter(DetailedExtraDataFilter())
-    
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
-    
-    # Suppress external library logs except warnings
-    for logger_name in ['urllib3', 'googleapiclient', 'google.auth', 'openai']:
-        logging.getLogger(logger_name).setLevel(logging.WARNING)
-    
-    return logging.getLogger(__name__)
-
-logger = setup_logging()
-
-def workflow_step(step_num: int, description: str):
-    """Context manager for workflow steps."""
-    class WorkflowStep:
-        def __enter__(self):
-            logger.debug(f"Starting Step {step_num}: {description}")
-            return self
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            if not exc_type:
-                logger.info(f"✓ Step {step_num}: {description}")
-            return False
-
-    return WorkflowStep()
-
-# Make it available for import
-__all__ = ['logger', 'workflow_step']
 
 
 

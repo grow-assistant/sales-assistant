@@ -18,6 +18,7 @@ from utils.xai_integration import (
     get_club_summary
 )
 from utils.logging_setup import logger
+from scripts.golf_outreach_strategy import get_best_outreach_window
 
 # Add these constants after imports
 ###########################
@@ -173,6 +174,49 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
         return False
 
 
+def determine_seasonality(state: str) -> dict:
+    """Determine golf seasonality based on state."""
+    seasonality_map = {
+        # Year-Round Golf States
+        "FL": "Year-Round Golf",
+        "AZ": "Year-Round Golf",
+        "HI": "Year-Round Golf",
+        "CA": "Year-Round Golf",
+        
+        # Short Summer Season States
+        "MN": "Short Summer Season",
+        "WI": "Short Summer Season",
+        "MI": "Short Summer Season",
+        "ME": "Short Summer Season",
+        "VT": "Short Summer Season",
+        "NH": "Short Summer Season",
+        "MT": "Short Summer Season",
+        "ND": "Short Summer Season",
+        "SD": "Short Summer Season",
+        
+        # Peak Summer Season States (default)
+        "default": "Peak Summer Season"
+    }
+    
+    geography = seasonality_map.get(state, seasonality_map["default"])
+    
+    # Calculate season months
+    outreach_window = get_best_outreach_window(
+        persona="General Manager",
+        geography=geography,
+        club_type="Country Club"
+    )
+    
+    best_months = outreach_window["Best Month"]
+    return {
+        "geographic_seasonality": geography,
+        "start_month": min(best_months) if best_months else "",
+        "end_month": max(best_months) if best_months else "",
+        "peak_season_start": f"{min(best_months)}-01" if best_months else "",
+        "peak_season_end": f"{max(best_months)}-28" if best_months else ""
+    }
+
+
 def process_company(company_id: str):
     print(f"\n=== Processing Company ID: {company_id} ===")
 
@@ -220,6 +264,18 @@ def process_company(company_id: str):
         new_club_info = club_info.get("club_info")
         if new_club_info:
             confirmed_updates["club_info"] = new_club_info
+
+        # Get seasonality data
+        season_data = determine_seasonality(state)  # Pass state code
+        
+        # Add seasonality to confirmed updates
+        confirmed_updates.update({
+            "geographic_seasonality": season_data["geographic_seasonality"],
+            "season_start": season_data["start_month"],
+            "season_end": season_data["end_month"],
+            "peak_season_start": season_data["peak_season_start"],
+            "peak_season_end": season_data["peak_season_end"]
+        })
 
         success = update_company_properties(company_id, club_info, confirmed_updates)
         if success:

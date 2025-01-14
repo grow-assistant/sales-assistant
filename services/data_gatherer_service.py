@@ -95,7 +95,7 @@ class DataGathererService:
             "lead_data": {
                 "id": contact_id,
                 "properties": contact_props,
-                # This is where all 15 fields will appear (no filtering):
+                # This is where all fields appear (no filtering)
                 "company_data": company_props,
                 "emails": emails,
                 "notes": notes
@@ -115,7 +115,7 @@ class DataGathererService:
                 },
                 "previous_interactions": self.review_previous_interactions(contact_id),
                 "season_data": self.determine_club_season(
-                    company_props.get("city", ""), 
+                    company_props.get("city", ""),
                     company_props.get("state", "")
                 ),
                 "facilities": self.check_facilities(
@@ -142,7 +142,7 @@ class DataGathererService:
         return lead_sheet
 
     # -------------------------------------------------------------------------
-    # Example competitor-check logic
+    # Competitor-check logic
     # -------------------------------------------------------------------------
     def check_competitor_on_website(self, domain: str, correlation_id: str = None) -> Dict[str, str]:
         if correlation_id is None:
@@ -164,7 +164,7 @@ class DataGathererService:
                     "status": "error",
                     "error": "Could not fetch website content"
                 }
-            # sample competitor mention
+            # Sample competitor mention
             competitor_mentions = ["jonas club software", "jonas software", "jonasclub"]
             for mention in competitor_mentions:
                 if mention in html.lower():
@@ -224,8 +224,8 @@ class DataGathererService:
         })
         try:
             news = xai_news_search(club_name)
+            # xai_news_search can return (news, icebreaker), so handle accordingly
             if isinstance(news, tuple):
-                # If xai_news_search returns (news, icebreaker)
                 news = news[0]
             logger.info("Club news search completed", extra={
                 "club_name": club_name,
@@ -265,7 +265,8 @@ class DataGathererService:
             }
         location_str = f"{city}, {state}".strip(", ")
         try:
-            response = xai_club_info_search(company_name, location_str, amenities=["Golf Course", "Pool", "Tennis Courts"])
+            response = xai_club_info_search(company_name, location_str,
+                                            amenities=["Golf Course", "Pool", "Tennis Courts"])
             return {
                 "response": response,
                 "status": "success"
@@ -322,6 +323,7 @@ class DataGathererService:
                 except ValueError:
                     last_response = "Responded recently"
             else:
+                # If no last reply date but they've opened emails, mention it
                 last_response = "No recent response" if emails_opened == 0 else "Opened emails but no direct reply"
 
             return {
@@ -349,6 +351,7 @@ class DataGathererService:
             }
 
     def _safe_int(self, value: Any, default: int = 0) -> int:
+        """Convert a value to int safely, returning default if it fails."""
         if value is None:
             return default
         try:
@@ -357,6 +360,11 @@ class DataGathererService:
             return default
 
     def load_season_data(self) -> None:
+        """
+        Load city/state-based golf season data from CSV files:
+         - CITY_ST_CSV (golf_seasons_by_city_st.csv)
+         - ST_CSV (golf_seasons_by_st.csv)
+        """
         global CITY_ST_DATA, ST_DATA
         try:
             with CITY_ST_CSV.open('r', encoding='utf-8-sig') as f:
@@ -389,15 +397,7 @@ class DataGathererService:
         Return the peak season data for the given city/state based on CSV lookups.
         """
         if not city and not state:
-            return {
-                "year_round": "Unknown",
-                "start_month": "N/A",
-                "end_month": "N/A",
-                "peak_season_start": "05-01",
-                "peak_season_end": "08-31",
-                "status": "no_data",
-                "error": "No location data provided"
-            }
+            return self._get_default_season_data()
 
         city_key = (city.lower(), state.lower())
         row = CITY_ST_DATA.get(city_key)
@@ -405,33 +405,57 @@ class DataGathererService:
             row = ST_DATA.get(state.lower())
 
         if not row:
-            return {
-                "year_round": "Unknown",
-                "start_month": "N/A",
-                "end_month": "N/A",
-                "peak_season_start": "05-01",
-                "peak_season_end": "08-31",
-                "status": "no_data",
-                "error": "Location not found"
-            }
-
-        year_round = row["Year-Round?"].strip()
-        start_month_str = row["Start Month"].strip()
-        end_month_str = row["End Month"].strip()
-        peak_season_start_str = row["Peak Season Start"].strip() or "May"
-        peak_season_end_str = row["Peak Season End"].strip() or "August"
+            # For Arizona, override with specific data
+            if state.upper() == 'AZ':
+                return {
+                    "year_round": "Yes",  # Arizona is typically year-round golf
+                    "start_month": "1",
+                    "end_month": "12",
+                    "peak_season_start": "01-01",
+                    "peak_season_end": "12-31",
+                    "status": "success",
+                    "error": ""
+                }
+            # For Florida, override with specific data
+            elif state.upper() == 'FL':
+                return {
+                    "year_round": "Yes",  # Florida is year-round golf
+                    "start_month": "1",
+                    "end_month": "12",
+                    "peak_season_start": "01-01",
+                    "peak_season_end": "12-31",
+                    "status": "success",
+                    "error": ""
+                }
+            return self._get_default_season_data()
 
         return {
-            "year_round": year_round,
-            "start_month": start_month_str,
-            "end_month": end_month_str,
-            "peak_season_start": self._month_to_first_day(peak_season_start_str),
-            "peak_season_end": self._month_to_last_day(peak_season_end_str),
+            "year_round": "Yes" if row.get("Year-Round?", "").lower() == "yes" else "No",
+            "start_month": row.get("Start Month", "1"),
+            "end_month": row.get("End Month", "12"),
+            "peak_season_start": self._month_to_first_day(row.get("Peak Season Start", "January")),
+            "peak_season_end": self._month_to_last_day(row.get("Peak Season End", "December")),
             "status": "success",
             "error": ""
         }
 
+    def _get_default_season_data(self) -> Dict[str, str]:
+        """Return default season data."""
+        return {
+            "year_round": "No",
+            "start_month": "3",
+            "end_month": "11",
+            "peak_season_start": "05-01",
+            "peak_season_end": "08-31",
+            "status": "default",
+            "error": "Location not found, using defaults"
+        }
+
     def _month_to_first_day(self, month_name: str) -> str:
+        """
+        Convert a month name (January, February, etc.) to a string "MM-01".
+        Defaults to "05-01" (May 1) if unknown.
+        """
         month_map = {
             "January": ("01", "31"), "February": ("02", "28"), "March": ("03", "31"),
             "April": ("04", "30"), "May": ("05", "31"), "June": ("06", "30"),
@@ -443,6 +467,10 @@ class DataGathererService:
         return "05-01"
 
     def _month_to_last_day(self, month_name: str) -> str:
+        """
+        Convert a month name (January, February, etc.) to a string "MM-DD"
+        for the last day of that month. Defaults to "08-31" if unknown.
+        """
         month_map = {
             "January": ("01", "31"), "February": ("02", "28"), "March": ("03", "31"),
             "April": ("04", "30"), "May": ("05", "31"), "June": ("06", "30"),
@@ -456,15 +484,21 @@ class DataGathererService:
     def _save_lead_context(self, lead_sheet: Dict[str, Any], lead_email: str) -> None:
         """
         Optionally save the lead_sheet for debugging or offline reference.
+        This can be adapted to store lead context in a local JSON file, for example.
         """
-        # (Implementation detail)
+        # Implementation detail: e.g.,
+        # with open(f"lead_contexts/{lead_email}.json", "w", encoding="utf-8") as f:
+        #     json.dump(lead_sheet, f, indent=2)
         pass
 
     def load_state_timezones(self) -> None:
-        """Load state timezone offsets from CSV file."""
+        """
+        Load state timezone offsets from CSV file into STATE_TIMEZONES.
+        The file must have columns: state_code, daylight_savings, standard_time
+        """
         global STATE_TIMEZONES
         try:
-            with open(TIMEZONE_CSV_PATH, 'r') as file:
+            with open(TIMEZONE_CSV_PATH, 'r', encoding='utf-8') as file:
                 reader = csv.DictReader(file)
                 for row in reader:
                     state_code = row['state_code'].strip()
@@ -477,50 +511,40 @@ class DataGathererService:
             logger.error(f"Error loading state timezones: {str(e)}")
             # Default to Eastern Time if loading fails
             STATE_TIMEZONES = {}
-    
+
     def get_club_timezone(self, state: str) -> dict:
         """
-        Get timezone offset data for a given state.
-        
-        Args:
-            state (str): Two-letter state code
-            
-        Returns:
-            dict: Dictionary containing DST and standard time offsets
-                  {'dst': int, 'std': int}
+        Return timezone offset data for a given state code.
+        Returns a dict: {'dst': int, 'std': int}
         """
         state_code = state.upper() if state else ''
         timezone_data = STATE_TIMEZONES.get(state_code, {
-            'dst': -4,  # Default to Eastern Time
+            'dst': -4,  # Default to Eastern (DST)
             'std': -5
         })
-        
+
         logger.debug("Retrieved timezone data for state", extra={
             "state": state_code,
             "dst_offset": timezone_data['dst'],
             "std_offset": timezone_data['std']
         })
-        
+
         return timezone_data
 
     def get_club_geography_and_type(self, club_name: str, city: str, state: str) -> tuple:
         """
-        Get club geography and type based on location and HubSpot data.
+        Get club geography and type based on location + HubSpot data.
         
-        Args:
-            club_name (str): Name of the club
-            city (str): City where the club is located
-            state (str): State where the club is located
-            
         Returns:
-            tuple: (geography: str, club_type: str)
+            (geography: str, club_type: str)
         """
+        from utils.exceptions import HubSpotError
         try:
-            # Try to get company data from HubSpot
+            # Attempt to get company data from HubSpot
             company_data = self.hubspot.get_company_data(club_name)
             geography = self.determine_geography(city, state)
             
-            # Determine club type from HubSpot data
+            # Determine club type from the HubSpot data
             club_type = company_data.get("type", "Public Clubs")
             if not club_type or club_type.lower() == "unknown":
                 club_type = "Public Clubs"
@@ -528,21 +552,12 @@ class DataGathererService:
             return geography, club_type
             
         except HubSpotError:
-            # If company not found in HubSpot, use defaults
+            # If we fail to get company from HubSpot, default
             geography = self.determine_geography(city, state)
             return geography, "Public Clubs"
 
     def determine_geography(self, city: str, state: str) -> str:
-        """
-        Determine geography string from city and state.
-        
-        Args:
-            city (str): City name
-            state (str): State code
-            
-        Returns:
-            str: Geography string in format "City, State" or "Unknown"
-        """
+        """Return 'City, State' or 'Unknown' if missing."""
         if not city or not state:
             return "Unknown"
         return f"{city}, {state}"

@@ -9,17 +9,17 @@ def should_include_file(filepath):
     # List of primary files to include based on most frequently referenced
     primary_files = [
         'main.py',
-        'main_old.py',
+        # 'main_old.py',
         'utils/xai_integration.py',
         'services/data_gatherer_service.py', 
-        'scripts/build_template.py',
-        'utils/logging_setup.py',
-        'scripts/golf_outreach_strategy.py',
-        'services/email_service.py',
+        # 'scripts/build_template.py',
+        # 'utils/logging_setup.py',
+        # 'scripts/golf_outreach_strategy.py',
+        # 'services/email_service.py',
         'scheduling/database.py',
-        'scheduling/extended_lead_storage.py',
-        'scheduling/followup_scheduler.py',
-        'scheduling/followup_generation.py'
+        'scheduling/extended_lead_storage.py'
+        # 'scheduling/followup_scheduler.py',
+        # 'scheduling/followup_generation.py'
     ]
     
     # Check if file is in primary files list

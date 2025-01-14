@@ -24,6 +24,8 @@ import os
 import shutil
 from contextlib import contextmanager
 import uuid
+from scheduling.extended_lead_storage import upsert_full_lead
+from utils.exceptions import LeadContextError
 
 
 # Initialize logging and services
@@ -59,15 +61,23 @@ def clear_files_on_start():
         if logs_dir.exists():
             for file in logs_dir.glob("*"):
                 if file.is_file():
-                    file.unlink()
+                    try:
+                        file.unlink()
+                    except PermissionError:
+                        # Skip files that are currently in use
+                        logger.debug(f"Skipping locked file: {file}")
+                        continue
             logger.debug("Cleared logs directory")
             
         # Clear temp directory
         temp_dir = Path(PROJECT_ROOT) / "temp"
         if temp_dir.exists():
-            shutil.rmtree(temp_dir)
-            temp_dir.mkdir()
-            logger.debug("Cleared temp directory")
+            try:
+                shutil.rmtree(temp_dir)
+                temp_dir.mkdir()
+                logger.debug("Cleared temp directory")
+            except PermissionError:
+                logger.debug("Skipping locked temp directory")
             
     except Exception as e:
         logger.error(f"Error clearing files: {str(e)}")
@@ -719,21 +729,109 @@ def main():
                 "email": lead_props.get("email", ""),
                 "lead_score": lead_props.get("lead_score", "0")
             }
-            
-            # Gather personalization data
+
+            # Get analysis data
+            analysis_data = {
+                "competitor_analysis": data_gatherer.check_competitor_on_website(
+                    company_props.get("website", "")
+                ),
+                "season_data": {
+                    "year_round": company_props.get("geographic_seasonality") == "Year-Round Golf",
+                    "start_month": company_props.get("season_start", ""),
+                    "end_month": company_props.get("season_end", ""),
+                    "peak_season_start": company_props.get("peak_season_start", ""),
+                    "peak_season_end": company_props.get("peak_season_end", "")
+                }
+            }
+
+            # Gather personalization data BEFORE creating lead_sheet
             print("Gathering personalization data...")
             personalization_data = gather_personalization_data(
                 company_props.get("name", ""),
                 company_props.get("city", ""),
                 company_props.get("state", "")
             )
+
+            # Calculate season data
+            outreach_window = get_best_outreach_window(
+                persona=lead_data["jobtitle"],
+                geography=company_props.get("geographic_seasonality", "Year-Round Golf"),
+                club_type=company_props.get("club_type", "Country Club")
+            )
+            
+            # Get season months
+            best_months = outreach_window["Best Month"]
+            season_data = {
+                "year_round": company_props.get("geographic_seasonality") == "Year-Round Golf",
+                "start_month": min(best_months) if best_months else "",
+                "end_month": max(best_months) if best_months else "",
+                "peak_season_start": f"{min(best_months)}-01" if best_months else "",
+                "peak_season_end": f"{max(best_months)}-28" if best_months else ""
+            }
+
+            # Create lead_sheet with calculated season data
+            lead_sheet = {
+                "metadata": {
+                    "status": "success",
+                    "correlation_id": workflow_context['correlation_id'],
+                    "lead_email": lead_data["email"]
+                },
+                "lead_data": {
+                    "email": lead_data["email"],
+                    "properties": {
+                        "firstname": lead_props.get("firstname", ""),
+                        "lastname": lead_props.get("lastname", ""),
+                        "jobtitle": lead_props.get("jobtitle", "General Manager"),
+                        "hs_object_id": lead_props.get("hs_object_id", ""),
+                        "createdate": lead_props.get("createdate", ""),
+                        "lastmodifieddate": lead_props.get("lastmodifieddate", ""),
+                        "lifecyclestage": lead_props.get("lifecyclestage", ""),
+                        "phone": lead_props.get("phone", "")
+                    },
+                    "company_data": {
+                        "name": company_props.get("name", ""),
+                        "city": company_props.get("city", ""),
+                        "state": company_props.get("state", ""),
+                        "company_type": company_props.get("club_type", ""),
+                        "hs_object_id": company_props.get("hs_object_id", ""),
+                        "createdate": company_props.get("createdate", ""),
+                        "lastmodifieddate": company_props.get("lastmodifieddate", ""),
+                        "annualrevenue": company_props.get("annualrevenue", "")
+                    }
+                },
+                "analysis": {
+                    "competitor_analysis": analysis_data.get("competitor_analysis", ""),
+                    "season_data": season_data,
+                    "facilities": {
+                        "response": company_props.get("club_info", "")
+                    },
+                    "research_data": {
+                        "recent_news": [
+                            {"snippet": personalization_data.get("news", "")}
+                        ] if personalization_data.get("news") else []
+                    }
+                }
+            }
+
+            # Log the company type for debugging
+            logger.debug("Company type determined", extra={
+                "company_name": company_props.get("name", ""),
+                "company_type": company_props.get("club_type", ""),
+                "correlation_id": workflow_context['correlation_id']
+            })
+
+            # Step 7: Store lead data in database
+            with workflow_step("7", "Upserting lead data into DB", workflow_context):
+                try:
+                    upsert_full_lead(lead_sheet, correlation_id=workflow_context['correlation_id'])
+                    logger.info("Successfully upserted lead data", extra=workflow_context)
+                except Exception as e:
+                    logger.error(f"Database upsert failed: {str(e)}", extra=workflow_context)
+                    continue
             
             # Summarize interactions
             print("Summarizing interactions...")
-            interaction_summary = summarize_lead_interactions({
-                "lead_data": lead_data,
-                "company_data": company_props
-            })
+            interaction_summary = summarize_lead_interactions(lead_sheet)
             print(f"\nInteraction Summary:\n{interaction_summary}")
             
             # Step 8: Build initial outreach email
@@ -820,6 +918,8 @@ def main():
         if leads_processed == 0:
             print("\nNo qualified companies found for high-scoring leads!")
         
+    except LeadContextError as e:
+        logger.error(f"Lead context error: {str(e)}")
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
         raise
