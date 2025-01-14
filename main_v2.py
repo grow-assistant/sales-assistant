@@ -22,7 +22,6 @@ from scripts.build_template import build_outreach_email
 from pathlib import Path
 import os
 import shutil
-import atexit
 
 
 # Initialize logging and services
@@ -113,7 +112,7 @@ def get_country_club_companies(hubspot: HubspotService, batch_size=25) -> List[D
     return all_results
 
 def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict]:
-    """Get all leads/contacts associated with a company."""
+    """Get all leads/contacts associated with a company with score > 0."""
     try:
         url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
         payload = {
@@ -124,15 +123,29 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
                             "propertyName": "associatedcompanyid",
                             "operator": "EQ",
                             "value": company_id
+                        },
+                        {
+                            "propertyName": "lead_score",
+                            "operator": "GT",
+                            "value": "0"
                         }
                     ]
                 }
             ],
-            "properties": ["email", "firstname", "lastname", "jobtitle"],
+            "properties": ["email", "firstname", "lastname", "jobtitle", "lead_score"],
             "limit": 100
         }
         response = hubspot._make_hubspot_post(url, payload)
-        return response.get("results", [])
+        results = response.get("results", [])
+        
+        # Sort results by lead score (highest to lowest)
+        sorted_results = sorted(
+            results,
+            key=lambda x: float(x.get("properties", {}).get("hs_lead_score", "0") or "0"),
+            reverse=True
+        )
+        
+        return sorted_results
     except Exception as e:
         logger.error(f"Error getting leads for company {company_id}: {e}")
         return []
@@ -570,13 +583,6 @@ def clear_logs():
     except Exception as e:
         logger.error(f"Error clearing log file: {e}")
 
-def cleanup():
-    for handler in logger.handlers[:]:
-        handler.close()
-        logger.removeHandler(handler)
-
-atexit.register(cleanup)
-
 def main():
     """Main function to get companies and select a random lead."""
     try:
@@ -605,8 +611,10 @@ def main():
             leads = get_leads_for_company(hubspot, company_id)
             
             if leads:
-                # Found a company with leads!
-                selected_lead = random.choice(leads)
+                # Select lead with highest score (already sorted)
+                selected_lead = leads[0]
+                lead_score = selected_lead.get("properties", {}).get("lead_score", "0")
+                print(f"Selected lead with score: {lead_score}")
                 
                 # Get properties
                 company_props = selected_company.get("properties", {})
