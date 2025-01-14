@@ -14,13 +14,18 @@ class HubspotService:
     
     def __init__(self, api_key: str, base_url: str = "https://api.hubapi.com"):
         """Initialize HubSpot service with API credentials."""
+        logger.debug("Initializing HubspotService")
+        if not api_key:
+            logger.error("No API key provided to HubspotService")
+            raise ValueError("HubSpot API key is required")
+            
+        self.api_key = api_key
         self.base_url = base_url.rstrip('/')
         self.headers = {
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json"
         }
-        self.max_retries = 3
-        self.retry_delay = 1
+        logger.debug(f"HubspotService initialized with base_url: {self.base_url}")
         
         # Endpoints
         self.contacts_endpoint = f"{self.base_url}/crm/v3/objects/contacts"
@@ -28,6 +33,166 @@ class HubspotService:
         self.notes_search_url = f"{self.base_url}/crm/v3/objects/notes/search"
         self.tasks_endpoint = f"{self.base_url}/crm/v3/objects/tasks"
         self.emails_search_url = f"{self.base_url}/crm/v3/objects/emails/search"
+
+        # Property mappings
+        self.hubspot_property_mapping = {
+            "name": "name",
+            "club_type": "club_type",
+            "facility_complexity": "facility_complexity",
+            "geographic_seasonality": "geographic_seasonality",
+            "has_pool": "has_pool",
+            "has_tennis_courts": "has_tennis_courts",
+            "number_of_holes": "number_of_holes",
+            "public_private_flag": "public_private_flag",
+            "club_info": "club_info",
+            "season_start": "start_month",
+            "season_end": "end_month",
+            "peak_season_start_month": "peak_season_start_month",
+            "peak_season_end_month": "peak_season_end_month"
+        }
+
+        self.property_value_mapping = {
+            "club_type": {
+                "Private": "Private",
+                "Private Course": "Private",
+                "Country Club": "Country Club",
+                "Public": "Public",
+                "Public - Low Daily Fee": "Public - Low Daily Fee",
+                "Municipal": "Municipal",
+                "Semi-Private": "Semi-Private",
+                "Resort": "Resort",
+                "Management Company": "Management Company",
+                "Unknown": "Unknown"
+            },
+            "facility_complexity": {
+                "Single-Course": "Standard",
+                "Multi-Course": "Multi-Course",
+                "Resort": "Resort",
+                "Unknown": "Unknown"
+            },
+            "geographic_seasonality": {
+                "Year-Round": "Year-Round Golf",
+                "Peak Summer Season": "Peak Summer Season",
+                "Short Summer Season": "Short Summer Season",
+                "Unknown": "Unknown"
+            }
+        }
+
+    def search_country_clubs(self, batch_size: int = 25) -> List[Dict[str, Any]]:
+        """Search for Country Club type companies in HubSpot."""
+        url = f"{self.companies_endpoint}/search"
+        all_results = []
+        after = None
+        
+        while True:
+            payload = {
+                "limit": batch_size,
+                "properties": [
+                    "name", "city", "state", "club_type",
+                    "facility_complexity", "geographic_seasonality",
+                    "has_pool", "has_tennis_courts", "number_of_holes",
+                    "public_private_flag", "club_info",
+                    "peak_season_start_month", "peak_season_end_month",
+                    "start_month", "end_month"
+                ],
+                "filterGroups": [{
+                    "filters": [{
+                        "propertyName": "club_type",
+                        "operator": "EQ",
+                        "value": "Country Club"
+                    }]
+                }]
+            }
+            
+            if after:
+                payload["after"] = after
+                
+            try:
+                response = self._make_hubspot_post(url, payload)
+                results = response.get("results", [])
+                all_results.extend(results)
+                
+                paging = response.get("paging", {})
+                next_link = paging.get("next", {}).get("after")
+                if not next_link:
+                    break
+                after = next_link
+                
+            except Exception as e:
+                logger.error(f"Error fetching Country Clubs: {str(e)}")
+                break
+                
+        return all_results
+
+    def update_company_properties(self, company_id: str, properties: Dict[str, Any]) -> bool:
+        """Update company properties in HubSpot."""
+        logger.debug(f"Starting update_company_properties for company_id: {company_id}")
+        logger.debug(f"Input properties: {properties}")
+        
+        try:
+            mapped_updates = {}
+            
+            # Map and transform properties
+            for internal_key, value in properties.items():
+                logger.debug(f"Processing property - Key: {internal_key}, Value: {value}")
+                
+                if value is None or value == "":
+                    logger.debug(f"Skipping empty value for key: {internal_key}")
+                    continue
+
+                hubspot_key = self.hubspot_property_mapping.get(internal_key)
+                if not hubspot_key:
+                    logger.warning(f"No HubSpot mapping for property: {internal_key}")
+                    continue
+
+                logger.debug(f"Pre-transform - Key: {internal_key}, Value: {value}, Type: {type(value)}")
+
+                try:
+                    # Apply enum value transformations
+                    if internal_key in self.property_value_mapping:
+                        original_value = value
+                        value = self.property_value_mapping[internal_key].get(str(value), value)
+                        logger.debug(f"Enum transformation for {internal_key}: {original_value} -> {value}")
+
+                    # Type-specific handling
+                    if internal_key in ["number_of_holes", "season_start", "season_end", 
+                                      "peak_season_start_month", "peak_season_end_month"]:
+                        logger.debug(f"Converting numeric value for {internal_key}: {value}")
+                        value = int(value) if str(value).isdigit() else 0
+                    elif internal_key in ["has_pool", "has_tennis_courts"]:
+                        logger.debug(f"Converting boolean value for {internal_key}: {value}")
+                        value = "Yes" if str(value).lower() in ["yes", "true"] else "No"
+                    elif internal_key == "club_info":
+                        logger.debug(f"Truncating club_info from length {len(str(value))}")
+                        value = str(value)[:5000]
+
+                except Exception as e:
+                    logger.error(f"Error transforming {internal_key}: {str(e)}", exc_info=True)
+                    continue
+
+                mapped_updates[hubspot_key] = value
+
+            # Debug logging
+            logger.debug("Final HubSpot payload:")
+            logger.debug(f"Company ID: {company_id}")
+            logger.debug("Properties:")
+            for key, value in mapped_updates.items():
+                logger.debug(f"  {key}: {value} (Type: {type(value)})")
+
+            url = f"{self.companies_endpoint}/{company_id}"
+            payload = {"properties": mapped_updates}
+            
+            logger.info(f"Making PATCH request to HubSpot - URL: {url}")
+            logger.debug(f"Request payload: {payload}")
+            
+            response = self._make_hubspot_patch(url, payload)
+            success = bool(response)
+            logger.info(f"HubSpot update {'successful' if success else 'failed'} for company {company_id}")
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error updating company {company_id}: {str(e)}", exc_info=True)
+            return False
 
     def get_contact_by_email(self, email: str) -> Optional[Dict[str, Any]]:
         """Find a contact by email address."""
@@ -330,56 +495,45 @@ class HubspotService:
             logger.error(f"HubSpot API error: {str(e)}")
             raise HubSpotError(f"Failed to make HubSpot POST request: {str(e)}")
             
-    def _make_hubspot_get(self, url: str, params: dict = None) -> dict:
-        """
-        Make a GET request to HubSpot API with retries.
-        
-        Args:
-            url: The endpoint URL
-            params: Optional query parameters
-            
-        Returns:
-            dict: The JSON response from HubSpot
-        """
+    def _make_hubspot_get(self, url: str, params: Dict = None) -> Dict[str, Any]:
+        """Make a GET request to HubSpot API."""
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json"
+        }
+        response = requests.get(url, headers=headers, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    def _make_hubspot_patch(self, url: str, payload: Dict) -> Any:
+        """Make a PATCH request to HubSpot API."""
         try:
-            response = requests.get(
-                url,
-                headers=self.headers,
-                params=params
-            )
+            logger.debug(f"Making PATCH request to: {url}")
+            logger.debug(f"Headers: {self.headers}")
+            logger.debug(f"Payload: {payload}")
+            
+            response = requests.patch(url, headers=self.headers, json=payload)
+            logger.debug(f"Response status code: {response.status_code}")
+            logger.debug(f"Response body: {response.text}")
+            
             response.raise_for_status()
             return response.json()
             
         except requests.exceptions.RequestException as e:
-            logger.error(f"HubSpot API error: {str(e)}")
-            raise HubSpotError(f"Failed to make HubSpot GET request: {str(e)}")
+            logger.error(f"Request failed: {str(e)}", exc_info=True)
+            if hasattr(e.response, 'text'):
+                logger.error(f"Response body: {e.response.text}")
+            raise HubSpotError(f"PATCH request failed: {str(e)}")
 
-    def _make_hubspot_patch(self, url: str, payload: dict) -> dict:
-        """Make a PATCH request to HubSpot API with detailed error handling."""
+    def get_company_by_id(self, company_id: str, properties: List[str]) -> Dict[str, Any]:
+        """Get company by ID with specified properties."""
         try:
-            response = requests.patch(
-                url,
-                json=payload,
-                headers=self.headers
-            )
-            
-            # Log the complete response for debugging
-            logger.debug(f"HubSpot Response Status: {response.status_code}")
-            logger.debug(f"HubSpot Response Headers: {response.headers}")
-            try:
-                logger.debug(f"HubSpot Response Body: {response.json()}")
-            except:
-                logger.debug(f"HubSpot Response Text: {response.text}")
-
-            if not response.ok:
-                error = HubSpotError(
-                    f"Failed to make HubSpot PATCH request: {response.status_code} {response.reason}"
-                )
-                error.status_code = response.status_code
-                error.response_body = response.text
-                raise error
-
-            return response.json()
-
-        except requests.exceptions.RequestException as e:
-            raise HubSpotError(f"Network error during HubSpot PATCH request: {str(e)}")
+            url = f"{self.companies_endpoint}/{company_id}"
+            params = {
+                "properties": properties
+            }
+            response = self._make_hubspot_get(url, params=params)
+            return response
+        except Exception as e:
+            logger.error(f"Error getting company {company_id}: {e}")
+            return {}

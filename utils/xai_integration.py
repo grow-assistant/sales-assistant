@@ -389,8 +389,7 @@ def personalize_email_with_xai(
     subject: str,
     body: str,
     summary: str = "",
-    news_summary: str = "",
-    club_info: str = "",
+    news_summary: str = ""
 ) -> Tuple[str, str]:
     """
     Personalizes email content using xAI.
@@ -418,7 +417,6 @@ def personalize_email_with_xai(
         
         context_block = build_context_block(
             interaction_history=summary if summary else "No previous interactions",
-            club_details=club_info if club_info else "",
             objection_handling=objection_handling if has_prior_emails else "",
             original_email={"subject": subject, "body": body},
         )
@@ -1147,15 +1145,11 @@ def get_club_summary(club_name: str, location: str) -> str:
 
     return response.strip()
 
-def build_context_block(interaction_history=None, club_details=None, objection_handling=None, original_email=None):
+def build_context_block(interaction_history=None, objection_handling=None, original_email=None):
     context = {}
     
-    # Only add non-empty fields
     if interaction_history:
         context["interaction_history"] = interaction_history
-    
-    if club_details:
-        context["club_details"] = club_details
         
     if objection_handling:
         context["objection_handling"] = objection_handling
@@ -1165,8 +1159,5 @@ def build_context_block(interaction_history=None, club_details=None, objection_h
             "subject": original_email.get("subject", ""),
             "body": original_email.get("body", "")
         }
-        # Remove original_email if both subject and body are empty
-        if not context["original_email"]["subject"] and not context["original_email"]["body"]:
-            del context["original_email"]
     
     return context

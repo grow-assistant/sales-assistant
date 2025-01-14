@@ -109,6 +109,11 @@ def clear_tables():
         raise e
 
 def store_email_draft(cursor, lead_id: int, subject: str, body: str, 
+                     name: str = None,
+                     company_name: str = None,
+                     company_city: str = None,
+                     company_st: str = None,
+                     company_type: str = None,
                      scheduled_send_date: datetime = None, 
                      sequence_num: int = None,
                      draft_id: str = None,
@@ -118,13 +123,18 @@ def store_email_draft(cursor, lead_id: int, subject: str, body: str,
     """
     cursor.execute("""
         INSERT INTO emails (
-            lead_id, subject, body, status,
-            scheduled_send_date, created_at,
+            lead_id, name, company_name, company_city, company_st, company_type,
+            subject, body, status, scheduled_send_date, created_at,
             sequence_num, draft_id
-        ) VALUES (?, ?, ?, ?, ?, GETDATE(), ?, ?)
+        ) VALUES (
+            ?, ?, ?, ?, ?, ?,
+            ?, ?, ?, ?, GETDATE(),
+            ?, ?
+        )
     """, (
-        lead_id, subject, body, status,
-        scheduled_send_date, sequence_num, draft_id
+        lead_id, name, company_name, company_city, company_st, company_type,
+        subject, body, status, scheduled_send_date,
+        sequence_num, draft_id
     ))
     cursor.execute("SELECT SCOPE_IDENTITY()")
     return cursor.fetchone()[0]

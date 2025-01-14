@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from utils.logging_setup import logger
-from scheduling.database import get_db_connection
+from scheduling.database import get_db_connection, store_email_draft
 
 def store_lead_email_info(
     lead_sheet: dict, 
@@ -37,19 +37,21 @@ def store_lead_email_info(
         company_type = company_data.get("company_type", "")
 
         # Insert into emails table with all info
-        cursor.execute("""
-            INSERT INTO emails (
-                lead_id, name, company_name, company_city, 
-                company_st, company_type, draft_id, 
-                scheduled_send_date, subject, body,
-                status, sequence_num, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, GETDATE())
-        """, (
-            lead_id, name, company_name, company_city,
-            company_st, company_type, draft_id,
-            scheduled_date, subject, body,
-            "draft" if draft_id else None, sequence_num
-        ))
+        store_email_draft(
+            cursor,
+            lead_id=lead_id,
+            name=name,
+            company_name=company_name,
+            company_city=company_city,
+            company_st=company_st,
+            company_type=company_type,
+            subject=subject,
+            body=body,
+            scheduled_send_date=scheduled_date,
+            sequence_num=sequence_num,
+            draft_id=draft_id,
+            status='draft'
+        )
 
         conn.commit()
         logger.info("Successfully stored lead email info", extra={
