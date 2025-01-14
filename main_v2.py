@@ -141,7 +141,7 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
         # Sort results by lead score (highest to lowest)
         sorted_results = sorted(
             results,
-            key=lambda x: float(x.get("properties", {}).get("hs_lead_score", "0") or "0"),
+            key=lambda x: float(x.get("properties", {}).get("lead_score", "0") or "0"),
             reverse=True
         )
         
@@ -583,76 +583,234 @@ def clear_logs():
     except Exception as e:
         logger.error(f"Error clearing log file: {e}")
 
+def get_high_scoring_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
+    """Get all leads with scores above minimum threshold."""
+    try:
+        url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
+        payload = {
+            "filterGroups": [
+                {
+                    "filters": [
+                        {
+                            "propertyName": "lead_score",
+                            "operator": "GT",
+                            "value": str(min_score)
+                        }
+                    ]
+                }
+            ],
+            "properties": [
+                "email", 
+                "firstname", 
+                "lastname", 
+                "jobtitle", 
+                "lead_score",
+                "associatedcompanyid"
+            ],
+            "limit": 100,
+            "sorts": [
+                {
+                    "propertyName": "lead_score",
+                    "direction": "DESCENDING"
+                }
+            ]
+        }
+        response = hubspot._make_hubspot_post(url, payload)
+        return response.get("results", [])
+    except Exception as e:
+        logger.error(f"Error getting high scoring leads: {e}")
+        return []
+
+def get_company_by_id(hubspot: HubspotService, company_id: str) -> Dict:
+    """Get company details by ID."""
+    try:
+        url = f"{hubspot.base_url}/crm/v3/objects/companies/{company_id}"
+        params = {
+            "properties": [
+                "name", 
+                "city", 
+                "state", 
+                "club_type",
+                "facility_complexity",
+                "geographic_seasonality",
+                "has_pool",
+                "has_tennis_courts",
+                "number_of_holes",
+                "public_private_flag",
+                "club_info"
+            ]
+        }
+        response = hubspot._make_hubspot_get(url, params)
+        return response
+    except Exception as e:
+        logger.error(f"Error getting company {company_id}: {e}")
+        return {}
+
 def main():
     """Main function to get companies and select a random lead."""
     try:
         # Initialize HubSpot service
         hubspot = HubspotService(HUBSPOT_API_KEY)
         
-        # Get all country clubs
-        print("Fetching country clubs from HubSpot...")
-        companies = get_country_club_companies(hubspot)
+        # Get high scoring leads first
+        print("Fetching high scoring leads from HubSpot...")
+        leads = get_high_scoring_leads(hubspot, min_score=0)
         
-        if not companies:
-            print("No country clubs found!")
+        if not leads:
+            print("No qualified leads found!")
             return
             
-        # Keep trying random companies until we find one with leads
-        max_attempts = 10
-        attempts = 0
-        while attempts < max_attempts:
-            # Select a random company
-            selected_company = random.choice(companies)
-            company_id = selected_company.get("id")
-            company_name = selected_company.get("properties", {}).get("name", "Unknown")
+        # Process leads in order of score (highest first)
+        for lead in leads:
+            lead_props = lead.get("properties", {})
+            selected_lead = {
+                "id": lead.get("id"),
+                "properties": lead_props
+            }
             
-            # Get leads for selected company
-            print(f"\nChecking leads for: {company_name}...")
-            leads = get_leads_for_company(hubspot, company_id)
+            company_id = lead_props.get("associatedcompanyid")
             
-            if leads:
-                # Select lead with highest score (already sorted)
-                selected_lead = leads[0]
-                lead_score = selected_lead.get("properties", {}).get("lead_score", "0")
-                print(f"Selected lead with score: {lead_score}")
+            if not company_id:
+                continue
                 
-                # Get properties
-                company_props = selected_company.get("properties", {})
-                lead_props = selected_lead.get("properties", {})
+            # Get company details
+            company = get_company_by_id(hubspot, company_id)
+            if not company:
+                continue
                 
-                # Extract lead data
-                print("\nExtracting lead data...")
-                lead_data = extract_lead_data(company_props, lead_props)
+            company_props = company.get("properties", {})
+            
+            # Check if company meets criteria (e.g., is a Country Club)
+            if company_props.get("club_type") != "Country Club":
+                continue
                 
-                # Gather personalization data
-                print("Gathering personalization data...")
-                personalization_data = gather_personalization_data(
-                    company_props.get("name", ""),
-                    company_props.get("city", ""),
-                    company_props.get("state", "")
+            print(f"\nFound qualified lead at: {company_props.get('name', 'Unknown')}")
+            print(f"Lead Score: {lead_props.get('lead_score', '0')}")
+            
+            # Extract lead data
+            print("\nExtracting lead data...")
+            lead_data = extract_lead_data(company_props, lead_props)
+            
+            # Gather personalization data
+            print("Gathering personalization data...")
+            personalization_data = gather_personalization_data(
+                company_props.get("name", ""),
+                company_props.get("city", ""),
+                company_props.get("state", "")
+            )
+            
+            # Summarize interactions
+            print("Summarizing interactions...")
+            interaction_summary = summarize_lead_interactions({"lead_data": lead_data})
+            print(f"\nInteraction Summary:\n{interaction_summary}")
+            
+            # Build email content
+            print("\nBuilding email content...")
+            template_path = get_template_path(
+                club_type=company_props.get("club_type", "Country Club"),
+                role=lead_props.get("jobtitle", "General Manager")
+            )
+            logger.debug(f"Using template path: {template_path}")
+            logger.debug(f"Template exists: {Path(template_path).exists()}")
+
+            subject = get_random_subject_template()
+
+            # Create placeholders
+            placeholders = {
+                "FirstName": lead_props.get("firstname", ""),
+                "LastName": lead_props.get("lastname", ""),
+                "ClubName": company_props.get("name", "Your Club"),
+                "Role": lead_props.get("jobtitle", "General Manager"),
+                "SEASON_VARIATION": pick_season_snippet(get_season_variation_key(
+                    current_month=datetime.now().month,
+                    start_peak_month=5,
+                    end_peak_month=8
+                )).rstrip(',')
+            }
+
+            # Replace placeholders in subject
+            for key, val in placeholders.items():
+                subject = subject.replace(f"[{key}]", val)
+                
+            # Build email body using the correct template
+            _, body = build_outreach_email(
+                profile_type="general_manager",
+                last_interaction_days=0,
+                placeholders=placeholders,
+                current_month=datetime.now().month,
+                start_peak_month=5,
+                end_peak_month=8,
+                use_markdown_template=True,
+                template_path=template_path
+            )
+            
+            # Store original content for fallback
+            orig_subject = subject
+            orig_body = body
+
+            # Step 9: Personalize with xAI
+            print("Personalizing with AI...")
+            try:
+                lead_email = lead_props.get("email", "")
+                
+                # Add debug logging for amenities
+                logger.debug(f"Raw amenity values - Pool: {company_props.get('has_pool')}, Tennis: {company_props.get('has_tennis_courts')}")
+
+                # Build club info string from available properties
+                # club_info = f"{company_props.get('name', '')} is a {company_props.get('club_type', '')} located in {company_props.get('city', '')}, {company_props.get('state', '')}. "
+                club_info = ""
+
+                # Add amenities if present - handle different boolean formats
+                amenities = []
+                if str(company_props.get('has_pool', '')).lower() in ['true', 'yes', '1']:
+                    logger.debug("Adding pool to amenities")
+                    amenities.append('pool')
+                if str(company_props.get('has_tennis_courts', '')).lower() in ['true', 'yes', '1']:
+                    logger.debug("Adding tennis courts to amenities")
+                    amenities.append('tennis courts')
+
+                logger.debug(f"Final amenities list: {amenities}")
+
+                # if amenities:
+                #     club_info += f"The club features {' and '.join(amenities)}. "
+                    
+                logger.debug(f"Generated club info: {club_info}")
+                
+                subject, body = personalize_email_with_xai(
+                    lead_sheet={
+                        "lead_data": {
+                            "firstname": lead_props.get("firstname", ""),
+                            "lastname": lead_props.get("lastname", ""),
+                            "email": lead_props.get("email", ""),
+                            "jobtitle": lead_props.get("jobtitle", ""),
+                            "company": company_props.get("name", "")
+                        },
+                        "company_data": {
+                            "name": company_props.get("name", ""),
+                            "city": company_props.get("city", ""),
+                            "state": company_props.get("state", ""),
+                            "club_type": company_props.get("club_type", "")
+                        }
+                    },
+                    subject=subject,
+                    body=body,
+                    summary=interaction_summary,
+                    news_summary=personalization_data.get("news", "")
                 )
                 
-                # Summarize interactions
-                print("Summarizing interactions...")
-                interaction_summary = summarize_lead_interactions({"lead_data": lead_data})
-                print(f"\nInteraction Summary:\n{interaction_summary}")
+                # Fallback to original content if xAI returns empty
+                if not subject.strip():
+                    subject = orig_subject
+                if not body.strip():
+                    body = orig_body
                 
-                # Build email content
-                print("\nBuilding email content...")
-                template_path = get_template_path(
-                    club_type=company_props.get("club_type", "Country Club"),
-                    role=lead_props.get("jobtitle", "General Manager")
-                )
-                logger.debug(f"Using template path: {template_path}")
-                logger.debug(f"Template exists: {Path(template_path).exists()}")
-
-                subject = get_random_subject_template()
-
-                # Create placeholders
+                # Add placeholders for personalization
                 placeholders = {
                     "FirstName": lead_props.get("firstname", ""),
                     "LastName": lead_props.get("lastname", ""),
-                    "ClubName": company_props.get("name", "Your Club"),
+                    "ClubName": company_props.get("name", ""),
+                    "YourName": "Ty",  # or whatever your default name is
+                    "Your Company": "Swoop Golf",  # add your company name
                     "Role": lead_props.get("jobtitle", "General Manager"),
                     "SEASON_VARIATION": pick_season_snippet(get_season_variation_key(
                         current_month=datetime.now().month,
@@ -660,210 +818,116 @@ def main():
                         end_peak_month=8
                     )).rstrip(',')
                 }
-
-                # Replace placeholders in subject
+                
+                # Replace placeholders in both subject and body
                 for key, val in placeholders.items():
                     subject = subject.replace(f"[{key}]", val)
-                    
-                # Build email body using the correct template
-                _, body = build_outreach_email(
-                    profile_type="general_manager",
-                    last_interaction_days=0,
-                    placeholders=placeholders,
-                    current_month=datetime.now().month,
-                    start_peak_month=5,
-                    end_peak_month=8,
-                    use_markdown_template=True,
-                    template_path=template_path
+                    body = body.replace(f"[{key}]", val)
+                    # Also replace variations of the placeholder format
+                    body = body.replace(f"[Your Name]", placeholders["YourName"])
+                    body = body.replace(f"[Your Company]", placeholders["YourCompany"])
+
+                # Cleanup any markdown formatting
+                body = body.replace("**", "")
+                
+                logger.debug("xAI personalization completed", extra={
+                    "to": lead_email,
+                    "subject": subject
+                })
+            except Exception as e:
+                logger.error(f"xAI personalization error: {e}")
+                subject, body = orig_subject, orig_body
+
+            # Add icebreaker if news exists
+            if personalization_data.get("has_news"):
+                try:
+                    icebreaker = _build_icebreaker_from_news(
+                        company_props.get("name", ""), 
+                        personalization_data["news"]
+                    )
+                    if icebreaker:
+                        body = body.replace("[ICEBREAKER]", icebreaker)
+                except Exception as e:
+                    logger.error(f"Icebreaker generation error: {e}")
+                        
+            # Clean up any remaining icebreaker placeholders
+            body = body.replace("[ICEBREAKER]\n\n", "")
+            body = body.replace("[ICEBREAKER]\n", "")
+            body = body.replace("[ICEBREAKER]", "")
+            
+            # Clean up extra newlines
+            while "\n\n\n" in body:
+                body = body.replace("\n\n\n", "\n\n")
+                
+            # Replace placeholders in body
+            for key, val in placeholders.items():
+                body = body.replace(f"[{key}]", val)
+                
+            print("\nGenerated Email Content:")
+            print(f"Subject: {subject}")
+            print(f"Body Preview: {body[:200]}...")
+            
+            # Print results
+            print("\nSelected Company and Lead:")
+            print(f"Company: {company_props.get('name')} ({company_props.get('city')}, {company_props.get('state')})")
+            print(f"Lead: {lead_props.get('firstname')} {lead_props.get('lastname')}")
+            print(f"Email: {lead_props.get('email')}")
+            print(f"Job Title: {lead_props.get('jobtitle')}")
+            
+            print("\nCompany Details:")
+            print(f"Facility Complexity: {company_props.get('facility_complexity')}")
+            print(f"Has Pool: {company_props.get('has_pool')}")
+            print(f"Has Tennis Courts: {company_props.get('has_tennis_courts')}")
+            print(f"Number of Holes: {company_props.get('number_of_holes')}")
+            print(f"Public/Private: {company_props.get('public_private_flag')}")
+            print(f"Geographic Seasonality: {company_props.get('geographic_seasonality')}")
+            
+            print("\nPersonalization Data:")
+            if personalization_data.get("has_news"):
+                print(f"Recent News: {personalization_data['news'][:200]}...")
+            
+            # After email content generation...
+            print("\nCreating and scheduling Gmail draft...")
+            try:
+                # Calculate optimal send date
+                send_date = calculate_send_date(
+                    geography=company_props.get('geographic_seasonality', 'Year-Round Golf'),
+                    persona="general_manager",
+                    state_code=company_props.get('state'),
+                    season_data=None
                 )
                 
-                # Store original content for fallback
-                orig_subject = subject
-                orig_body = body
-
-                # Step 9: Personalize with xAI
-                print("Personalizing with AI...")
-                try:
-                    lead_email = lead_props.get("email", "")
-                    
-                    # Add debug logging for amenities
-                    logger.debug(f"Raw amenity values - Pool: {company_props.get('has_pool')}, Tennis: {company_props.get('has_tennis_courts')}")
-
-                    # Build club info string from available properties
-                    # club_info = f"{company_props.get('name', '')} is a {company_props.get('club_type', '')} located in {company_props.get('city', '')}, {company_props.get('state', '')}. "
-                    club_info = ""
-
-                    # Add amenities if present - handle different boolean formats
-                    amenities = []
-                    if str(company_props.get('has_pool', '')).lower() in ['true', 'yes', '1']:
-                        logger.debug("Adding pool to amenities")
-                        amenities.append('pool')
-                    if str(company_props.get('has_tennis_courts', '')).lower() in ['true', 'yes', '1']:
-                        logger.debug("Adding tennis courts to amenities")
-                        amenities.append('tennis courts')
-
-                    logger.debug(f"Final amenities list: {amenities}")
-
-                    # if amenities:
-                    #     club_info += f"The club features {' and '.join(amenities)}. "
-                    
-                    logger.debug(f"Generated club info: {club_info}")
-                    
-                    subject, body = personalize_email_with_xai(
-                        lead_sheet={
-                            "lead_data": {
-                                "firstname": lead_props.get("firstname", ""),
-                                "lastname": lead_props.get("lastname", ""),
-                                "email": lead_props.get("email", ""),
-                                "jobtitle": lead_props.get("jobtitle", ""),
-                                "company": company_props.get("name", "")
-                            },
-                            "company_data": {
-                                "name": company_props.get("name", ""),
-                                "city": company_props.get("city", ""),
-                                "state": company_props.get("state", ""),
-                                "club_type": company_props.get("club_type", "")
-                            }
-                        },
+                # Create Gmail draft
+                draft_result = create_draft(
+                    sender="me",
+                    to=lead_props.get('email'),
+                    subject=subject,
+                    message_text=body
+                )
+                
+                if draft_result["status"] == "ok":
+                    # Store draft info in database
+                    store_draft_info(
+                        lead_id=selected_lead.get("id"),
+                        draft_id=draft_result["draft_id"],
+                        scheduled_date=send_date,
                         subject=subject,
                         body=body,
-                        summary=interaction_summary,
-                        news_summary=personalization_data.get("news", "")
+                        sequence_num=1  # Initial outreach
                     )
+                    print(f"✓ Gmail draft created and scheduled for: {send_date}")
+                    logger.info(f"Draft created with ID: {draft_result['draft_id']}")
+                else:
+                    print("✗ Failed to create Gmail draft")
+                    logger.error("Failed to create Gmail draft")
                     
-                    # Fallback to original content if xAI returns empty
-                    if not subject.strip():
-                        subject = orig_subject
-                    if not body.strip():
-                        body = orig_body
-                    
-                    # Add placeholders for personalization
-                    placeholders = {
-                        "FirstName": lead_props.get("firstname", ""),
-                        "LastName": lead_props.get("lastname", ""),
-                        "ClubName": company_props.get("name", ""),
-                        "YourName": "Ty",  # or whatever your default name is
-                        "Your Company": "Swoop Golf",  # add your company name
-                        "Role": lead_props.get("jobtitle", "General Manager"),
-                        "SEASON_VARIATION": pick_season_snippet(get_season_variation_key(
-                            current_month=datetime.now().month,
-                            start_peak_month=5,
-                            end_peak_month=8
-                        )).rstrip(',')
-                    }
-                    
-                    # Replace placeholders in both subject and body
-                    for key, val in placeholders.items():
-                        subject = subject.replace(f"[{key}]", val)
-                        body = body.replace(f"[{key}]", val)
-                        # Also replace variations of the placeholder format
-                        body = body.replace(f"[Your Name]", placeholders["YourName"])
-                        body = body.replace(f"[Your Company]", placeholders["YourCompany"])
-
-                    # Cleanup any markdown formatting
-                    body = body.replace("**", "")
-                    
-                    logger.debug("xAI personalization completed", extra={
-                        "to": lead_email,
-                        "subject": subject
-                    })
-                except Exception as e:
-                    logger.error(f"xAI personalization error: {e}")
-                    subject, body = orig_subject, orig_body
-
-                # Add icebreaker if news exists
-                if personalization_data.get("has_news"):
-                    try:
-                        icebreaker = _build_icebreaker_from_news(
-                            company_props.get("name", ""), 
-                            personalization_data["news"]
-                        )
-                        if icebreaker:
-                            body = body.replace("[ICEBREAKER]", icebreaker)
-                    except Exception as e:
-                        logger.error(f"Icebreaker generation error: {e}")
-                        
-                # Clean up any remaining icebreaker placeholders
-                body = body.replace("[ICEBREAKER]\n\n", "")
-                body = body.replace("[ICEBREAKER]\n", "")
-                body = body.replace("[ICEBREAKER]", "")
-                
-                # Clean up extra newlines
-                while "\n\n\n" in body:
-                    body = body.replace("\n\n\n", "\n\n")
-                    
-                # Replace placeholders in body
-                for key, val in placeholders.items():
-                    body = body.replace(f"[{key}]", val)
-                    
-                print("\nGenerated Email Content:")
-                print(f"Subject: {subject}")
-                print(f"Body Preview: {body[:200]}...")
-                
-                # Print results
-                print("\nSelected Company and Lead:")
-                print(f"Company: {company_props.get('name')} ({company_props.get('city')}, {company_props.get('state')})")
-                print(f"Lead: {lead_props.get('firstname')} {lead_props.get('lastname')}")
-                print(f"Email: {lead_props.get('email')}")
-                print(f"Job Title: {lead_props.get('jobtitle')}")
-                
-                print("\nCompany Details:")
-                print(f"Facility Complexity: {company_props.get('facility_complexity')}")
-                print(f"Has Pool: {company_props.get('has_pool')}")
-                print(f"Has Tennis Courts: {company_props.get('has_tennis_courts')}")
-                print(f"Number of Holes: {company_props.get('number_of_holes')}")
-                print(f"Public/Private: {company_props.get('public_private_flag')}")
-                print(f"Geographic Seasonality: {company_props.get('geographic_seasonality')}")
-                
-                print("\nPersonalization Data:")
-                if personalization_data.get("has_news"):
-                    print(f"Recent News: {personalization_data['news'][:200]}...")
-                
-                # After email content generation...
-                print("\nCreating and scheduling Gmail draft...")
-                try:
-                    # Calculate optimal send date
-                    send_date = calculate_send_date(
-                        geography=company_props.get('geographic_seasonality', 'Year-Round Golf'),
-                        persona="general_manager",
-                        state_code=company_props.get('state'),
-                        season_data=None
-                    )
-                    
-                    # Create Gmail draft
-                    draft_result = create_draft(
-                        sender="me",
-                        to=lead_props.get('email'),
-                        subject=subject,
-                        message_text=body
-                    )
-                    
-                    if draft_result["status"] == "ok":
-                        # Store draft info in database
-                        store_draft_info(
-                            lead_id=selected_lead.get("id"),
-                            draft_id=draft_result["draft_id"],
-                            scheduled_date=send_date,
-                            subject=subject,
-                            body=body,
-                            sequence_num=1  # Initial outreach
-                        )
-                        print(f"✓ Gmail draft created and scheduled for: {send_date}")
-                        logger.info(f"Draft created with ID: {draft_result['draft_id']}")
-                    else:
-                        print("✗ Failed to create Gmail draft")
-                        logger.error("Failed to create Gmail draft")
-                        
-                except Exception as e:
-                    logger.error(f"Error creating/scheduling draft: {str(e)}")
-                    print(f"✗ Error scheduling email: {str(e)}")
-                
-                return
+            except Exception as e:
+                logger.error(f"Error creating/scheduling draft: {str(e)}")
+                print(f"✗ Error scheduling email: {str(e)}")
             
-            attempts += 1
-            print(f"No leads found (attempt {attempts}/{max_attempts})")
+            return
             
-        print(f"\nFailed to find any companies with leads after {max_attempts} attempts!")
+        print("\nNo qualified companies found for high-scoring leads!")
         
     except Exception as e:
         logger.error(f"Error in main: {str(e)}")
