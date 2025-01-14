@@ -110,17 +110,39 @@ def extract_subject_and_body(template_content: str) -> tuple[str, str]:
 # 5) MAIN FUNCTION FOR BUILDING EMAIL
 ###############################################################################
 def build_outreach_email(
-    profile_type: str,
-    last_interaction_days: int,
-    placeholders: dict,
-    current_month: int,
-    start_peak_month: int,
-    end_peak_month: int,
+    template_path: str,
+    profile_type: str = None,
+    last_interaction_days: int = 0,
+    placeholders: dict = None,
+    current_month: int = None,
+    start_peak_month: int = None,
+    end_peak_month: int = None,
     use_markdown_template: bool = True,
-    template_path: str = None
 ) -> tuple[str, str]:
-    """Build email content from template."""
+    """
+    Build email content from template.
+    
+    Args:
+        template_path: Path to the email template file
+        profile_type: Type of recipient profile
+        last_interaction_days: Days since last interaction
+        placeholders: Dictionary of placeholder values including:
+            - company_name: Name of the company
+            - first_name: Recipient's first name
+            - last_name: Recipient's last name
+            - job_title: Recipient's job title
+            - company_info: Additional company information
+        current_month: Current month number (1-12)
+        start_peak_month: Start of peak season month (1-12)
+        end_peak_month: End of peak season month (1-12)
+        use_markdown_template: Whether to use markdown template format
+    
+    Returns:
+        tuple[str, str]: (subject, body) of the email
+    """
     try:
+        placeholders = placeholders or {}
+        
         # Use provided template if available
         if template_path and Path(template_path).exists():
             logger.debug(f"Using provided template: {template_path}")
@@ -129,22 +151,15 @@ def build_outreach_email(
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
                 logger.debug(f"Successfully read template file. Content length: {len(template_content)}")
-                logger.debug(f"First 100 chars of template: {template_content[:100]}...")
                 
             # Validate template
-            logger.debug("Validating template content...")
             validate_template(template_content)
-            logger.debug("Template validation successful")
             
             # Extract subject and body from markdown
-            logger.debug("Extracting subject and body from template...")
             subject, body = extract_subject_and_body(template_content)
-            logger.debug(f"Extracted subject length: {len(subject)}")
-            logger.debug(f"Extracted body length: {len(body)}")
             
             # Apply season variation if present
             if "{SEASON_VARIATION}" in body:
-                logger.debug("Applying season variation...")
                 season_key = get_season_variation_key(
                     current_month=current_month,
                     start_peak_month=start_peak_month,
@@ -152,14 +167,19 @@ def build_outreach_email(
                 )
                 season_snippet = pick_season_snippet(season_key)
                 body = apply_season_variation(body, season_snippet)
-                logger.debug("Season variation applied successfully")
+            
+            # Replace placeholders in both subject and body
+            for key, value in placeholders.items():
+                if value:  # Only replace if value is not None/empty
+                    subject = subject.replace(f"[{key}]", str(value))
+                    body = body.replace(f"[{key}]", str(value))
             
             logger.info("Template processing completed successfully")
             return subject, body
                 
         # Fallback to existing template selection logic
         logger.warning(f"Template path not provided or doesn't exist: {template_path}")
-        # ... rest of existing fallback logic ...
+        return get_fallback_template().split('---\n', 1)
 
     except FileNotFoundError as e:
         logger.error(f"Template file not found: {template_path}")

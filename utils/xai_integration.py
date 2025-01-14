@@ -335,49 +335,79 @@ def xai_club_info_search(club_name: str, location: str, amenities: list = None) 
     _cache["club_info"][cache_key] = parsed_info
 
     return parsed_info
-
-
 def _parse_club_response(response: str) -> Dict[str, Any]:
-    """
-    Parse structured club information response.
-    """
+    """Parse the club info response and extract structured data."""
     result = {
-        "overview": "",
-        "facility_type": "Other",
-        "has_pool": "No",
-        "amenities": [],
+        'name': '',
+        'club_type': 'Unknown', 
+        'facility_complexity': 'Unknown',
+        'geographic_seasonality': 'Unknown',
+        'has_pool': 'No',
+        'has_tennis_courts': 'No',
+        'number_of_holes': 0,
+        'raw_response': response
     }
 
-    sections = {
-        "overview": re.search(
-            r"OVERVIEW:\s*(.+?)(?=FACILITY TYPE:|$)", response, re.DOTALL
-        ),
-        "facility_type": re.search(
-            r"FACILITY TYPE:\s*(.+?)(?=HAS POOL:|$)", response, re.DOTALL
-        ),
-        "has_pool": re.search(
-            r"HAS POOL:\s*(.+?)(?=AMENITIES:|$)", response, re.DOTALL
-        ),
-        "amenities": re.search(r"AMENITIES:\s*(.+?)$", response, re.DOTALL),
-    }
+    # Extract official name first
+    name_match = re.search(r'OFFICIAL NAME:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if name_match:
+        result['name'] = name_match.group(1).strip()
+        logger.debug(f"Found official name: {result['name']}")
+    
+    # Use this name for all subsequent operations
+    if result['name']:
+        # Update cache with official name
+        cache_key = result['name'].lower()
+        if cache_key != result['name']:
+            _cache["club_info"][cache_key] = result
+            logger.debug(f"Updated cache with official name: {result['name']}")
+            
+        # Update any existing cache entries
+        old_key = next((k for k in _cache["club_info"] if k.lower() == cache_key), None)
+        if old_key and old_key != cache_key:
+            _cache["club_info"][cache_key] = _cache["club_info"].pop(old_key)
+            logger.debug(f"Migrated cache entry from {old_key} to {cache_key}")
+            
+        # Update news cache if needed
+        if old_key in _cache["news"]:
+            _cache["news"][cache_key] = _cache["news"].pop(old_key)
+            logger.debug(f"Updated news cache with official name")
 
-    if sections["overview"]:
-        result["overview"] = sections["overview"].group(1).strip()
+    # Parse club type
+    type_match = re.search(r'CLUB TYPE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if type_match:
+        result['club_type'] = type_match.group(1).strip()
 
-    if sections["facility_type"]:
-        result["facility_type"] = sections["facility_type"].group(1).strip()
+    # Parse facility complexity
+    complexity_match = re.search(r'FACILITY COMPLEXITY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if complexity_match:
+        result['facility_complexity'] = complexity_match.group(1).strip()
 
-    if sections["has_pool"]:
-        pool_value = sections["has_pool"].group(1).strip().lower()
-        result["has_pool"] = "Yes" if "yes" in pool_value else "No"
+    # Parse seasonality
+    season_match = re.search(r'GEOGRAPHIC SEASONALITY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if season_match:
+        result['geographic_seasonality'] = season_match.group(1).strip()
 
-    if sections["amenities"]:
-        amenities_text = sections["amenities"].group(1)
-        result["amenities"] = [
-            a.strip("- ").strip()
-            for a in amenities_text.split("\n")
-            if a.strip("- ").strip()
-        ]
+    # Parse pool info
+    pool_match = re.search(r'POOL:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if pool_match:
+        pool_value = pool_match.group(1).strip().lower()
+        result['has_pool'] = 'Yes' if 'yes' in pool_value else 'No'
+
+    # Parse tennis courts
+    tennis_match = re.search(r'TENNIS COURTS:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if tennis_match:
+        tennis_value = tennis_match.group(1).strip().lower()
+        result['has_tennis_courts'] = 'Yes' if 'yes' in tennis_value else 'No'
+
+    # Parse number of holes
+    holes_match = re.search(r'GOLF HOLES:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    if holes_match:
+        holes_text = holes_match.group(1).strip()
+        try:
+            result['number_of_holes'] = int(holes_text)
+        except ValueError:
+            logger.warning(f"Could not parse number of holes from: {holes_text}")
 
     return result
 
@@ -570,106 +600,6 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
 
     _cache["icebreakers"][cache_key] = response
     return response
-
-# def get_email_critique(email_subject: str, email_body: str, guidance: dict) -> str:
-#     """
-#     Get expert critique of the email draft.
-#     """
-#     rules = get_email_rules()
-#     rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
-# 
-#     payload = {
-#         "messages": [
-#             {
-#                 "role": "system",
-#                 "content": (
-#                     "You are an expert at critiquing emails using specific rules. "
-#                     "Analyze the email draft and provide specific critiques focusing on:\n"
-#                     f"{rules_text}\n"
-#                     "Provide actionable recommendations for improvement."
-#                 ),
-#             },
-#             {
-#                 "role": "user",
-#                 "content": f"""
-#                 Original Email:
-#                 Subject: {email_subject}
-#                 
-#                 Body:
-#                 {email_body}
-#                 
-#                 Original Guidance:
-#                 {json.dumps(guidance, indent=2)}
-#                 
-#                 Please provide specific critiques and recommendations for improvement.
-#                 """,
-#             },
-#         ],
-#         "model": MODEL_NAME,
-#         "stream": False,
-#         "temperature": EMAIL_TEMPERATURE,
-#     }
-# 
-#     logger.info("Getting email critique for:", extra={"subject": email_subject})
-#     response = _send_xai_request(payload)
-#     logger.info("Email critique result:", extra={"critique": response})
-#     return response
-
-# def revise_email_with_critique(email_subject: str, email_body: str, critique: str) -> tuple[str, str]:
-#     """
-#     Revise the email based on the critique.
-#     Returns a tuple of (new_subject, new_body).
-#     """
-#     rules = get_email_rules()
-#     rules_text = "\n".join(f"{i+1}. {rule}" for i, rule in enumerate(rules))
-# 
-#     payload = {
-#         "messages": [
-#             {
-#                 "role": "system",
-#                 "content": (
-#                     "You are a renowned expert at cold email outreach, similar to Alex Berman. "
-#                     "Apply your proven methodology to rewrite this email. "
-#                     "Use all of your knowledge just as you teach in Cold Email University."
-#                 ),
-#             },
-#             {
-#                 "role": "user",
-#                 "content": f"""
-#                 Original Email:
-#                 Subject: {email_subject}
-#                 
-#                 Body:
-#                 {email_body}
-#                 
-#                 Instructions:
-#                 {rules_text}
-# 
-#                 Expert Critique:
-#                 {critique}
-#                 
-#                 Please rewrite the email incorporating these recommendations.
-#                 Format the response as:
-#                 Subject: [new subject]
-#                 
-#                 Body:
-#                 [new body]
-#                 """,
-#             },
-#         ],
-#         "model": MODEL_NAME,
-#         "stream": False,
-#         "temperature": EMAIL_TEMPERATURE,
-#     }
-# 
-#     logger.info(
-#         "Revising email with critique for:",
-#         extra={"subject": email_subject},
-#     )
-#     result = _send_xai_request(payload)
-#     logger.info("Email revision result:", extra={"result": result})
-#     return _parse_xai_response(result)
-
 
 def generate_followup_email_content(
     first_name: str,
@@ -1036,25 +966,31 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         elif 'seasonal' in seasonality:
             result['geographic_seasonality'] = 'Seasonal'
 
-    # Process number of holes with better number extraction
+    # Process number of holes with better validation
     if sections['holes']:
         holes_text = clean_value(sections['holes'].group(1)).lower()
         logger.debug(f"Processing holes text: '{holes_text}'")
         
-        # Try to extract number from text
-        number_match = re.search(r'(\d+)', holes_text)
-        if number_match:
-            try:
-                result['number_of_holes'] = int(number_match.group(1))
-                logger.debug(f"Found {result['number_of_holes']} holes")
-            except ValueError:
-                logger.warning(f"Could not convert {number_match.group(1)} to integer")
-        
-        # Handle text numbers for multiple courses
-        if 'three' in holes_text and '18' in holes_text:
-            result['number_of_holes'] = 54
-        elif 'two' in holes_text and '18' in holes_text:
-            result['number_of_holes'] = 36
+        # First check for explicit mentions of multiple courses
+        if 'three' in holes_text and '9' in holes_text:
+            result['number_of_holes'] = 27
+        elif 'two' in holes_text and '9' in holes_text:
+            result['number_of_holes'] = 18
+        elif '27' in holes_text:
+            result['number_of_holes'] = 27
+        elif '18' in holes_text:
+            result['number_of_holes'] = 18
+        elif '9' in holes_text:
+            result['number_of_holes'] = 9
+        else:
+            # Try to extract any other number
+            number_match = re.search(r'(\d+)', holes_text)
+            if number_match:
+                try:
+                    result['number_of_holes'] = int(number_match.group(1))
+                    logger.debug(f"Found {result['number_of_holes']} holes")
+                except ValueError:
+                    logger.warning(f"Could not convert {number_match.group(1)} to integer")
 
     # Process facility complexity
     if sections['facility_complexity']:
