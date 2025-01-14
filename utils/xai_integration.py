@@ -420,12 +420,17 @@ def personalize_email_with_xai(
     body: str,
     summary: str = "",
     news_summary: str = ""
-) -> Tuple[str, str]:
+) -> Dict[str, str]:
     """
     Personalizes email content using xAI.
-    Returns a tuple of (subject, body).
+    Returns a dictionary with 'subject' and 'body' keys.
     """
     try:
+        # Ensure lead_sheet is a dictionary
+        if not isinstance(lead_sheet, dict):
+            logger.warning(f"Invalid lead_sheet type: {type(lead_sheet)}. Using empty dict.")
+            lead_sheet = {}
+
         previous_interactions = lead_sheet.get("analysis", {}).get("previous_interactions", {})
         has_prior_emails = bool(lead_sheet.get("lead_data", {}).get("emails", []))
         logger.debug(f"Has the lead previously emailed us? {has_prior_emails}")
@@ -492,16 +497,31 @@ def personalize_email_with_xai(
             },
         )
         response = _send_xai_request(payload)
-        logger.info(
-            "Email personalization result:",
-            extra={"company": lead_sheet.get("company_name"), "response": response},
-        )
+        logger.info("Email personalization result:", extra={
+            "company": lead_sheet.get("company_name"),
+            "response": response
+        })
 
-        return _parse_xai_response(response)
+        personalized_subject, personalized_body = _parse_xai_response(response)
+        
+        # Ensure we're returning strings, not dictionaries
+        final_subject = personalized_subject if personalized_subject else subject
+        final_body = personalized_body if personalized_body else body
+        
+        if isinstance(final_body, dict):
+            final_body = final_body.get('body', body)
+            
+        return {
+            "subject": final_subject,
+            "body": final_body
+        }
 
     except Exception as e:
         logger.error(f"Error in email personalization: {str(e)}")
-        return subject, body
+        return {
+            "subject": subject,
+            "body": body
+        }
 
 
 def _parse_xai_response(response: str) -> Tuple[str, str]:

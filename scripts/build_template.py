@@ -42,30 +42,25 @@ CONDITION_SUBJECTS = {
 # 2) PICK SUBJECT LINE BASED ON LEAD ROLE & LAST INTERACTION
 ###############################################################################
 def pick_subject_line_based_on_lead(
-    lead_role: str,
-    last_interaction_days: int,
+    profile_type: str,
     placeholders: dict
 ) -> str:
     """
-    Choose a subject line from CONDITION_SUBJECTS based on the lead role
-    and the days since last interaction. Then replace placeholders.
+    Choose a subject line from CONDITION_SUBJECTS based on the lead role.
     """
     # 1) Decide which subject lines to use based on role
-    if lead_role in CONDITION_SUBJECTS:
-        subject_variations = CONDITION_SUBJECTS[lead_role]
+    if profile_type in CONDITION_SUBJECTS:
+        subject_variations = CONDITION_SUBJECTS[profile_type]
     else:
         subject_variations = CONDITION_SUBJECTS["fallback"]
 
-    # 2) Example condition: if lead is "older" than 60 days, pick the first subject
-    #    otherwise pick randomly.
-    if last_interaction_days > 60:
-        chosen_template = subject_variations[0]
-    else:
-        chosen_template = random.choice(subject_variations)
+    # 2) Pick randomly from available templates
+    chosen_template = random.choice(subject_variations)
 
     # 3) Replace placeholders in the subject
     for key, val in placeholders.items():
-        chosen_template = chosen_template.replace(f"[{key}]", val)
+        if val:  # Only replace if value exists
+            chosen_template = chosen_template.replace(f"[{key}]", str(val))
 
     return chosen_template
 
@@ -112,51 +107,30 @@ def extract_subject_and_body(template_content: str) -> tuple[str, str]:
 def build_outreach_email(
     template_path: str,
     profile_type: str = None,
-    last_interaction_days: int = 0,
     placeholders: dict = None,
     current_month: int = None,
     start_peak_month: int = None,
     end_peak_month: int = None,
-    use_markdown_template: bool = True,
-) -> tuple[str, str]:
-    """
-    Build email content from template.
-    
-    Args:
-        template_path: Path to the email template file
-        profile_type: Type of recipient profile
-        last_interaction_days: Days since last interaction
-        placeholders: Dictionary of placeholder values including:
-            - company_name: Name of the company
-            - first_name: Recipient's first name
-            - last_name: Recipient's last name
-            - job_title: Recipient's job title
-            - company_info: Additional company information
-        current_month: Current month number (1-12)
-        start_peak_month: Start of peak season month (1-12)
-        end_peak_month: End of peak season month (1-12)
-        use_markdown_template: Whether to use markdown template format
-    
-    Returns:
-        tuple[str, str]: (subject, body) of the email
-    """
+) -> dict:
+    """Build email content from template."""
     try:
         placeholders = placeholders or {}
         
-        # Use provided template if available
         if template_path and Path(template_path).exists():
-            logger.debug(f"Using provided template: {template_path}")
-            logger.info(f"Template file exists: {Path(template_path).exists()}")
+            logger.debug(f"Using template: {template_path}")
             
             with open(template_path, 'r', encoding='utf-8') as f:
                 template_content = f.read()
-                logger.debug(f"Successfully read template file. Content length: {len(template_content)}")
-                
-            # Validate template
-            validate_template(template_content)
+                logger.debug(f"Template content length: {len(template_content)}")
             
-            # Extract subject and body from markdown
-            subject, body = extract_subject_and_body(template_content)
+            # Get body from template
+            body = extract_template_body(template_content)
+            
+            # Get subject based on profile type
+            subject = pick_subject_line_based_on_lead(
+                profile_type, 
+                placeholders
+            )
             
             # Apply season variation if present
             if "{SEASON_VARIATION}" in body:
@@ -166,30 +140,41 @@ def build_outreach_email(
                     end_peak_month=end_peak_month
                 )
                 season_snippet = pick_season_snippet(season_key)
-                body = apply_season_variation(body, season_snippet)
+                body = body.replace("{SEASON_VARIATION}", season_snippet)
             
-            # Replace placeholders in both subject and body
+            # Replace placeholders in body
             for key, value in placeholders.items():
                 if value:  # Only replace if value is not None/empty
-                    subject = subject.replace(f"[{key}]", str(value))
-                    body = body.replace(f"[{key}]", str(value))
+                    placeholder = f"[{key}]"
+                    if placeholder in body:
+                        body = body.replace(placeholder, str(value))
             
-            logger.info("Template processing completed successfully")
-            return subject, body
-                
-        # Fallback to existing template selection logic
-        logger.warning(f"Template path not provided or doesn't exist: {template_path}")
-        return get_fallback_template().split('---\n', 1)
-
-    except FileNotFoundError as e:
-        logger.error(f"Template file not found: {template_path}")
-        logger.error(f"Error details: {str(e)}")
-        return get_fallback_template().split('---\n', 1)
+            logger.info("Successfully built email content")
+            return {
+                "subject": subject,
+                "body": body,
+                "template_used": template_path
+            }
+            
+        else:
+            logger.warning(f"Template not found: {template_path}")
+            return {
+                "subject": pick_subject_line_based_on_lead(
+                    profile_type,
+                    placeholders
+                ),
+                "body": "I wanted to reach out about enhancing your club's operations.",
+                "template_used": "fallback"
+            }
+            
     except Exception as e:
-        logger.error(f"Error building outreach email: {str(e)}")
-        logger.error(f"Error type: {type(e).__name__}")
+        logger.error(f"Error building email: {str(e)}")
         logger.exception("Full traceback:")
-        return get_fallback_template().split('---\n', 1)
+        return {
+            "subject": "",
+            "body": "",
+            "template_used": "error"
+        }
 
 def get_fallback_template() -> str:
     """Returns a basic fallback template if all other templates fail."""
@@ -305,26 +290,28 @@ def parse_template(template_content):
 
 def build_email(template_path, parameters):
     """Build email from template and parameters"""
-    with open(template_path, 'r') as f:
-        template_content = f.read()
+    try:
+        with open(template_path, 'r') as f:
+            template_content = f.read()
     
-    template_data = parse_template(template_content)
-    
-    # Replace parameters in both subject and body
-    subject = template_data['subject']
-    body = template_data['body']
-    
-    for key, value in parameters.items():
-        subject = subject.replace(f'[{key}]', str(value))
-        body = body.replace(f'[{key}]', str(value))
-        # Handle season variation differently since it uses curly braces
-        if key == 'SEASON_VARIATION':
-            body = body.replace('{SEASON_VARIATION}', str(value))
-    
-    return {
-        'subject': subject,
-        'body': body
-    }
+        template_data = parse_template(template_content)
+        
+        # Get the body text
+        body = template_data['body']
+        
+        # Replace parameters in body
+        for key, value in parameters.items():
+            if value:  # Only replace if value is not None/empty
+                body = body.replace(f'[{key}]', str(value))
+                # Handle season variation differently since it uses curly braces
+                if key == 'SEASON_VARIATION':
+                    body = body.replace('{SEASON_VARIATION}', str(value))
+        
+        return body  # Return just the body text, not a dictionary
+        
+    except Exception as e:
+        logger.error(f"Error building email: {str(e)}")
+        return ""  # Return empty string on error
 
 def extract_template_body(template_content):
     """Extract body from template content, no subject needed"""

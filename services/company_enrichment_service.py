@@ -137,9 +137,12 @@ class CompanyEnrichmentService:
             company_name
         )
 
+        # Check if "Country Club" is in the name and set club_type accordingly
+        club_type = "Country Club" if "country club" in official_name.lower() else segmentation_info.get("club_type", "Unknown")
+
         return {
             "name": official_name,
-            "club_type": segmentation_info.get("club_type", "Unknown"),
+            "club_type": club_type,
             "facility_complexity": segmentation_info.get("facility_complexity", "Unknown"),
             "geographic_seasonality": segmentation_info.get("geographic_seasonality", "Unknown"),
             "has_pool": segmentation_info.get("has_pool", "Unknown"),
@@ -147,6 +150,7 @@ class CompanyEnrichmentService:
             "number_of_holes": segmentation_info.get("number_of_holes", 0),
             "club_info": club_summary
         }
+
     def _determine_seasonality(self, state: str) -> Dict[str, Any]:
         """Determines golf seasonality based on state."""
         season_data = {
