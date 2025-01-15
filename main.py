@@ -33,22 +33,23 @@ from services.leads_service import LeadsService
 from scheduling.followup_scheduler import start_scheduler
 import threading
 
+WORKFLOW_MODE = "leads"
 
 COMPANY_FILTERS = [
     {  # 1) Club Type filter - required for this workflow
         "propertyName": "club_type",
         "operator": "EQ",
-        "value": ""
+        "value": "Country Club"
     },
     {  # 2) Revenue filter
         "propertyName": "annualrevenue",
         "operator": "GT",
-        "value": ""
+        "value": "1000000"
     },
     {  # 3) State filter - will be populated with best states
         "propertyName": "state",
         "operator": "EQ",
-        "value": ""
+        "value": "GA"
     },
     {  # 4) Optional filter
         "propertyName": "geographic_seasonality",
@@ -587,6 +588,7 @@ def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
     Get the appropriate template path based on club type and role.
     """
     club_type_map = {
+        "Partner": "partner",
         "Country Club": "country_club",
         "Private Course": "private_course",
         "Private Club": "private_course",
@@ -838,14 +840,16 @@ def main():
                     logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
                     continue
                 
-                # 2) Enrich the company data FIRST
-                enrichment_result = company_enricher.enrich_company(company_id)
-                if not enrichment_result.get("success", False):
-                    logger.warning(f"Enrichment failed for company {company_id}, skipping.")
-                    continue
-                
-                # Update company_props with enriched data
-                company_props.update(enrichment_result.get("data", {}))
+                # 2) Enrich the company data FIRST, but preserve Partner and Management Company club types
+                if company_props.get("club_type") not in ["Partner", "Management Company"]:
+                    enrichment_result = company_enricher.enrich_company(company_id)
+                    if not enrichment_result.get("success", False):
+                        logger.warning(f"Enrichment failed for company {company_id}, skipping.")
+                        continue
+                    # Update company_props with enriched data
+                    company_props.update(enrichment_result.get("data", {}))
+                else:
+                    logger.info(f"Skipping enrichment for Partner company {company_id}")
                 
                 # 3) Now check if this company meets the workflow's COMPANY_FILTERS 
                 active_company_filters = [f for f in COMPANY_FILTERS if f.get("value")]
