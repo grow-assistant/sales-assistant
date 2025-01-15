@@ -416,8 +416,6 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
             )
             
             summary = response.choices[0].message.content.strip()
-            if DEBUG_MODE:
-                logger.info(f"Interaction Summary:\n{summary}")
             return summary
             
         except Exception as e:
@@ -1221,8 +1219,7 @@ def main_leads_first():
                             email_address = lead_data_full["lead_data"]["email"]
                             logger.debug(f"About to analyze conversation for email: {email_address}")
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
-                            logger.info(f"Conversation analysis completed for {email_address}: {conversation_summary}")
-
+                            
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],

@@ -19,43 +19,26 @@ class CompanyEnrichmentService:
         """Main method to enrich company data."""
         logger.info(f"Starting enrichment for company {company_id}")
         try:
-            # Get current company info
-            logger.debug("Fetching current company info")
             company_info = self._get_facility_info(company_id)
-            logger.debug(f"Retrieved company info: {company_info}")
             
             if not company_info.get('name') or not company_info.get('state'):
-                logger.warning(f"Missing required info for company {company_id}")
                 return {
                     'success': False,
                     'message': 'Missing required company information (name or state)',
                     'data': company_info
                 }
 
-            # Determine new values
-            logger.debug(f"Determining facility type for {company_info['name']}")
             facility_data = self._determine_facility_type(
                 company_info['name'],
                 company_info['state']
             )
-            logger.debug(f"Facility data: {facility_data}")
             
-            # Add seasonality data
-            logger.debug(f"Determining seasonality for state: {company_info['state']}")
             season_data = self._determine_seasonality(company_info['state'])
-            logger.debug(f"Season data: {season_data}")
             
-            # Combine all data
             enriched_data = {**company_info, **facility_data, **season_data}
-            logger.debug(f"Combined enriched data: {enriched_data}")
             
-            # Prepare updates
-            logger.debug("Preparing updates for HubSpot")
             updates = self._prepare_updates(company_info, enriched_data)
-            logger.debug(f"Prepared updates: {updates}")
             
-            # Update HubSpot
-            logger.info(f"Updating HubSpot for company {company_id}")
             success = self.hubspot.update_company_properties(company_id, updates)
             
             result = {
@@ -63,7 +46,7 @@ class CompanyEnrichmentService:
                 'message': 'Successfully updated company information' if success else 'Failed to update company information',
                 'data': enriched_data
             }
-            logger.info(f"Enrichment complete for company {company_id}: {result['message']}")
+            logger.info(f"Enrichment complete for company {company_id}")
             return result
             
         except Exception as e:
@@ -77,7 +60,6 @@ class CompanyEnrichmentService:
     def _get_facility_info(self, company_id: str) -> Dict[str, Any]:
         """Fetches the company's current properties from HubSpot."""
         try:
-            # Define properties to fetch
             properties = [
                 "name", "city", "state", "annualrevenue",
                 "createdate", "hs_lastmodifieddate", "hs_object_id",
@@ -88,21 +70,16 @@ class CompanyEnrichmentService:
                 "peak_season_end_month", "start_month", "end_month"
             ]
             
-            # Get company data using proper URL construction
             url = f"{self.hubspot.companies_endpoint}/{company_id}"
             params = {"properties": properties}
             
-            # Make the request
             company_data = self.hubspot.get_company_by_id(company_id, properties)
             
             if not company_data:
-                logger.warning(f"No data found for company {company_id}")
                 return {}
             
-            # Clean annual revenue value
             annual_revenue = company_data.get('properties', {}).get('annualrevenue', '')
             if annual_revenue:
-                # Remove non-numeric characters and convert to string
                 annual_revenue = ''.join(filter(str.isdigit, str(annual_revenue)))
             
             return {
@@ -139,7 +116,6 @@ class CompanyEnrichmentService:
             company_name
         )
 
-        # Check if "Country Club" is in the name and set club_type accordingly
         club_type = "Country Club" if "country club" in official_name.lower() else segmentation_info.get("club_type", "Unknown")
 
         return {
@@ -210,7 +186,6 @@ class CompanyEnrichmentService:
     def _prepare_updates(self, current_info: Dict[str, Any], new_info: Dict[str, Any]) -> Dict[str, Any]:
         """Prepares the final update payload with validated values."""
         try:
-            # Start with current values as defaults
             updates = {
                 "name": new_info.get("name", current_info.get("name", "")),
                 "club_type": new_info.get("club_type", current_info.get("club_type", "Unknown")),
@@ -225,20 +200,16 @@ class CompanyEnrichmentService:
                 "peak_season_end_month": new_info.get("peak_season_end_month", current_info.get("peak_season_end_month", ""))
             }
 
-            # Handle club_info and check for pool
             club_info = new_info.get("club_info", "")
             if club_info:
                 updates["club_info"] = club_info
-                # Set has_pool based on presence of "pool" in club_info
                 updates["has_pool"] = "Yes" if "pool" in club_info.lower() else "No"
             else:
                 updates["has_pool"] = current_info.get("has_pool", "No")
 
-            # Clean up values
             if updates["club_type"] == "Private Course":
                 updates["club_type"] = "Private"
 
-            # Ensure numeric values are integers
             for key in ["number_of_holes", "start_month", "end_month", "peak_season_start_month", "peak_season_end_month"]:
                 if updates[key]:
                     try:
@@ -246,11 +217,9 @@ class CompanyEnrichmentService:
                     except (ValueError, TypeError):
                         updates[key] = 0
 
-            # Ensure boolean values are Yes/No (except has_pool which is already handled)
             for key in ["has_tennis_courts"]:
                 updates[key] = "Yes" if str(updates[key]).lower() in ["yes", "true", "1"] else "No"
 
-            logger.debug(f"Prepared updates: {updates}")
             return updates
 
         except Exception as e:
@@ -260,7 +229,6 @@ class CompanyEnrichmentService:
     def _update_company_properties(self, company_id: str, updates: Dict[str, Any]) -> bool:
         """Updates the company properties in HubSpot."""
         try:
-            # Value transformations for HubSpot - EXACT matches for HubSpot enum values
             property_value_mapping = {
                 "club_type": {
                     "Private": "Private",
@@ -289,46 +257,31 @@ class CompanyEnrichmentService:
                 }
             }
 
-            # Clean and map the updates
             mapped_updates = {}
             for key, value in updates.items():
-                # Apply enum value transformations
                 if key in property_value_mapping:
                     value = property_value_mapping[key].get(str(value), value)
                     
-                # Type-specific handling
                 if key in ["number_of_holes", "start_month", "end_month", 
                           "peak_season_start_month", "peak_season_end_month"]:
                     value = int(value) if str(value).isdigit() else 0
                 elif key in ["has_pool", "has_tennis_courts"]:
                     value = "Yes" if str(value).lower() in ["yes", "true"] else "No"
                 elif key == "club_info":
-                    value = str(value)[:5000]  # Truncate to 5000 chars
+                    value = str(value)[:5000]
 
                 mapped_updates[key] = value
 
-            # Debug logging
-            logger.debug("Final HubSpot payload:")
-            logger.debug(f"Company ID: {company_id}")
-            logger.debug("Properties:")
-            for key, value in mapped_updates.items():
-                logger.debug(f"  {key}: {value} (Type: {type(value)})")
-
-            # Send update to HubSpot
             url = f"{self.hubspot.companies_endpoint}/{company_id}"
             payload = {"properties": mapped_updates}
             
             try:
                 response = self.hubspot._make_hubspot_patch(url, payload)
                 if response:
-                    logger.info(f"Successfully updated company {company_id}")
                     return True
                 return False
             except HubSpotError as api_error:
-                logger.error(f"HubSpot API Error Details:")
-                logger.error(f"Status Code: {getattr(api_error, 'status_code', 'Unknown')}")
-                logger.error(f"Response Body: {getattr(api_error, 'response_body', 'Unknown')}")
-                logger.error(f"Request Body: {payload}")
+                logger.error(f"HubSpot API Error: {str(api_error)}")
                 raise
             
         except Exception as e:

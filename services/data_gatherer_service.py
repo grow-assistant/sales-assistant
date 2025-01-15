@@ -123,17 +123,6 @@ class DataGathererService:
         # Optionally save or log the final lead_sheet
         self._save_lead_context(lead_sheet, lead_email)
 
-        logger.info(
-            "Data gathering completed successfully",
-            extra={
-                "email": lead_email,
-                "contact_id": contact_id,
-                "company_id": company_id,
-                "correlation_id": correlation_id,
-                "operation": "gather_lead_data"
-            }
-        )
-
         return lead_sheet
 
     # -------------------------------------------------------------------------
@@ -214,12 +203,7 @@ class DataGathererService:
             # xai_news_search can return (news, icebreaker), so handle accordingly
             if isinstance(news, tuple):
                 news = news[0]
-            logger.info("Club news search completed", extra={
-                "club_name": club_name,
-                "has_news": bool(news),
-                "correlation_id": correlation_id
-            })
-            return news
+                return news
         except Exception as e:
             logger.error("Error searching club news", extra={
                 "club_name": club_name,
@@ -316,10 +300,7 @@ class DataGathererService:
                             logger.warning(f"Skipping malformed row in state data: {row_error}")
                             continue
 
-            logger.info("Loaded golf season data", extra={
-                "city_st_count": len(CITY_ST_DATA),
-                "state_count": len(ST_DATA)
-            })
+
 
         except FileNotFoundError:
             logger.warning("Season data files not found, using defaults", extra={
@@ -456,7 +437,6 @@ class DataGathererService:
             logger.error(f"Error loading state timezones: {str(e)}")
             # Default to Eastern Time if loading fails
             STATE_TIMEZONES = {}
-
     def get_club_timezone(self, state: str) -> dict:
         """
         Return timezone offset data for a given state code.
@@ -506,3 +486,4 @@ class DataGathererService:
         if not city or not state:
             return "Unknown"
         return f"{city}, {state}"
+

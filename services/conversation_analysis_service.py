@@ -21,43 +21,39 @@ class ConversationAnalysisService:
     def analyze_conversation(self, email_address: str) -> str:
         """Main entry point - analyze conversation for an email address."""
         try:
-            print(f"Analyzing conversation for email: {email_address}")
+            logger.info(f"Analyzing conversation for email: {email_address}")
             # Get contact data
             contact_data = self.data_gatherer.hubspot.get_contact_by_email(email_address)
-            print(f"Contact data: {contact_data}")
+            logger.debug(f"Contact data: {contact_data}")
             if not contact_data:
                 logger.error(f"No contact found for email: {email_address}")
                 return "No contact found."
 
             contact_id = contact_data["id"]
-            print(f"Contact ID: {contact_id}")
-
+            
             # Gather all messages
             all_messages = self._gather_all_messages(contact_id, email_address)
-            print(f"All messages: {all_messages}")
             
             # Generate summary
             summary = self._generate_ai_summary(all_messages)
-            print(f"Generated summary: {summary}")
+            logger.info(f"Generated summary for {email_address}")
             return summary
 
         except Exception as e:
             logger.error(f"Error in analyze_conversation: {str(e)}", exc_info=True)
-            print(f"Error analyzing conversation: {str(e)}")
             return f"Error analyzing conversation: {str(e)}"
 
     def _gather_all_messages(self, contact_id: str, email_address: str) -> List[Dict[str, Any]]:
         """Gather and combine all messages from different sources."""
-        print(f"Gathering all messages for contact ID: {contact_id} and email: {email_address}")
+        logger.info(f"Gathering messages for contact ID: {contact_id}")
         # Get HubSpot emails and notes
         hubspot_emails = self.data_gatherer.hubspot.get_all_emails_for_contact(contact_id)
         hubspot_notes = self.data_gatherer.hubspot.get_all_notes_for_contact(contact_id)
-        print(f"HubSpot emails: {hubspot_emails}")
-        print(f"HubSpot notes: {hubspot_notes}")
         
         # Get Gmail messages
         gmail_emails = self.gmail_service.get_latest_emails_for_contact(email_address)
-        print(f"Gmail emails: {gmail_emails}")
+        
+        logger.debug(f"Found {len(hubspot_emails)} HubSpot emails, {len(hubspot_notes)} notes, and {len(gmail_emails)} Gmail messages")
 
         # Process and combine all messages
         all_messages = []
@@ -101,7 +97,6 @@ class ConversationAnalysisService:
 
         # Sort by timestamp
         sorted_messages = sorted(all_messages, key=lambda x: parse_date(x["timestamp"]))
-        print(f"Sorted messages: {sorted_messages}")
         return sorted_messages
 
     def _generate_ai_summary(self, messages: List[Dict[str, Any]]) -> str:
@@ -110,7 +105,7 @@ class ConversationAnalysisService:
             return "No conversation found."
 
         conversation_text = self._prepare_conversation_text(messages)
-        print(f"Prepared conversation text for AI: {conversation_text}")
+        logger.debug("Prepared conversation text for AI analysis")
         
         try:
             response = openai.ChatCompletion.create(
@@ -131,11 +126,10 @@ class ConversationAnalysisService:
                 ]
             )
             summary_content = response.choices[0].message.content
-            print(f"AI summary content: {summary_content}")
+            logger.debug("Successfully generated AI summary")
             return summary_content
         except Exception as e:
             logger.error(f"Error in OpenAI summarization: {str(e)}")
-            print(f"Error generating summary: {str(e)}")
             return f"Error generating summary: {str(e)}"
 
     def _clean_email_body(self, body_text: Optional[str]) -> Optional[str]:
@@ -155,7 +149,7 @@ class ConversationAnalysisService:
         message = re.sub(r'<[^>]+>', '', message)
 
         cleaned_message = message.strip()
-        print(f"Cleaned email body: {cleaned_message}")
+        logger.debug("Cleaned email body text")
         return cleaned_message
 
     def _prepare_conversation_text(self, messages: List[Dict[str, Any]]) -> str:
@@ -168,15 +162,11 @@ class ConversationAnalysisService:
             body = self._clean_email_body(message.get('body_text')) or f"[Email with subject: {message.get('subject', 'No subject')}]"
             conversation_text += f"{date} ({direction}): {body}\n\n"
 
-        print(f"Prepared conversation text: {conversation_text}")
         return conversation_text
 
     @staticmethod
     def _ensure_timezone(dt):
         """Ensure datetime has timezone information."""
         if dt.tzinfo is None:
-            localized_dt = pytz.UTC.localize(dt)
-            print(f"Localized datetime: {localized_dt}")
-            return localized_dt
-        print(f"Datetime already has timezone: {dt}")
+            return pytz.UTC.localize(dt)
         return dt
