@@ -33,7 +33,6 @@ _cache = {
 SUBJECT_TEMPLATES = [
     "Quick Chat, [FirstName]?",
     "Quick Question, [FirstName]?",
-    "Swoop: [ClubName]'s Edge?",
     "Question about 2025",
     "Quick Question",
 ]
@@ -333,22 +332,32 @@ def personalize_email_with_xai(
             "You are an expert at personalizing sales emails for golf industry outreach. "
             "CRITICAL RULES:\n"
             "1. DO NOT modify the subject line\n"
-            "2. DO NOT reference weather or seasonal conditions unless specifically provided\n"
+            "2. DO NOT reference weather or seasonal conditions unless specifically provided\n" 
             "3. DO NOT reference any promotions from previous emails\n"
-            "4. Focus on the business value and problem-solving aspects\n"
-            "5. Avoid presumptive descriptions of club features or scenery\n"
-            "6. Keep references to club specifics brief and relevant to the service\n"
-            "7. Keep the tone professional and direct\n\n"
+            "4. Focus on business value and problem-solving aspects\n"
+            "5. Avoid presumptive descriptions of club features\n"
+            "6. Keep club references brief and relevant to the service\n"
+            "7. Keep tone professional and direct\n"
+            "8. Keep emails concise - under 200 words\n"
+            "9. Focus on one key value proposition\n"
+            "10. End with a clear call-to-action\n\n"
+            "Required Email Structure:\n"
+            "1. Start with 'Hey [FirstName],'\n"
+            "2. Quick intro paragraph\n"
+            "3. Value proposition paragraph\n"
+            "4. CTA paragraph\n"
+            "5. Signature\n\n"
             "Format response as:\n"
             "Subject: [keep original subject]\n\n"
             "Body:\n[personalized body]\n\n"
             f"CONTEXT:\n{json.dumps(context_block, indent=2)}\n\n"
             f"RULES:\n{rules_text}\n\n"
             "TASK:\n"
-            "1. Keep the original email structure and flow\n"
-            "2. Add relevant context about the club's specific features\n"
+            "1. Follow the required email structure exactly\n"
+            "2. Focus on one key benefit relevant to the club\n"
             "3. Maintain professional tone\n"
-            "4. Return ONLY the subject and body"
+            "4. Keep response under 200 words\n"
+            "5. Return ONLY the subject and body"
         )
 
         payload = {

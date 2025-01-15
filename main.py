@@ -917,8 +917,15 @@ def main_companies_first():
                         
                         if email_content:
                             # Replace placeholders
-                            email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
-                            email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
+                            if isinstance(email_content, dict):
+                                email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
+                            elif isinstance(email_content, tuple):
+                                # Assuming email_content is a tuple with (subject, body)
+                                subject, body = email_content
+                                email_content = {
+                                    "subject": replace_placeholders(subject, lead_data_full),
+                                    "body": body
+                                }
                             
                             # Possibly further personalize with xAI
                             interaction_summary = lead_props.get("recent_interaction", "")
@@ -1199,8 +1206,15 @@ def main_leads_first():
                         
                         if email_content:
                             # Replace placeholders in subject/body
-                            email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
-                            email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
+                            if isinstance(email_content, dict):
+                                email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
+                            elif isinstance(email_content, tuple):
+                                # Assuming email_content is a tuple with (subject, body)
+                                subject, body = email_content
+                                email_content = {
+                                    "subject": replace_placeholders(subject, lead_data_full),
+                                    "body": body
+                                }
                             
                             # Further personalize with XAI (if needed)
                             interaction_summary = lead_props.get("recent_interaction", "")

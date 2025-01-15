@@ -7,35 +7,22 @@ from utils.logging_setup import logger
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from pathlib import Path
 from config.settings import PROJECT_ROOT
-from utils.xai_integration import _send_xai_request
+from utils.xai_integration import (
+    _build_icebreaker_from_news,
+    _send_xai_request
+)
+from scripts.job_title_categories import categorize_job_title
+from datetime import datetime
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
 ###############################################################################
-CONDITION_SUBJECTS = {
-    "general_manager": [
-        "Quick Question for [FirstName]",
-        "New Ways to Elevate [ClubName]'s Operations",
-        "Boost [ClubName]'s Efficiency with Swoop",
-        "Need Assistance with [Task]? – [FirstName]"
-    ],
-    "fnb_manager": [
-        "Ideas for Increasing F&B Revenue at [ClubName]",
-        "Quick Note for [FirstName] about On-Demand Service",
-        "A Fresh Take on [ClubName]'s F&B Operations"
-    ],
-    "golf_ops": [
-        "Keeping [ClubName] Rounds on Pace: Quick Idea",
-        "New Golf Ops Tools for [ClubName]",
-        "Quick Question for [FirstName] – On-Course Efficiency"
-    ],
-    # New line: If job title doesn't match any known category,
-    # we map it to this fallback template
-    "fallback": [
-        "Enhancing Your Club's Efficiency with Swoop",
-        "Is [ClubName] Looking to Modernize?"
-    ]
-}
+SUBJECT_TEMPLATES = [
+    "Quick Chat, [FirstName]?",
+    "Quick Question, [FirstName]?",
+    "Question about 2025",
+    "Quick Question"
+]
 
 
 ###############################################################################
@@ -46,21 +33,20 @@ def pick_subject_line_based_on_lead(
     placeholders: dict
 ) -> str:
     """
-    Choose a subject line from CONDITION_SUBJECTS based on the lead role.
+    Choose a subject line from SUBJECT_TEMPLATES.
     """
-    # 1) Decide which subject lines to use based on role
-    if profile_type in CONDITION_SUBJECTS:
-        subject_variations = CONDITION_SUBJECTS[profile_type]
-    else:
-        subject_variations = CONDITION_SUBJECTS["fallback"]
+    # Debug logging
+    logger.debug("Selecting subject line from simplified templates")
+    
+    # Pick randomly from available templates
+    chosen_template = random.choice(SUBJECT_TEMPLATES)
+    logger.debug(f"Selected template: {chosen_template}")
 
-    # 2) Pick randomly from available templates
-    chosen_template = random.choice(subject_variations)
-
-    # 3) Replace placeholders in the subject
+    # Replace placeholders in the subject
     for key, val in placeholders.items():
         if val:  # Only replace if value exists
             chosen_template = chosen_template.replace(f"[{key}]", str(val))
+            logger.debug(f"Replaced placeholder [{key}] with {val}")
 
     return chosen_template
 
@@ -69,10 +55,21 @@ def pick_subject_line_based_on_lead(
 # 3) SEASON VARIATION LOGIC (OPTIONAL)
 ###############################################################################
 def apply_season_variation(email_text: str, snippet: str) -> str:
-    """
-    Replaces {SEASON_VARIATION} in an email text with the chosen snippet.
-    """
-    return email_text.replace("{SEASON_VARIATION}", snippet)
+    """Replaces {SEASON_VARIATION} in an email text with the chosen snippet."""
+    logger.debug("Applying season variation:", extra={
+        "original_length": len(email_text),
+        "snippet_length": len(snippet),
+        "has_placeholder": "{SEASON_VARIATION}" in email_text
+    })
+    
+    result = email_text.replace("{SEASON_VARIATION}", snippet)
+    
+    logger.debug("Season variation applied:", extra={
+        "final_length": len(result),
+        "successful": result != email_text
+    })
+    
+    return result
 
 
 ###############################################################################
@@ -105,76 +102,80 @@ def extract_subject_and_body(template_content: str) -> tuple[str, str]:
 # 5) MAIN FUNCTION FOR BUILDING EMAIL
 ###############################################################################
 def build_outreach_email(
-    template_path: str,
+    template_path: str = None,
     profile_type: str = None,
+    last_interaction_days: int = None,
     placeholders: dict = None,
-    current_month: int = None,
-    start_peak_month: int = None,
-    end_peak_month: int = None,
-) -> dict:
+    current_month: int = 9,  # Default from main_old.py
+    start_peak_month: int = 5,  # Default from main_old.py
+    end_peak_month: int = 8,  # Default from main_old.py
+    use_markdown_template: bool = True
+) -> tuple[str, str]:  # Return tuple like main_old.py expects
     """Build email content from template."""
     try:
         placeholders = placeholders or {}
         
         if template_path and Path(template_path).exists():
-            logger.debug(f"Using template: {template_path}")
-            
             with open(template_path, 'r', encoding='utf-8') as f:
-                template_content = f.read()
-                logger.debug(f"Template content length: {len(template_content)}")
+                body = f.read().strip()
             
-            # Get body from template
-            body = extract_template_body(template_content)
-            
-            # Get subject based on profile type
-            subject = pick_subject_line_based_on_lead(
-                profile_type, 
-                placeholders
-            )
-            
-            # Apply season variation if present
-            if "{SEASON_VARIATION}" in body:
+            # 1. Handle season variation first
+            if "[SEASON_VARIATION]" in body:
                 season_key = get_season_variation_key(
                     current_month=current_month,
                     start_peak_month=start_peak_month,
                     end_peak_month=end_peak_month
                 )
+                logger.debug(f"Generated season key: {season_key}")
+                
                 season_snippet = pick_season_snippet(season_key)
-                body = body.replace("{SEASON_VARIATION}", season_snippet)
+                logger.debug(f"Selected season snippet: {season_snippet}")
+                
+                body = body.replace("[SEASON_VARIATION]", season_snippet)
+                logger.debug(f"Applied season variation: {season_snippet}")
             
-            # Replace placeholders in body
+            # 2. Handle icebreaker exactly like main_old.py
+            try:
+                has_news = placeholders.get('has_news', False)
+                news_result = placeholders.get('news_text', '')
+                club_name = placeholders.get('ClubName', '')
+                
+                if has_news and news_result and "has not been in the news" not in news_result.lower():
+                    icebreaker = _build_icebreaker_from_news(club_name, news_result)
+                    if icebreaker:
+                        body = body.replace("[ICEBREAKER]", icebreaker)
+                    else:
+                        body = body.replace("[ICEBREAKER]\n\n", "")
+                        body = body.replace("[ICEBREAKER]\n", "")
+                        body = body.replace("[ICEBREAKER]", "")
+                else:
+                    body = body.replace("[ICEBREAKER]\n\n", "")
+                    body = body.replace("[ICEBREAKER]\n", "")
+                    body = body.replace("[ICEBREAKER]", "")
+            except Exception as e:
+                logger.error(f"Icebreaker generation error: {e}")
+                body = body.replace("[ICEBREAKER]\n\n", "")
+                body = body.replace("[ICEBREAKER]\n", "")
+                body = body.replace("[ICEBREAKER]", "")
+            
+            # 3. Clean up multiple newlines
+            while "\n\n\n" in body:
+                body = body.replace("\n\n\n", "\n\n")
+            
+            # 4. Replace remaining placeholders
             for key, value in placeholders.items():
-                if value:  # Only replace if value is not None/empty
-                    placeholder = f"[{key}]"
-                    if placeholder in body:
-                        body = body.replace(placeholder, str(value))
+                if value:
+                    body = body.replace(f"[{key}]", str(value))
             
-            logger.info("Successfully built email content")
-            return {
-                "subject": subject,
-                "body": body,
-                "template_used": template_path
-            }
+            # 5. Get subject (will be ignored by main_old.py but included for completeness)
+            subject = pick_subject_line_based_on_lead(profile_type, placeholders)
             
-        else:
-            logger.warning(f"Template not found: {template_path}")
-            return {
-                "subject": pick_subject_line_based_on_lead(
-                    profile_type,
-                    placeholders
-                ),
-                "body": "I wanted to reach out about enhancing your club's operations.",
-                "template_used": "fallback"
-            }
+            return subject, body
             
     except Exception as e:
         logger.error(f"Error building email: {str(e)}")
-        logger.exception("Full traceback:")
-        return {
-            "subject": "",
-            "body": "",
-            "template_used": "error"
-        }
+        logger.error("Full traceback:", exc_info=True)
+        return "", ""  # Return empty strings on error
 
 def get_fallback_template() -> str:
     """Returns a basic fallback template if all other templates fail."""
@@ -313,8 +314,8 @@ def build_email(template_path, parameters):
         logger.error(f"Error building email: {str(e)}")
         return ""  # Return empty string on error
 
-def extract_template_body(template_content):
-    """Extract body from template content, no subject needed"""
+def extract_template_body(template_content: str) -> str:
+    """Extract body from template content."""
     try:
         # Simply clean up the template content
         body = template_content.strip()
@@ -338,3 +339,55 @@ def process_template(template_path):
     except Exception as e:
         logger.error(f"Error reading template file: {e}")
         return ""
+
+def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
+    """Get the appropriate template path based on club type and role."""
+    try:
+        # Normalize inputs
+        club_type = club_type.lower().strip().replace(" ", "_")
+        role_category = categorize_job_title(role)
+        
+        # Map role categories to template names
+        template_map = {
+            "fb_manager": "fb_manager_initial_outreach",
+            "membership_director": "membership_director_initial_outreach",
+            "golf_operations": "golf_operations_initial_outreach",
+            "general_manager": "general_manager_initial_outreach"
+        }
+        
+        # Get template name or default to general manager
+        template_name = template_map.get(role_category, "general_manager_initial_outreach")
+        
+        # Build template path
+        template_path = os.path.join(
+            PROJECT_ROOT,
+            "docs",
+            "templates",
+            club_type,
+            f"{template_name}_{sequence_num}.md"
+        )
+        
+        logger.debug(f"Selected template path: {template_path} for role: {role} (category: {role_category})")
+        
+        if not os.path.exists(template_path):
+            logger.warning(f"Template not found: {template_path}, falling back to general manager template")
+            template_path = os.path.join(
+                PROJECT_ROOT,
+                "docs",
+                "templates",
+                club_type,
+                f"general_manager_initial_outreach_{sequence_num}.md"
+            )
+        
+        return template_path
+        
+    except Exception as e:
+        logger.error(f"Error getting template path: {str(e)}")
+        # Fallback to general manager template
+        return os.path.join(
+            PROJECT_ROOT,
+            "docs",
+            "templates",
+            "country_club",
+            f"general_manager_initial_outreach_{sequence_num}.md"
+        )
