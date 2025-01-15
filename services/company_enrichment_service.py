@@ -195,8 +195,8 @@ class CompanyEnrichmentService:
         
         return {
             "geographic_seasonality": state_data["type"],
-            "season_start": state_data["start"],
-            "season_end": state_data["end"],
+            "start_month": state_data["start"],
+            "end_month": state_data["end"],
             "peak_season_start_month": state_data["peak_start"],
             "peak_season_end_month": state_data["peak_end"]
         }
@@ -213,8 +213,8 @@ class CompanyEnrichmentService:
                 "has_tennis_courts": new_info.get("has_tennis_courts", current_info.get("has_tennis_courts", "No")),
                 "number_of_holes": new_info.get("number_of_holes", current_info.get("number_of_holes", 0)),
                 "public_private_flag": new_info.get("public_private_flag", current_info.get("public_private_flag", "Unknown")),
-                "season_start": new_info.get("season_start", current_info.get("season_start", "")),
-                "season_end": new_info.get("season_end", current_info.get("season_end", "")),
+                "start_month": new_info.get("start_month", current_info.get("start_month", "")),
+                "end_month": new_info.get("end_month", current_info.get("end_month", "")),
                 "peak_season_start_month": new_info.get("peak_season_start_month", current_info.get("peak_season_start_month", "")),
                 "peak_season_end_month": new_info.get("peak_season_end_month", current_info.get("peak_season_end_month", ""))
             }
@@ -233,7 +233,7 @@ class CompanyEnrichmentService:
                 updates["club_type"] = "Private"
 
             # Ensure numeric values are integers
-            for key in ["number_of_holes", "season_start", "season_end", "peak_season_start_month", "peak_season_end_month"]:
+            for key in ["number_of_holes", "start_month", "end_month", "peak_season_start_month", "peak_season_end_month"]:
                 if updates[key]:
                     try:
                         updates[key] = int(updates[key])
@@ -291,7 +291,7 @@ class CompanyEnrichmentService:
                     value = property_value_mapping[key].get(str(value), value)
                     
                 # Type-specific handling
-                if key in ["number_of_holes", "season_start", "season_end", 
+                if key in ["number_of_holes", "start_month", "end_month", 
                           "peak_season_start_month", "peak_season_end_month"]:
                     value = int(value) if str(value).isdigit() else 0
                 elif key in ["has_pool", "has_tennis_courts"]:

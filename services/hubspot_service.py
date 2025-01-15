@@ -45,8 +45,8 @@ class HubspotService:
             "number_of_holes": "number_of_holes",
             "public_private_flag": "public_private_flag",
             "club_info": "club_info",
-            "season_start": "start_month",
-            "season_end": "end_month",
+            "start_month": "start_month",
+            "end_month": "end_month",
             "peak_season_start_month": "peak_season_start_month",
             "peak_season_end_month": "peak_season_end_month"
         }
@@ -155,7 +155,7 @@ class HubspotService:
                         logger.debug(f"Enum transformation for {internal_key}: {original_value} -> {value}")
 
                     # Type-specific handling
-                    if internal_key in ["number_of_holes", "season_start", "season_end", 
+                    if internal_key in ["number_of_holes", "start_month", "end_month", 
                                       "peak_season_start_month", "peak_season_end_month"]:
                         logger.debug(f"Converting numeric value for {internal_key}: {value}")
                         value = int(value) if str(value).isdigit() else 0

@@ -1,62 +1,93 @@
+#!/usr/bin/env python3
+# main.py
+# -----------------------------------------------------------------------------
+# EXAMPLE FULL WORKING FILE
+# -----------------------------------------------------------------------------
+
 import logging
 import random
 from typing import List, Dict, Any
-from services.hubspot_service import HubspotService
-from services.data_gatherer_service import DataGathererService
-from config.settings import HUBSPOT_API_KEY, OPENAI_API_KEY, MODEL_FOR_GENERAL, DEBUG_MODE, PROJECT_ROOT, CLEAR_LOGS_ON_START
-from utils.logging_setup import logger, setup_logging
 from datetime import datetime, timedelta
 import openai
-from utils.gmail_integration import create_draft, store_draft_info
+import os
+import shutil
+import uuid
+import threading
+from contextlib import contextmanager
+from pathlib import Path
+
+# -----------------------------------------------------------------------------
+# PROJECT IMPORTS (Adjust paths/names as needed)
+# -----------------------------------------------------------------------------
+from services.hubspot_service import HubspotService
+from services.company_enrichment_service import CompanyEnrichmentService
+from services.data_gatherer_service import DataGathererService
+from services.leads_service import LeadsService
+from scripts.golf_outreach_strategy import (
+    get_best_outreach_window, 
+    get_best_month, 
+    get_best_time, 
+    get_best_day, 
+    adjust_send_time
+)
+from scripts.job_title_categories import categorize_job_title
+from scripts.build_template import build_outreach_email
 from scheduling.database import get_db_connection, store_email_draft
+from scheduling.extended_lead_storage import store_lead_email_info
 from scheduling.followup_generation import generate_followup_email_xai
-from scripts.golf_outreach_strategy import get_best_outreach_window, get_best_month, get_best_time, get_best_day, adjust_send_time
+from scheduling.followup_scheduler import start_scheduler
+from scheduling.sql_lookup import build_lead_sheet_from_sql
+from config.settings import (
+    HUBSPOT_API_KEY, 
+    OPENAI_API_KEY, 
+    MODEL_FOR_GENERAL, 
+    DEBUG_MODE, 
+    PROJECT_ROOT, 
+    CLEAR_LOGS_ON_START
+)
+from utils.exceptions import LeadContextError
 from utils.date_utils import convert_to_club_timezone
+from utils.gmail_integration import create_draft, store_draft_info
+from utils.logging_setup import logger, setup_logging
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from utils.xai_integration import (
     _build_icebreaker_from_news, 
-    get_random_subject_template,
+    get_random_subject_template, 
     personalize_email_with_xai
 )
-from scripts.build_template import build_outreach_email
-from pathlib import Path
-import os
-import shutil
-from contextlib import contextmanager
-import uuid
-from scheduling.extended_lead_storage import store_lead_email_info
-from utils.exceptions import LeadContextError
-from services.company_enrichment_service import CompanyEnrichmentService
-from scripts.job_title_categories import categorize_job_title
-from scheduling.sql_lookup import build_lead_sheet_from_sql
-from services.leads_service import LeadsService
-from scheduling.followup_scheduler import start_scheduler
-import threading
 
-WORKFLOW_MODE = "leads"
+# -----------------------------------------------------------------------------
+# GLOBAL WORKFLOW MODE VARIABLE
+# -----------------------------------------------------------------------------
+# Choose "companies" if you want to filter for companies first.
+# Choose "leads" if you want to filter for leads first.
+WORKFLOW_MODE = "companies"
 
+# -----------------------------------------------------------------------------
+# FILTERS
+# -----------------------------------------------------------------------------
 COMPANY_FILTERS = [
-    {  # 1) Club Type filter - required for this workflow
+    {
         "propertyName": "club_type",
         "operator": "EQ",
         "value": "Country Club"
     },
-    {  # 2) Revenue filter
+    {
         "propertyName": "annualrevenue",
         "operator": "GT",
         "value": "1000000"
     },
-    {  # 3) State filter - will be populated with best states
+    {
         "propertyName": "state",
         "operator": "EQ",
         "value": "GA"
     },
-    {  # 4) Optional filter
+    {
         "propertyName": "geographic_seasonality",
         "operator": "EQ",
         "value": ""
     },
-    {  # 5) Optional filter
+    {
         "propertyName": "facility_complexity",
         "operator": "EQ",
         "value": ""
@@ -64,40 +95,44 @@ COMPANY_FILTERS = [
 ]
 
 LEAD_FILTERS = [
-    {  # 1) Company ID filter - required
+    {
         "propertyName": "associatedcompanyid",
         "operator": "EQ",
         "value": ""  # Will be set per company
     },
-    {  # 2) Lead Score filter
+    {
         "propertyName": "lead_score",
         "operator": "GT",
         "value": "0"
     },
-    {  # 3) Email reply date filter - exclude recent replies
+    {
         "propertyName": "hs_sales_email_last_replied",
-        "operator": "GTE",  # Changed from GTE to LTE
-        "value": "2020-01-01"  # Exclude leads who replied after this date
+        "operator": "GTE",
+        "value": "2020-01-01"
     },
-    {  # 4) Optional filter
+    {
         "propertyName": "recent_interaction",
         "operator": "HAS_PROPERTY",
         "value": ""
     },
-    {  # 5) Optional filter
+    {
         "propertyName": "email_domain",
         "operator": "CONTAINS",
         "value": ""
     }
 ]
 
-# Number of leads to process
 LEADS_TO_PROCESS = 25
 
-# Initialize logging and services
+# -----------------------------------------------------------------------------
+# INIT SERVICES & LOGGING
+# -----------------------------------------------------------------------------
 setup_logging()
 data_gatherer = DataGathererService()
 
+# -----------------------------------------------------------------------------
+# CONTEXT MANAGER FOR WORKFLOW STEPS
+# -----------------------------------------------------------------------------
 @contextmanager
 def workflow_step(step_name: str, step_description: str, logger_context: dict = None):
     """Context manager for logging workflow steps."""
@@ -115,7 +150,9 @@ def workflow_step(step_name: str, step_description: str, logger_context: dict = 
     else:
         logger.info(f"Completed {step_description}", extra=logger_context)
 
-
+# -----------------------------------------------------------------------------
+# UTILITY FUNCTIONS
+# -----------------------------------------------------------------------------
 def clear_files_on_start():
     """Clear log files and temp directories on startup."""
     try:
@@ -142,10 +179,10 @@ def clear_files_on_start():
     except Exception as e:
         logger.error(f"Error clearing files: {str(e)}")
 
-
 def get_country_club_companies(hubspot: HubspotService) -> List[Dict[str, Any]]:
     """Get all country club companies using HubspotService and our filter groups."""
     try:
+        # Only include filters that have a valid value
         active_filters = [f for f in COMPANY_FILTERS if f.get("value") not in [None, "", []]]
         
         url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
@@ -182,17 +219,18 @@ def get_country_club_companies(hubspot: HubspotService) -> List[Dict[str, Any]]:
         logger.error(f"Error getting country club companies: {str(e)}", exc_info=True)
         return []
 
-
 def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict]:
     """Get all leads/contacts associated with a company with score > 0."""
     try:
+        # Filter out any LEAD_FILTERS that are empty
         active_filters = [f for f in LEAD_FILTERS if f.get("value") not in [None, "", []]]
-        # Always add company ID filter
+        # Force company ID for this search
         company_filter = {
             "propertyName": "associatedcompanyid",
             "operator": "EQ",
             "value": company_id
         }
+        # Make sure we have a unique entry for the company
         active_filters.append(company_filter)
         
         url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
@@ -221,7 +259,7 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
         response = hubspot._make_hubspot_post(url, payload)
         results = response.get("results", [])
         
-        # Double-check sorting by lead_score
+        # Sort by lead_score descending, just in case
         sorted_results = sorted(
             results,
             key=lambda x: float(x.get("properties", {}).get("lead_score", "0") or "0"),
@@ -234,7 +272,6 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
     except Exception as e:
         logger.error(f"Error getting leads for company {company_id}: {str(e)}", exc_info=True)
         return []
-
 
 def extract_lead_data(company_props: Dict, lead_props: Dict) -> Dict:
     """Extract and organize lead and company data."""
@@ -264,13 +301,13 @@ def extract_lead_data(company_props: Dict, lead_props: Dict) -> Dict:
         }
     }
 
-
 def gather_personalization_data(company_name: str, city: str, state: str) -> Dict:
     """Gather additional personalization data for the company."""
     try:
         news_result = data_gatherer.gather_club_news(company_name)
         
         has_news = False
+        news_text = ""
         if news_result:
             if isinstance(news_result, tuple):
                 news_text = news_result[0]
@@ -280,7 +317,7 @@ def gather_personalization_data(company_name: str, city: str, state: str) -> Dic
         
         return {
             "has_news": has_news,
-            "news_text": news_result if has_news else None
+            "news_text": news_text if has_news else None
         }
         
     except Exception as e:
@@ -290,11 +327,8 @@ def gather_personalization_data(company_name: str, city: str, state: str) -> Dic
             "news_text": None
         }
 
-
 def summarize_lead_interactions(lead_sheet: dict) -> str:
-    """
-    Summarize prior emails and notes from the lead_sheet using OpenAI.
-    """
+    """Summarize prior emails and notes from the lead_sheet using OpenAI."""
     try:
         lead_data = lead_sheet.get("lead_data", {})
         emails = lead_data.get("emails", [])
@@ -388,7 +422,6 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         logger.error(f"Error in summarize_lead_interactions: {str(e)}")
         return "Error processing interactions."
 
-
 def schedule_followup(lead_id: int, email_id: int):
     """Schedule a follow-up email."""
     try:
@@ -463,7 +496,6 @@ def schedule_followup(lead_id: int, email_id: int):
         if 'conn' in locals():
             conn.close()
 
-
 def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft_id):
     """
     Persists the draft info (subject, body, scheduled send date, etc.) to the 'emails' table.
@@ -518,11 +550,9 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
         if 'conn' in locals():
             conn.close()
 
-
 def get_signature() -> str:
     """Return standardized signature block."""
     return "\n\nCheers,\nTy\n\nSwoop Golf\n480-225-9702\nswoopgolf.com"
-
 
 def calculate_send_date(geography, persona, state_code, season_data=None):
     """Calculate optimal send date based on geography and persona."""
@@ -576,19 +606,16 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         logger.error(f"Error calculating send date: {str(e)}", exc_info=True)
         return datetime.now() + timedelta(days=1, hours=10)
 
-
 def get_next_month_first_day(current_date):
     if current_date.month == 12:
         return current_date.replace(year=current_date.year + 1, month=1, day=1)
     return current_date.replace(month=current_date.month + 1, day=1)
-
 
 def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
     """
     Get the appropriate template path based on club type and role.
     """
     club_type_map = {
-        "Partner": "partner",
         "Country Club": "country_club",
         "Private Course": "private_course",
         "Private Club": "private_course",
@@ -636,7 +663,6 @@ def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
     
     return str(template_path)
 
-
 def clear_logs():
     try:
         if os.path.exists('logs/app.log'):
@@ -647,18 +673,17 @@ def clear_logs():
     except Exception as e:
         logger.error(f"Error clearing log file: {e}")
 
-
 def get_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
     """Get all leads with scores above minimum threshold."""
     try:
         url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
         
-        # Use the predefined LEAD_FILTERS
+        # Use LEAD_FILTERS for the leads-first approach
         active_filters = []
         for filter_def in LEAD_FILTERS:
             if filter_def["propertyName"] == "lead_score":
                 filter_def["value"] = str(min_score)
-            if filter_def.get("value"):  # Only include filters with values
+            if filter_def.get("value"):
                 active_filters.append(filter_def)
         
         payload = {
@@ -683,7 +708,6 @@ def get_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
         }
         response = hubspot._make_hubspot_post(url, payload)
         
-        # Add debug logging
         leads = response.get("results", [])
         logger.info(f"Found {len(leads)} leads after applying filters")
         for lead in leads:
@@ -697,7 +721,6 @@ def get_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
     except Exception as e:
         logger.error(f"Error getting high scoring leads: {e}")
         return []
-
 
 def get_company_by_id(hubspot: HubspotService, company_id: str) -> Dict:
     """Get company details by ID."""
@@ -727,7 +750,6 @@ def get_company_by_id(hubspot: HubspotService, company_id: str) -> Dict:
     except Exception as e:
         logger.error(f"Error getting company {company_id}: {e}")
         return {}
-
 
 def is_company_in_best_state(company_props: Dict) -> bool:
     """
@@ -767,9 +789,8 @@ def is_company_in_best_state(company_props: Dict) -> bool:
         )
         return False
 
-
 def replace_placeholders(text: str, lead_data: dict) -> str:
-    """Replace all placeholders in the text with actual values."""
+    """Replace placeholders in the text with actual values."""
     replacements = {
         "[FirstName]": lead_data["lead_data"].get("firstname", ""),
         "[LastName]": lead_data["lead_data"].get("lastname", ""),
@@ -782,30 +803,213 @@ def replace_placeholders(text: str, lead_data: dict) -> str:
     
     result = text
     for placeholder, value in replacements.items():
-        if value:  # Only replace if we have a value
+        if value:
             result = result.replace(placeholder, value)
     return result
 
-
 def check_lead_filters(lead_data: dict) -> bool:
-    """Check if lead meets all filter criteria."""
-    logger.debug(f"Checking email reply date for {lead_data['email']}")
-    last_reply = lead_data.get('hs_sales_email_last_replied')
-    if last_reply:
-        logger.debug(f"Last reply date: {last_reply}")
-    else:
-        logger.debug("No previous reply found")
-    
-    # ... rest of the filter checks ...
+    """(Optional) Add custom logic to check if lead meets your internal filter criteria."""
+    # You can add whatever logic you want here. For example:
+    # if lead_data["email"].endswith("@spamdomain.com"): return False
+    # Just a placeholder for demonstration.
+    return True
 
-
-def main():
+# -----------------------------------------------------------------------------
+# COMPANIES-FIRST WORKFLOW
+# -----------------------------------------------------------------------------
+def main_companies_first():
     """
-    Restructured main function:
-    - 1) Get leads first (rather than companies)
-    - 2) For each lead, retrieve its associated company
-    - 3) Check if that company passes the workflow filters
-    - 4) Then proceed with the same core processing steps
+    1) Filter for companies first via COMPANY_FILTERS
+    2) For each matching company, get leads (LEAD_FILTERS)
+    3) Build and store the outreach email for each lead
+    """
+    try:
+        workflow_context = {'correlation_id': str(uuid.uuid4())}
+        hubspot = HubspotService(HUBSPOT_API_KEY)
+        company_enricher = CompanyEnrichmentService()
+        data_gatherer = DataGathererService()
+        leads_processed = 0
+        
+        with workflow_step("1", "Get Country Club companies", workflow_context):
+            companies = get_country_club_companies(hubspot)
+            logger.info(f"Found {len(companies)} companies to process")
+        
+        with workflow_step("2", "Process each company & its leads", workflow_context):
+            for company in companies:
+                company_id = company.get("id")
+                company_props = company.get("properties", {})
+                
+                # Enrich the company
+                enrichment_result = company_enricher.enrich_company(company_id)
+                if not enrichment_result.get("success", False):
+                    logger.warning(f"Enrichment failed for company {company_id}, skipping.")
+                    continue
+                company_props.update(enrichment_result.get("data", {}))
+                
+                # Optional: check if the company meets your filter/time-of-year logic
+                if not is_company_in_best_state(company_props):
+                    logger.info(f"Company {company_id} not in best outreach window, skipping.")
+                    continue
+                
+                # Get the leads for this company
+                leads = get_leads_for_company(hubspot, company_id)
+                if not leads:
+                    logger.info(f"No leads found for company {company_id}")
+                    continue
+                
+                for lead in leads:
+                    lead_id = lead.get("id")
+                    lead_props = lead.get("properties", {})
+                    logger.info(f"Processing lead: {lead_props.get('email')} (ID: {lead_id})")
+                    
+                    # Build your email (same as in main_leads_first)
+                    try:
+                        lead_data_full = extract_lead_data(company_props, lead_props)
+                        if not check_lead_filters(lead_data_full["lead_data"]):
+                            logger.info(f"Lead {lead_id} did not pass custom checks, skipping.")
+                            continue
+                        
+                        # Gather personalization
+                        personalization = gather_personalization_data(
+                            company_name=lead_data_full["company_data"]["name"],
+                            city=lead_data_full["company_data"]["city"],
+                            state=lead_data_full["company_data"]["state"]
+                        )
+                        
+                        # Decide which template
+                        template_path = get_template_path(
+                            club_type=lead_data_full["company_data"]["club_type"],
+                            role=lead_data_full["lead_data"]["jobtitle"],
+                            sequence_num=1
+                        )
+                        
+                        # Calculate a good send date
+                        send_date = calculate_send_date(
+                            geography=lead_data_full["company_data"]["geographic_seasonality"],
+                            persona=lead_data_full["lead_data"]["jobtitle"],
+                            state_code=lead_data_full["company_data"]["state"],
+                            season_data={
+                                "peak_season_start": lead_data_full["company_data"].get("peak_season_start_month"),
+                                "peak_season_end": lead_data_full["company_data"].get("peak_season_end_month")
+                            }
+                        )
+                        
+                        # Build the outreach email
+                        email_content = build_outreach_email(
+                            template_path=template_path,
+                            profile_type=lead_data_full["lead_data"]["jobtitle"],
+                            placeholders={
+                                "company_name": lead_data_full["company_data"]["name"],
+                                "first_name": lead_data_full["lead_data"]["firstname"],
+                                "last_name": lead_data_full["lead_data"]["lastname"],
+                                "job_title": lead_data_full["lead_data"]["jobtitle"],
+                                "company_info": lead_data_full["company_data"].get("club_info", "")
+                            },
+                            current_month=datetime.now().month,
+                            start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
+                            end_peak_month=lead_data_full["company_data"].get("peak_season_end_month")
+                        )
+                        
+                        if email_content:
+                            # Replace placeholders
+                            email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
+                            email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
+                            
+                            # Possibly further personalize with xAI
+                            interaction_summary = lead_props.get("recent_interaction", "")
+                            personalized_content = personalize_email_with_xai(
+                                lead_sheet={
+                                    "lead_data": lead_data_full["lead_data"],
+                                    "company_data": lead_data_full["company_data"],
+                                    "analysis": {"previous_interactions": interaction_summary}
+                                },
+                                subject=email_content["subject"],
+                                body=email_content["body"],
+                                summary=interaction_summary
+                            )
+                            if personalized_content:
+                                email_content.update(personalized_content)
+                            
+                            # Insert news icebreaker if applicable
+                            if personalization.get("has_news") and personalization.get("news_text"):
+                                icebreaker = _build_icebreaker_from_news(
+                                    lead_data_full["company_data"]["name"],
+                                    personalization["news_text"]
+                                )
+                                if icebreaker:
+                                    email_content["body"] = email_content["body"].replace(
+                                        "[ICEBREAKER]", 
+                                        icebreaker
+                                    )
+                            
+                            # Clean up leftover placeholders
+                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n\n", "")
+                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n", "")
+                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]", "")
+                            while "\n\n\n" in email_content["body"]:
+                                email_content["body"] = email_content["body"].replace("\n\n\n", "\n\n")
+                            
+                            # Create the Gmail draft
+                            draft_result = create_draft(
+                                sender="me",
+                                to=lead_data_full["lead_data"]["email"],
+                                subject=email_content["subject"],
+                                message_text=email_content["body"]
+                            )
+                            
+                            if draft_result["status"] == "ok":
+                                store_lead_email_info(
+                                    lead_sheet={
+                                        "lead_data": {
+                                            "email": lead_data_full["lead_data"]["email"],
+                                            "properties": {
+                                                "hs_object_id": lead_id,
+                                                "firstname": lead_data_full["lead_data"]["firstname"],
+                                                "lastname": lead_data_full["lead_data"]["lastname"]
+                                            }
+                                        },
+                                        "company_data": {
+                                            "name": lead_data_full["company_data"]["name"],
+                                            "city": lead_data_full["company_data"]["city"],
+                                            "state": lead_data_full["company_data"]["state"],
+                                            "company_type": lead_data_full["company_data"]["club_type"]
+                                        }
+                                    },
+                                    draft_id=draft_result["draft_id"],
+                                    scheduled_date=send_date,
+                                    subject=email_content["subject"],
+                                    body=email_content["body"],
+                                    sequence_num=1
+                                )
+                                logger.info(f"Created draft email for {lead_data_full['lead_data']['email']}")
+                            else:
+                                logger.error(f"Failed to create Gmail draft for lead {lead_id}")
+                        else:
+                            logger.error(f"Failed to generate email content for lead {lead_id}")
+                    
+                    except Exception as e:
+                        logger.error(f"Error processing lead {lead_id} for company {company_id}: {e}", exc_info=True)
+                    
+                    leads_processed += 1
+                    if leads_processed >= LEADS_TO_PROCESS:
+                        logger.info(f"Reached processing limit of {LEADS_TO_PROCESS} leads")
+                        return
+    
+    except LeadContextError as e:
+        logger.error(f"Lead context error: {str(e)}")
+    except Exception as e:
+        logger.error(f"Error in main_companies_first workflow: {str(e)}", exc_info=True)
+        raise
+
+# -----------------------------------------------------------------------------
+# LEADS-FIRST WORKFLOW
+# -----------------------------------------------------------------------------
+def main_leads_first():
+    """
+    1) Get leads first
+    2) Retrieve each lead’s associated company
+    3) Check if that company passes the workflow filters
+    4) Build and store the outreach email
     """
     try:
         workflow_context = {'correlation_id': str(uuid.uuid4())}
@@ -840,18 +1044,14 @@ def main():
                     logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
                     continue
                 
-                # 2) Enrich the company data FIRST, but preserve Partner and Management Company club types
-                if company_props.get("club_type") not in ["Partner", "Management Company"]:
-                    enrichment_result = company_enricher.enrich_company(company_id)
-                    if not enrichment_result.get("success", False):
-                        logger.warning(f"Enrichment failed for company {company_id}, skipping.")
-                        continue
-                    # Update company_props with enriched data
-                    company_props.update(enrichment_result.get("data", {}))
-                else:
-                    logger.info(f"Skipping enrichment for Partner company {company_id}")
+                # 2) Enrich the company data
+                enrichment_result = company_enricher.enrich_company(company_id)
+                if not enrichment_result.get("success", False):
+                    logger.warning(f"Enrichment failed for company {company_id}, skipping.")
+                    continue
+                company_props.update(enrichment_result.get("data", {}))
                 
-                # 3) Now check if this company meets the workflow's COMPANY_FILTERS 
+                # 3) Check if this company meets the workflow's COMPANY_FILTERS 
                 active_company_filters = [f for f in COMPANY_FILTERS if f.get("value")]
                 logger.debug(f"\nChecking filters for {company_props.get('name', 'Unknown Company')} (ID: {company_id})")
                 logger.debug("----------------------------------------")
@@ -863,7 +1063,6 @@ def main():
                     filter_value = f["value"]
                     company_value = company_props.get(prop_name, "")
                     
-                    # Add more detailed logging
                     logger.info(
                         f"\nChecking filter for {company_props.get('name', 'Unknown Company')}:\n"
                         f"Property: {prop_name}\n"
@@ -887,11 +1086,10 @@ def main():
                             logger.info(f"FAILED: Invalid numeric value")
                             meets_filters = False
                             break
-                    elif operator == "LTE":  # Add specific logging for email reply date
-                        if company_value and company_value > filter_value:
-                            logger.info(f"FAILED: Reply date too recent")
-                            meets_filters = False
-                            break
+                    elif operator == "LTE":
+                        # If you had a "less than or equal" comparison, handle it here
+                        # (Not used in your code, but left as an example)
+                        pass
                     
                     logger.info("PASSED")
                 
@@ -907,76 +1105,78 @@ def main():
                     logger.info(f"Company {company_id} not in best outreach window, skipping lead {lead_id}.")
                     continue
                 
-                # 5) Now process the lead with the standard steps
+                # 5) Now process the lead
                 with workflow_step("3", f"Processing lead {lead_id}", workflow_context):
                     try:
                         # Extract combined lead+company data
-                        lead_data = extract_lead_data(company_props, lead_props)
+                        lead_data_full = extract_lead_data(company_props, lead_props)
                         
-                        # Skip if club name contains "Unknown"
-                        if "unknown" in lead_data["company_data"]["name"].lower():
+                        # Skip if unknown data
+                        if "unknown" in lead_data_full["company_data"]["name"].lower():
                             logger.info(f"Skipping lead {lead_id} - Club name contains 'Unknown'")
                             continue
-                        
-                        # Skip if club type is "Unknown"
-                        if lead_data["company_data"]["club_type"] == "Unknown":
+                        if lead_data_full["company_data"]["club_type"] == "Unknown":
                             logger.info(f"Skipping lead {lead_id} - Club type is Unknown")
                             continue
-                            
-                        # Instead of SQL summary, use HubSpot data for interaction summary
+                        
+                        if not check_lead_filters(lead_data_full["lead_data"]):
+                            logger.info(f"Lead {lead_id} did not pass custom checks, skipping.")
+                            continue
+                        
+                        # Instead of SQL summary, just use the 'recent_interaction' property from HubSpot
                         interaction_summary = lead_props.get("recent_interaction", "")
                         
                         # Gather personalization data
                         personalization = gather_personalization_data(
-                            company_name=lead_data["company_data"]["name"],
-                            city=lead_data["company_data"]["city"],
-                            state=lead_data["company_data"]["state"]
+                            company_name=lead_data_full["company_data"]["name"],
+                            city=lead_data_full["company_data"]["city"],
+                            state=lead_data_full["company_data"]["state"]
                         )
                         
                         # Get correct template
                         template_path = get_template_path(
-                            club_type=lead_data["company_data"]["club_type"],
-                            role=lead_data["lead_data"]["jobtitle"],
+                            club_type=lead_data_full["company_data"]["club_type"],
+                            role=lead_data_full["lead_data"]["jobtitle"],
                             sequence_num=1
                         )
                         
                         # Calculate send date
                         send_date = calculate_send_date(
-                            geography=lead_data["company_data"]["geographic_seasonality"],
-                            persona=lead_data["lead_data"]["jobtitle"],
-                            state_code=lead_data["company_data"]["state"],
+                            geography=lead_data_full["company_data"]["geographic_seasonality"],
+                            persona=lead_data_full["lead_data"]["jobtitle"],
+                            state_code=lead_data_full["company_data"]["state"],
                             season_data={
-                                "peak_season_start": lead_data["company_data"].get("peak_season_start_month"),
-                                "peak_season_end": lead_data["company_data"].get("peak_season_end_month")
+                                "peak_season_start": lead_data_full["company_data"].get("peak_season_start_month"),
+                                "peak_season_end": lead_data_full["company_data"].get("peak_season_end_month")
                             }
                         )
                         
                         # Build outreach email content
                         email_content = build_outreach_email(
                             template_path=template_path,
-                            profile_type=lead_data["lead_data"]["jobtitle"],
+                            profile_type=lead_data_full["lead_data"]["jobtitle"],
                             placeholders={
-                                "company_name": lead_data["company_data"]["name"],
-                                "first_name": lead_data["lead_data"]["firstname"],
-                                "last_name": lead_data["lead_data"]["lastname"],
-                                "job_title": lead_data["lead_data"]["jobtitle"],
-                                "company_info": lead_data["company_data"].get("club_info", "")
+                                "company_name": lead_data_full["company_data"]["name"],
+                                "first_name": lead_data_full["lead_data"]["firstname"],
+                                "last_name": lead_data_full["lead_data"]["lastname"],
+                                "job_title": lead_data_full["lead_data"]["jobtitle"],
+                                "company_info": lead_data_full["company_data"].get("club_info", "")
                             },
                             current_month=datetime.now().month,
-                            start_peak_month=lead_data["company_data"].get("peak_season_start_month"),
-                            end_peak_month=lead_data["company_data"].get("peak_season_end_month")
+                            start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
+                            end_peak_month=lead_data_full["company_data"].get("peak_season_end_month")
                         )
                         
                         if email_content:
-                            # Replace placeholders in subject and body
-                            email_content["subject"] = replace_placeholders(email_content["subject"], lead_data)
-                            email_content["body"] = replace_placeholders(email_content["body"], lead_data)
+                            # Replace placeholders in subject/body
+                            email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
+                            email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
                             
-                            # Further personalize with XAI
+                            # Further personalize with XAI (if needed)
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
-                                    "lead_data": lead_data["lead_data"],
-                                    "company_data": lead_data["company_data"],
+                                    "lead_data": lead_data_full["lead_data"],
+                                    "company_data": lead_data_full["company_data"],
                                     "analysis": {"previous_interactions": interaction_summary}
                                 },
                                 subject=email_content["subject"],
@@ -986,19 +1186,16 @@ def main():
                             if personalized_content:
                                 email_content.update(personalized_content)
                             
-                            # Insert icebreaker if we have recent news
+                            # Insert news icebreaker if we have recent news
                             if personalization.get("has_news") and personalization.get("news_text"):
                                 icebreaker = _build_icebreaker_from_news(
-                                    lead_data["company_data"]["name"],
+                                    lead_data_full["company_data"]["name"],
                                     personalization["news_text"]
                                 )
                                 if icebreaker:
-                                    email_content["body"] = email_content["body"].replace(
-                                        "[ICEBREAKER]", 
-                                        icebreaker
-                                    )
+                                    email_content["body"] = email_content["body"].replace("[ICEBREAKER]", icebreaker)
                             
-                            # Clean up leftover placeholders or extra newlines
+                            # Clean up any leftover placeholders
                             email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n\n", "")
                             email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n", "")
                             email_content["body"] = email_content["body"].replace("[ICEBREAKER]", "")
@@ -1008,7 +1205,7 @@ def main():
                             # Create the draft
                             draft_result = create_draft(
                                 sender="me",
-                                to=lead_data["lead_data"]["email"],
+                                to=lead_data_full["lead_data"]["email"],
                                 subject=email_content["subject"],
                                 message_text=email_content["body"]
                             )
@@ -1018,18 +1215,18 @@ def main():
                                 store_lead_email_info(
                                     lead_sheet={
                                         "lead_data": {
-                                            "email": lead_data["lead_data"]["email"],
+                                            "email": lead_data_full["lead_data"]["email"],
                                             "properties": {
                                                 "hs_object_id": lead_id,
-                                                "firstname": lead_data["lead_data"]["firstname"],
-                                                "lastname": lead_data["lead_data"]["lastname"]
+                                                "firstname": lead_data_full["lead_data"]["firstname"],
+                                                "lastname": lead_data_full["lead_data"]["lastname"]
                                             }
                                         },
                                         "company_data": {
-                                            "name": lead_data["company_data"]["name"],
-                                            "city": lead_data["company_data"]["city"],
-                                            "state": lead_data["company_data"]["state"],
-                                            "company_type": lead_data["company_data"]["club_type"]
+                                            "name": lead_data_full["company_data"]["name"],
+                                            "city": lead_data_full["company_data"]["city"],
+                                            "state": lead_data_full["company_data"]["state"],
+                                            "company_type": lead_data_full["company_data"]["club_type"]
                                         }
                                     },
                                     draft_id=draft_result["draft_id"],
@@ -1038,8 +1235,7 @@ def main():
                                     body=email_content["body"],
                                     sequence_num=1
                                 )
-                                
-                                logger.info(f"Created draft email for {lead_data['lead_data']['email']}")
+                                logger.info(f"Created draft email for {lead_data_full['lead_data']['email']}")
                             else:
                                 logger.error(f"Failed to create Gmail draft for lead {lead_id}")
                         else:
@@ -1059,12 +1255,14 @@ def main():
     except LeadContextError as e:
         logger.error(f"Lead context error: {str(e)}")
     except Exception as e:
-        logger.error(f"Error in main workflow: {str(e)}", exc_info=True)
+        logger.error(f"Error in main_leads_first workflow: {str(e)}", exc_info=True)
         raise
 
-
-if __name__ == "__main__":
-    logger.debug(f"Starting with CLEAR_LOGS_ON_START={CLEAR_LOGS_ON_START}")
+# -----------------------------------------------------------------------------
+# SINGLE ENTRY POINT THAT CHECKS WORKFLOW_MODE
+# -----------------------------------------------------------------------------
+def main():
+    logger.debug(f"Starting with CLEAR_LOGS_ON_START={CLEAR_LOGS_ON_START} and WORKFLOW_MODE={WORKFLOW_MODE}")
     
     if CLEAR_LOGS_ON_START:
         clear_files_on_start()
@@ -1074,5 +1272,14 @@ if __name__ == "__main__":
     scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
     scheduler_thread.start()
     
-    # Run main
+    # Decide which approach to use
+    if WORKFLOW_MODE.lower() == "companies":
+        main_companies_first()
+    else:
+        main_leads_first()
+
+# -----------------------------------------------------------------------------
+# RUN SCRIPT
+# -----------------------------------------------------------------------------
+if __name__ == "__main__":
     main()
