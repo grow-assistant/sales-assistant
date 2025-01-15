@@ -61,7 +61,7 @@ from utils.xai_integration import (
 # -----------------------------------------------------------------------------
 # Choose "companies" if you want to filter for companies first.
 # Choose "leads" if you want to filter for leads first.
-WORKFLOW_MODE = "companies"
+WORKFLOW_MODE = "leads"
 
 # -----------------------------------------------------------------------------
 # FILTERS
@@ -70,22 +70,22 @@ COMPANY_FILTERS = [
     {
         "propertyName": "club_type",
         "operator": "EQ",
-        "value": "Country Club"
+        "value": ""
     },
     {
         "propertyName": "annualrevenue",
         "operator": "GT",
-        "value": "1000000"
+        "value": ""
     },
     {
         "propertyName": "state",
         "operator": "EQ",
-        "value": "GA"
+        "value": ""
     },
     {
         "propertyName": "name",
         "operator": "EQ",
-        "value": "Eagles Landing Country Club"
+        "value": ""
     },
     {
         "propertyName": "facility_complexity",
@@ -334,6 +334,8 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         emails = lead_data.get("emails", [])
         notes = lead_data.get("notes", [])
         
+        logger.debug(f"Found {len(emails)} emails and {len(notes)} notes to summarize")
+        
         interactions = []
         
         # Collect emails
@@ -345,6 +347,8 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
                 direction = email.get('direction', '')
                 body = body.split('On ')[0].strip()
                 email_type = "from the lead" if direction == "INCOMING_EMAIL" else "to the lead"
+                
+                logger.debug(f"Processing email from {date}: {subject[:50]}...")
                 
                 interaction = {
                     'date': date,
@@ -917,6 +921,8 @@ def main_companies_first():
                             
                             # Possibly further personalize with xAI
                             interaction_summary = lead_props.get("recent_interaction", "")
+                            logger.debug(f"Got interaction summary from props: {interaction_summary[:100]}...")
+
                             conversation_summary = summarize_lead_interactions(lead_sheet={
                                 "lead_data": lead_data_full["lead_data"],
                                 "company_data": lead_data_full["company_data"],
@@ -924,6 +930,7 @@ def main_companies_first():
                                     "previous_interactions": interaction_summary
                                 }
                             })
+                            logger.debug(f"Generated conversation summary: {conversation_summary[:100]}...")
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],
@@ -1088,8 +1095,12 @@ def main_leads_first():
                             break
                     elif operator == "GT":
                         try:
-                            if float(company_value) <= float(filter_value):
-                                logger.info(f"FAILED: Value too low")
+                            # Convert revenue string to numeric value by removing non-numeric characters
+                            company_value = ''.join(filter(str.isdigit, str(company_value))) if company_value else '0'
+                            filter_value = ''.join(filter(str.isdigit, str(filter_value)))
+                            
+                            if not company_value or float(company_value) <= float(filter_value):
+                                logger.info(f"FAILED: Value too low or empty")
                                 meets_filters = False
                                 break
                         except ValueError:
@@ -1184,6 +1195,8 @@ def main_leads_first():
                             
                             # Further personalize with XAI (if needed)
                             interaction_summary = lead_props.get("recent_interaction", "")
+                            logger.debug(f"Got interaction summary from props: {interaction_summary[:100]}...")
+
                             conversation_summary = summarize_lead_interactions(lead_sheet={
                                 "lead_data": lead_data_full["lead_data"],
                                 "company_data": lead_data_full["company_data"],
@@ -1191,6 +1204,7 @@ def main_leads_first():
                                     "previous_interactions": interaction_summary
                                 }
                             })
+                            logger.debug(f"Generated conversation summary: {conversation_summary[:100]}...")
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],

@@ -99,11 +99,17 @@ class CompanyEnrichmentService:
                 logger.warning(f"No data found for company {company_id}")
                 return {}
             
+            # Clean annual revenue value
+            annual_revenue = company_data.get('properties', {}).get('annualrevenue', '')
+            if annual_revenue:
+                # Remove non-numeric characters and convert to string
+                annual_revenue = ''.join(filter(str.isdigit, str(annual_revenue)))
+            
             return {
                 'name': company_data.get('properties', {}).get('name', ''),
                 'city': company_data.get('properties', {}).get('city', ''),
                 'state': company_data.get('properties', {}).get('state', ''),
-                'annual_revenue': company_data.get('properties', {}).get('annualrevenue', ''),
+                'annual_revenue': annual_revenue,
                 'create_date': company_data.get('properties', {}).get('createdate', ''),
                 'last_modified': company_data.get('properties', {}).get('hs_lastmodifieddate', ''),
                 'object_id': company_data.get('properties', {}).get('hs_object_id', ''),

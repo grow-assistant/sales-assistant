@@ -147,7 +147,11 @@ class ConversationAnalysisService:
                     {"role": "user", "content": conversation_text}
                 ]
             )
-            return response.choices[0].message.content
+            summary = response.choices[0].message.content
+            
+            logger.debug(f"Generated conversation summary: {summary}")
+            
+            return summary
 
         except Exception as e:
             logger.error(f"Error in OpenAI summarization: {str(e)}")

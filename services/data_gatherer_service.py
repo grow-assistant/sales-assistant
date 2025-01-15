@@ -38,7 +38,9 @@ class DataGathererService:
         """Initialize the DataGathererService with HubSpot client and season data."""
         self.hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         self.conversation_analyzer = ConversationAnalysisService()
-        # Load season data at initialization
+        logger.debug("Initialized DataGathererService with ConversationAnalysisService")
+        
+        # Load season data
         self.load_season_data()
         self.load_state_timezones()
 
@@ -76,18 +78,20 @@ class DataGathererService:
         company_props = self.hubspot.get_company_data(company_id)
 
         # 5) Get emails and notes, then analyze them
+        logger.info(f"Fetching emails and notes for contact {contact_id}")
         emails = self.hubspot.get_all_emails_for_contact(contact_id)
         notes = self.hubspot.get_all_notes_for_contact(contact_id)
         
-        # New: Get Gmail emails if needed (assuming you have them)
-        gmail_emails = {}  # Replace with actual Gmail emails if available
+        logger.info(f"Found {len(emails)} emails and {len(notes)} notes")
         
         # Use ConversationAnalysisService to analyze emails
+        logger.info(f"Analyzing conversation history for contact {contact_id}")
         conversation_summary = self.conversation_analyzer.analyze_conversation(
             hubspot_emails=emails,
             hubspot_notes=notes,
-            gmail_emails=gmail_emails
+            gmail_emails={}  # Replace with actual Gmail emails if available
         )
+        logger.info(f"Generated conversation summary: {conversation_summary[:100]}...")  # Log first 100 chars
 
         # Example: competitor check
         competitor_analysis = self.check_competitor_on_website(company_props.get("website", ""))
@@ -372,38 +376,62 @@ class DataGathererService:
         except (TypeError, ValueError):
             return default
 
-    def load_season_data(self) -> None:
-        """
-        Load city/state-based golf season data from CSV files:
-         - CITY_ST_CSV (golf_seasons_by_city_st.csv)
-         - ST_CSV (golf_seasons_by_st.csv)
-        """
-        global CITY_ST_DATA, ST_DATA
+    def load_season_data(self):
+        """Load golf season data from CSV files."""
         try:
-            with CITY_ST_CSV.open('r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    city = row['City'].strip().lower()
-                    st = row['State'].strip().lower()
-                    CITY_ST_DATA[(city, st)] = row
+            # Load city/state data
+            if CITY_ST_CSV.exists():
+                with open(CITY_ST_CSV, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    # Log the headers to debug
+                    headers = reader.fieldnames
+                    logger.debug(f"CSV headers: {headers}")
+                    
+                    for row in reader:
+                        try:
+                            # Adjust these keys based on your actual CSV headers
+                            city = row.get('city', row.get('City', '')).lower()
+                            state = row.get('state', row.get('State', '')).lower()
+                            if city and state:
+                                city_key = (city, state)
+                                CITY_ST_DATA[city_key] = row
+                        except Exception as row_error:
+                            logger.warning(f"Skipping malformed row in city/state data: {row_error}")
+                            continue
 
-            with ST_CSV.open('r', encoding='utf-8-sig') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    st = row['State'].strip().lower()
-                    ST_DATA[st] = row
+            # Load state-only data
+            if ST_CSV.exists():
+                with open(ST_CSV, 'r', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        try:
+                            state = row.get('state', row.get('State', '')).lower()
+                            if state:
+                                ST_DATA[state] = row
+                        except Exception as row_error:
+                            logger.warning(f"Skipping malformed row in state data: {row_error}")
+                            continue
 
-            logger.info("Successfully loaded golf season data", extra={
-                "city_state_count": len(CITY_ST_DATA),
+            logger.info("Loaded golf season data", extra={
+                "city_st_count": len(CITY_ST_DATA),
                 "state_count": len(ST_DATA)
             })
+
+        except FileNotFoundError:
+            logger.warning("Season data files not found, using defaults", extra={
+                "city_st_path": str(CITY_ST_CSV),
+                "st_path": str(ST_CSV)
+            })
+            # Continue with empty data, will use defaults
+            pass
         except Exception as e:
             logger.error("Failed to load golf season data", extra={
                 "error": str(e),
                 "city_st_path": str(CITY_ST_CSV),
                 "st_path": str(ST_CSV)
             })
-            raise
+            # Continue with empty data, will use defaults
+            pass
 
     def determine_club_season(self, city: str, state: str) -> Dict[str, str]:
         """

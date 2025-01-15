@@ -56,8 +56,8 @@ def summarize_conversation(emails: List[Dict[str, Any]]) -> str:
 
     # Find the latest incoming message
     latest_incoming = None
-    for email in reversed(sorted_emails):  # Start from most recent
-        if email.get('direction') in ['INCOMING_EMAIL', '←']:
+    for email in reversed(sorted_emails):
+        if email.get('direction') == 'INCOMING_EMAIL':
             latest_incoming = email
             break
 
@@ -65,7 +65,7 @@ def summarize_conversation(emails: List[Dict[str, Any]]) -> str:
     conversation_text = "Full conversation:\n\n"
     for email in sorted_emails:
         date = parse_date(email['timestamp']).strftime('%Y-%m-%d %H:%M')
-        direction = "OUTBOUND" if email.get('direction') in ['EMAIL', '→'] else "INBOUND"
+        direction = "OUTBOUND" if email.get('direction') in ['EMAIL', 'NOTE'] else "INBOUND"
         message = clean_email_body(email.get('body_text')) or f"[Email with subject: {email.get('subject', 'No subject')}]"
         conversation_text += f"{date} ({direction}): {message}\n\n"
 
@@ -73,11 +73,12 @@ def summarize_conversation(emails: List[Dict[str, Any]]) -> str:
     if latest_incoming:
         latest_date = parse_date(latest_incoming['timestamp']).strftime('%Y-%m-%d %H:%M')
         conversation_text += f"\nLatest incoming message was at {latest_date}\n"
+
     try:
         today = datetime.now().date()
         openai.api_key = OPENAI_API_KEY
         response = openai.ChatCompletion.create(
-            model="gpt-4o",
+            model="gpt-4",
             temperature=0.2,  # Add moderate temperature for consistent but natural responses
             messages=[
                 {
@@ -259,6 +260,6 @@ def test_email_pull(email_address: str) -> None:
 
 
 if __name__ == "__main__":
-    TEST_EMAILS = ["ed@belleaircc.com"]
+    TEST_EMAILS = ["bryanj@standardclub.org"]
     for email in TEST_EMAILS:
         test_email_pull(email)
