@@ -9,7 +9,6 @@ import openai
 from services.data_gatherer_service import DataGathererService
 from services.gmail_service import GmailService
 from config.settings import OPENAI_API_KEY
-from utils.logging_setup import logger
 
 
 class ConversationAnalysisService:
@@ -21,12 +20,9 @@ class ConversationAnalysisService:
     def analyze_conversation(self, email_address: str) -> str:
         """Main entry point - analyze conversation for an email address."""
         try:
-            logger.info(f"Analyzing conversation for email: {email_address}")
             # Get contact data
             contact_data = self.data_gatherer.hubspot.get_contact_by_email(email_address)
-            logger.debug(f"Contact data: {contact_data}")
             if not contact_data:
-                logger.error(f"No contact found for email: {email_address}")
                 return "No contact found."
 
             contact_id = contact_data["id"]
@@ -36,24 +32,19 @@ class ConversationAnalysisService:
             
             # Generate summary
             summary = self._generate_ai_summary(all_messages)
-            logger.info(f"Generated summary for {email_address}")
             return summary
 
         except Exception as e:
-            logger.error(f"Error in analyze_conversation: {str(e)}", exc_info=True)
             return f"Error analyzing conversation: {str(e)}"
 
     def _gather_all_messages(self, contact_id: str, email_address: str) -> List[Dict[str, Any]]:
         """Gather and combine all messages from different sources."""
-        logger.info(f"Gathering messages for contact ID: {contact_id}")
         # Get HubSpot emails and notes
         hubspot_emails = self.data_gatherer.hubspot.get_all_emails_for_contact(contact_id)
         hubspot_notes = self.data_gatherer.hubspot.get_all_notes_for_contact(contact_id)
         
         # Get Gmail messages
         gmail_emails = self.gmail_service.get_latest_emails_for_contact(email_address)
-        
-        logger.debug(f"Found {len(hubspot_emails)} HubSpot emails, {len(hubspot_notes)} notes, and {len(gmail_emails)} Gmail messages")
 
         # Process and combine all messages
         all_messages = []
@@ -105,7 +96,6 @@ class ConversationAnalysisService:
             return "No conversation found."
 
         conversation_text = self._prepare_conversation_text(messages)
-        logger.debug("Prepared conversation text for AI analysis")
         
         try:
             response = openai.ChatCompletion.create(
@@ -126,15 +116,10 @@ class ConversationAnalysisService:
                     {"role": "user", "content": conversation_text}
                 ]
             )
-            logger.info(f"OpenAI Response: {response}")
-            logger.debug(f"Response token usage: {response.usage.total_tokens} tokens")
-            logger.debug(f"Response content: {response.choices[0].message.content}")
             
             summary_content = response.choices[0].message.content
-            logger.debug("Successfully generated AI summary")
             return summary_content
         except Exception as e:
-            logger.error(f"Error in OpenAI summarization: {str(e)}")
             return f"Error generating summary: {str(e)}"
 
     def _clean_email_body(self, body_text: Optional[str]) -> Optional[str]:
@@ -154,7 +139,6 @@ class ConversationAnalysisService:
         message = re.sub(r'<[^>]+>', '', message)
 
         cleaned_message = message.strip()
-        logger.debug("Cleaned email body text")
         return cleaned_message
 
     def _prepare_conversation_text(self, messages: List[Dict[str, Any]]) -> str:

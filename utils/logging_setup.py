@@ -1,99 +1,73 @@
 import logging
-import sys
+import os
 from logging.handlers import RotatingFileHandler
-from typing import Optional
-from contextlib import contextmanager
-from config.settings import DEBUG_MODE
-import json
-
-class StepLogger(logging.Logger):
-    def step_complete(self, step_number: int, message: str):
-        self.info(f"✓ Step {step_number}: {message}")
-        
-    def step_start(self, step_number: int, message: str):
-        self.debug(f"Starting Step {step_number}: {message}")
+from pathlib import Path
 
 def setup_logging():
-    # Register custom logger class
-    logging.setLoggerClass(StepLogger)
+    """Configure logging with both file and console handlers."""
+    # Create logger first
+    logger = logging.getLogger('utils.logging_setup')
+    logger.setLevel(logging.DEBUG)
     
-    # Clear existing handlers
-    root_logger = logging.getLogger()
-    root_logger.handlers.clear()
+    # Skip if handlers already exist
+    if logger.handlers:
+        return logger
+        
+    # Create logs directory if it doesn't exist
+    log_dir = Path(__file__).parent.parent / 'logs'
+    log_dir.mkdir(exist_ok=True)
     
-    # Configure formatters with more detail
-    console_formatter = logging.Formatter('%(message)s')
-    file_formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s\n'
-        'File: [%(pathname)s:%(lineno)d]\n'
-        '%(extra_data)s'  # New field for extra data
+    # File handler
+    file_handler = RotatingFileHandler(
+        log_dir / 'app.log',
+        maxBytes=10*1024*1024,  # 10MB
+        backupCount=5
     )
+    file_handler.setLevel(logging.DEBUG)
     
-    # Add custom filter to handle extra data
-    class DetailedExtraDataFilter(logging.Filter):
-        def filter(self, record):
-            if not hasattr(record, 'extra_data'):
-                record.extra_data = ''
-            elif record.extra_data:
-                if isinstance(record.extra_data, dict):
-                    # Pretty print with increased depth and width
-                    record.extra_data = '\n' + json.dumps(
-                        record.extra_data,
-                        indent=2,
-                        ensure_ascii=False,  # Properly handle Unicode
-                        default=str  # Handle non-serializable objects
-                    )
-                    # Add separator lines for readability
-                    record.extra_data = (
-                        '\n' + '='*80 + '\n' +
-                        record.extra_data +
-                        '\n' + '='*80
-                    )
-            return True
-
-    # Console handler (INFO and above)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(console_formatter)
+    # Console handler
+    console_handler = logging.StreamHandler()
     console_handler.setLevel(logging.INFO)
     
-    # File handler with increased size limit
-    file_handler = RotatingFileHandler(
-        'logs/app.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5,
-        delay=True  # Only create file when first record is written
+    # Add filters to reduce noise
+    class VerboseFilter(logging.Filter):
+        def filter(self, record):
+            skip_patterns = [
+                "Looking up time zone info",
+                "Full xAI Request Payload",
+                "Full xAI Response",
+                "Found existing label",
+                "CSV headers",
+                "Loaded timezone data",
+                "Replaced placeholder",
+                "Raw segmentation response"
+            ]
+            return not any(pattern in str(record.msg) for pattern in skip_patterns)
+    
+    # Create formatter
+    formatter = logging.Formatter(
+        '%(asctime)s - %(name)s - %(levelname)s - %(message)s\n'
+        'File: [%(pathname)s:%(lineno)d]\n'
     )
-    file_handler.setFormatter(file_formatter)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.addFilter(DetailedExtraDataFilter())
     
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG)
-    root_logger.addHandler(console_handler)
-    root_logger.addHandler(file_handler)
+    # Set formatters
+    file_handler.setFormatter(formatter)
+    console_handler.setFormatter(formatter)
     
-    # Suppress external library logs except warnings
-    for logger_name in ['urllib3', 'googleapiclient', 'google.auth', 'openai']:
-        logging.getLogger(logger_name).setLevel(logging.WARNING)
+    # Add filters
+    file_handler.addFilter(VerboseFilter())
+    console_handler.addFilter(VerboseFilter())
     
-    return logging.getLogger(__name__)
+    # Add handlers to logger
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+    
+    # Set levels for other loggers
+    logging.getLogger('utils.gmail_integration').setLevel(logging.INFO)
+    logging.getLogger('utils.xai_integration').setLevel(logging.INFO)
+    logging.getLogger('services.data_gatherer_service').setLevel(logging.INFO)
+    
+    return logger
 
+# Create the logger instance
 logger = setup_logging()
-
-def workflow_step(step_num: int, description: str):
-    """Context manager for workflow steps."""
-    class WorkflowStep:
-        def __enter__(self):
-            logger.debug(f"Starting Step {step_num}: {description}")
-            return self
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            if not exc_type:
-                logger.info(f"✓ Step {step_num}: {description}")
-            return False
-
-    return WorkflowStep()
-
-# Make it available for import
-__all__ = ['logger', 'workflow_step']

@@ -187,13 +187,9 @@ def xai_news_search(club_name: str) -> tuple[str, str]:
         "temperature": 0,
     }
 
-    logger.error(f"Searching news for club: {club_name}")
+    logger.info(f"Searching news for club: {club_name}")
     news = _send_xai_request(payload)
-    logger.error(
-        "News search result for %s:",
-        club_name,
-        extra={"news": news},
-    )
+    logger.debug(f"News search result for {club_name}:")
 
     _cache["news"][club_name] = news
 
@@ -246,13 +242,9 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
         "temperature": 0.1,
     }
 
-    logger.error(f"Building icebreaker for club: {club_name}")
+    logger.info(f"Building icebreaker for club: {club_name}")
     icebreaker = _send_xai_request(payload)
-    logger.error(
-        "Generated icebreaker for %s:",
-        club_name,
-        extra={"icebreaker": icebreaker},
-    )
+    logger.debug(f"Generated icebreaker for {club_name}:")
 
     return icebreaker
 
@@ -369,18 +361,9 @@ def personalize_email_with_xai(
             "temperature": EMAIL_TEMPERATURE,
         }
 
-        logger.error(
-            "Personalizing email for:",
-            extra={
-                "company": lead_sheet.get("company_name"),
-                "original_subject": subject,
-            },
-        )
+        logger.info("Personalizing email for:")
         response = _send_xai_request(payload)
-        logger.error("Email personalization result:", extra={
-            "company": lead_sheet.get("company_name"),
-            "response": response
-        })
+        logger.debug(f"Received xAI response:\n{response}")
 
         personalized_subject, personalized_body = _parse_xai_response(response)
         
@@ -458,44 +441,56 @@ def _parse_xai_response(response: str) -> Tuple[str, str]:
 
 
 def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -> str:
-    """
-    Get a personalized icebreaker from the xAI service (with caching if desired).
-    """
-    cache_key = f"icebreaker:{club_name}:{recipient_name}"
-    if cache_key in _cache["icebreakers"]:
-        if DEBUG_MODE:
+    """Get a personalized icebreaker from the xAI service."""
+    try:
+        if not club_name.strip():
+            logger.debug("Empty club name provided")
+            return ""
+
+        cache_key = f"icebreaker:{club_name}:{recipient_name}"
+        if cache_key in _cache["icebreakers"]:
             logger.debug(f"Using cached icebreaker for {club_name}")
-        return _cache["icebreakers"][cache_key]
+            return _cache["icebreakers"][cache_key]
 
-    payload = {
-        "messages": [
-            {
-                "role": "system",
-                "content": "You are an expert at creating icebreakers for golf club outreach.",
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Create a brief, natural-sounding icebreaker for {club_name}. "
-                    "Keep it concise and professional."
-                ),
-            },
-        ],
-        "model": MODEL_NAME,
-        "stream": False,
-        "temperature": ANALYSIS_TEMPERATURE,
-    }
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are an expert at creating icebreakers for golf club outreach.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Create a brief, natural-sounding icebreaker for {club_name}. "
+                        "Keep it concise and professional."
+                    ),
+                },
+            ],
+            "model": MODEL_NAME,
+            "stream": False,
+            "temperature": ANALYSIS_TEMPERATURE,
+        }
 
-    logger.error(f"Generating icebreaker for club: {club_name}")
-    response = _send_xai_request(payload, max_retries=3, retry_delay=1)
-    logger.error(
-        "Generated icebreaker for %s:",
-        club_name,
-        extra={"icebreaker": response},
-    )
+        logger.info(f"Generating icebreaker for club: {club_name}")
+        response = _send_xai_request(payload, max_retries=3, retry_delay=1)
+        
+        if not response:
+            logger.debug(f"Empty response from xAI for {club_name}")
+            return ""
+            
+        # Clean and validate response
+        icebreaker = response.strip()
+        if not icebreaker:
+            logger.debug(f"Empty icebreaker after cleaning for {club_name}")
+            return ""
 
-    _cache["icebreakers"][cache_key] = response
-    return response
+        logger.debug(f"Generated icebreaker for {club_name}: {icebreaker[:100]}")
+        _cache["icebreakers"][cache_key] = icebreaker
+        return icebreaker
+
+    except Exception as e:
+        logger.debug(f"Error generating icebreaker: {str(e)}")
+        return ""
 
 def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any]:
     """
@@ -516,7 +511,7 @@ def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any
         logger.debug(f"Using cached segmentation result for {club_name} in {location}")
         return _cache["club_segmentation"][cache_key]
 
-    logger.error(f"Searching for club segmentation info: {club_name} in {location}")
+    logger.info(f"Searching for club segmentation info: {club_name} in {location}")
 
     prompt = f"""
 Classify {club_name} in {location} with precision:
@@ -574,11 +569,7 @@ GOLF HOLES:
     }
 
     response = _send_xai_request(payload)
-    logger.error(
-        "Club segmentation result for %s:",
-        club_name,
-        extra={"segmentation": response},
-    )
+    logger.debug(f"Club segmentation result for {club_name}:")
 
     parsed_segmentation = _parse_segmentation_response(response)
     _cache["club_segmentation"][cache_key] = parsed_segmentation

@@ -9,7 +9,9 @@ from pathlib import Path
 from config.settings import PROJECT_ROOT
 from utils.xai_integration import (
     _build_icebreaker_from_news,
-    _send_xai_request
+    _send_xai_request,
+    xai_news_search,
+    get_xai_icebreaker
 )
 from scripts.job_title_categories import categorize_job_title
 from datetime import datetime
@@ -103,6 +105,34 @@ def extract_subject_and_body(template_content: str) -> tuple[str, str]:
 # 5) MAIN FUNCTION FOR BUILDING EMAIL
 ###############################################################################
 
+def generate_icebreaker(has_news: bool, club_name: str, news_text: str = None) -> str:
+    """Generate an icebreaker based on news availability."""
+    try:
+        # Log parameters for debugging
+        logger.debug(f"Icebreaker params - has_news: {has_news}, club_name: {club_name}, news_text: {news_text}")
+        
+        if not club_name.strip():
+            logger.debug("No club name provided for icebreaker")
+            return ""
+            
+        # Try news-based icebreaker first
+        if has_news and news_text:
+            news, icebreaker = xai_news_search(club_name)
+            if icebreaker:
+                return icebreaker
+        
+        # Fallback to general icebreaker if no news
+        icebreaker = get_xai_icebreaker(
+            club_name=club_name,
+            recipient_name=""  # Leave blank as we don't have it at this stage
+        )
+        
+        return icebreaker if icebreaker else ""
+            
+    except Exception as e:
+        logger.debug(f"Error in icebreaker generation: {str(e)}")
+        return ""
+
 def build_outreach_email(
     template_path: str = None,
     profile_type: str = None,
@@ -116,6 +146,8 @@ def build_outreach_email(
     """Build email content from template."""
     try:
         placeholders = placeholders or {}
+        
+        logger.info(f"Building email for {profile_type}")
         
         print(f"Starting build_outreach_email with template_path: {template_path}")
         print(f"Placeholders: {placeholders}")
@@ -204,13 +236,25 @@ def build_outreach_email(
             
             # Convert tuple to dict before passing to personalize_email_with_xai
             if body:
-                email_dict = {
-                    "subject": subject,
-                    "body": body
-                }
-                return subject, body
+                logger.info("Successfully built email template")
+            else:
+                logger.error("Failed to build email template")
+                
+            # Generate icebreaker using xAI
+            icebreaker = generate_icebreaker(
+                has_news=bool(placeholders.get('has_news', False)),
+                club_name=str(placeholders.get('company_name', '')),
+                news_text=placeholders.get('news_text', '')
+            )
             
-            return "", ""  # Return empty strings on error
+            # Only log at debug level for normal operation
+            logger.debug(f"Generated icebreaker: {icebreaker}")
+            
+            # Only log error if we expected an icebreaker but didn't get one
+            if placeholders.get('has_news', False) and not icebreaker:
+                logger.error("Failed to generate icebreaker for news item")
+            
+            return subject, body
             
     except Exception as e:
         logger.error(f"Error building email: {str(e)}")
