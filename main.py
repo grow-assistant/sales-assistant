@@ -103,7 +103,7 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": "0"
+        "value": ""
     },
     {
         "propertyName": "hs_sales_email_last_replied",
@@ -111,9 +111,9 @@ LEAD_FILTERS = [
         "value": "2020-01-01"
     },
     {
-        "propertyName": "recent_interaction",
-        "operator": "HAS_PROPERTY",
-        "value": ""
+        "propertyName": "email",
+        "operator": "EQ",
+        "value": "bryanj@standardclub.org"
     },
     {
         "propertyName": "email_domain",

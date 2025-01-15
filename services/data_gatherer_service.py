@@ -14,7 +14,6 @@ from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
 from utils.formatting_utils import clean_html
-from services.conversation_analysis_service import ConversationAnalysisService
 
 # CSV-based Season Data
 CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
@@ -37,8 +36,7 @@ class DataGathererService:
     def __init__(self):
         """Initialize the DataGathererService with HubSpot client and season data."""
         self.hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
-        self.conversation_analyzer = ConversationAnalysisService()
-        logger.debug("Initialized DataGathererService with ConversationAnalysisService")
+        logger.debug("Initialized DataGathererService")
         
         # Load season data
         self.load_season_data()
@@ -84,14 +82,9 @@ class DataGathererService:
         
         logger.info(f"Found {len(emails)} emails and {len(notes)} notes")
         
-        # Use ConversationAnalysisService to analyze emails
-        logger.info(f"Analyzing conversation history for contact {contact_id}")
-        conversation_summary = self.conversation_analyzer.analyze_conversation(
-            hubspot_emails=emails,
-            hubspot_notes=notes,
-            gmail_emails={}  # Replace with actual Gmail emails if available
-        )
-        logger.info(f"Generated conversation summary: {conversation_summary[:100]}...")  # Log first 100 chars
+        # Replace conversation analysis with empty string
+        conversation_summary = ""
+        logger.info(f"Generated empty conversation summary")
 
         # Example: competitor check
         competitor_analysis = self.check_competitor_on_website(company_props.get("website", ""))
