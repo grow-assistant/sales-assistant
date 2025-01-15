@@ -31,27 +31,35 @@ SUBJECT_TEMPLATES = [
 ###############################################################################
 # 2) PICK SUBJECT LINE BASED ON LEAD ROLE & LAST INTERACTION
 ###############################################################################
-def pick_subject_line_based_on_lead(
-    profile_type: str,
-    placeholders: dict
-) -> str:
-    """
-    Choose a subject line from SUBJECT_TEMPLATES.
-    """
-    # Debug logging
-    logger.debug("Selecting subject line from simplified templates")
-    
-    # Pick randomly from available templates
-    chosen_template = random.choice(SUBJECT_TEMPLATES)
-    logger.debug(f"Selected template: {chosen_template}")
+def pick_subject_line_based_on_lead(profile_type: str, placeholders: dict) -> str:
+    """Choose a subject line from SUBJECT_TEMPLATES."""
+    try:
+        logger.debug("Selecting subject line from simplified templates")
+        chosen_template = random.choice(SUBJECT_TEMPLATES)
+        logger.debug(f"Selected template: {chosen_template}")
 
-    # Replace placeholders in the subject
-    for key, val in placeholders.items():
-        if val:  # Only replace if value exists
-            chosen_template = chosen_template.replace(f"[{key}]", str(val))
-            logger.debug(f"Replaced placeholder [{key}] with {val}")
-
-    return chosen_template
+        # Normalize placeholder keys to match template format
+        normalized_placeholders = {
+            k[0].upper() + k[1:]: v  # Convert 'firstname' to 'Firstname'
+            for k, v in placeholders.items()
+        }
+        
+        # Replace placeholders in the subject
+        for key, val in normalized_placeholders.items():
+            if val:  # Only replace if value exists
+                placeholder = f"[{key}]"
+                if placeholder in chosen_template:  # Only attempt replacement if placeholder exists
+                    chosen_template = chosen_template.replace(placeholder, str(val))
+                    logger.debug(f"Replaced placeholder {placeholder} with {val}")
+                
+        if "[" in chosen_template or "]" in chosen_template:
+            logger.warning(f"Unreplaced placeholders in subject: {chosen_template}")
+            
+        return chosen_template
+        
+    except Exception as e:
+        logger.error(f"Error picking subject line: {str(e)}")
+        return "Quick Question"  # Safe fallback
 
 
 ###############################################################################

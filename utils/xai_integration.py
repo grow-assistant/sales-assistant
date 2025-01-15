@@ -331,7 +331,8 @@ def personalize_email_with_xai(
             "8. Keep emails concise - under 200 words\n"
             "9. Focus on one key value proposition\n"
             "10. End with a clear call-to-action\n"
-            "11. DO NOT include a signature - this will be added later\n\n"
+            "11. DO NOT include a signature - this will be added later\n"
+            "12. Keep any specific day/time mentioned in the original CTA exactly as is\n\n"
             "Required Email Structure:\n"
             "1. Start with 'Hey [FirstName],'\n"
             "2. Quick intro paragraph\n"
@@ -358,7 +359,7 @@ def personalize_email_with_xai(
                 {"role": "user", "content": user_message},
             ],
             "model": MODEL_NAME,
-            "temperature": EMAIL_TEMPERATURE,
+            "temperature": 0.3,
         }
 
         logger.info("Personalizing email for:")
@@ -380,6 +381,23 @@ def personalize_email_with_xai(
         if isinstance(final_subject, str):
             final_subject = final_subject.replace("Byrdi", "Swoop")
             
+        # Add placeholder replacement check and handling
+        first_name = lead_data.get("first_name", "").strip()
+        
+        # Replace placeholders with actual values
+        if first_name:
+            final_subject = final_subject.replace("[FirstName]", first_name)
+            final_body = final_body.replace("[FirstName]", first_name)
+        else:
+            logger.warning(f"No first_name found in lead_data for placeholder replacement")
+            # Optionally provide a fallback
+            final_subject = final_subject.replace("[FirstName]", "there")
+            final_body = final_body.replace("[FirstName]", "there")
+
+        remaining_placeholders = check_for_placeholders(final_subject) + check_for_placeholders(final_body)
+        if remaining_placeholders:
+            logger.warning(f"Unreplaced placeholders found: {remaining_placeholders}")
+
         return {
             "subject": final_subject,
             "body": final_body
@@ -811,3 +829,10 @@ def build_context_block(interaction_history=None, objection_handling=None, origi
             context["original_email"] = original_email
     
     return context
+
+
+def check_for_placeholders(text: str) -> List[str]:
+    """Check for any remaining placeholders in the text."""
+    import re
+    pattern = r'\[([^\]]+)\]'
+    return re.findall(pattern, text)

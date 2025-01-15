@@ -114,7 +114,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 3
+LEADS_TO_PROCESS = 10
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
