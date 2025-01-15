@@ -104,17 +104,17 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": ""
+        "value": "0"
     },
     {
         "propertyName": "hs_sales_email_last_replied",
         "operator": "GTE",
-        "value": "2020-01-01"
+        "value": ""
     },
     {
         "propertyName": "email",
         "operator": "EQ",
-        "value": "bryanj@standardclub.org"
+        "value": ""
     },
     {
         "propertyName": "email_domain",
@@ -123,7 +123,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 25
+LEADS_TO_PROCESS = 10
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -260,13 +260,13 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
         logger.debug(f"Searching leads with filters: {active_filters}")
         response = hubspot._make_hubspot_post(url, payload)
         results = response.get("results", [])
-        
-        # Sort by lead_score descending, just in case
-        sorted_results = sorted(
-            results,
-            key=lambda x: float(x.get("properties", {}).get("lead_score", "0") or "0"),
-            reverse=True
-        )
+        # # Sort by lead_score descending, just in case
+        # sorted_results = sorted(
+        #     results,
+        #     key=lambda x: float(x.get("properties", {}).get("lead_score", "0") or "0"),
+        #     reverse=True
+        # )
+        sorted_results = results
         
         logger.info(f"Found {len(sorted_results)} leads for company {company_id}")
         return sorted_results
@@ -329,8 +329,24 @@ def gather_personalization_data(company_name: str, city: str, state: str) -> Dic
             "news_text": None
         }
 
+def clean_company_name(text: str) -> str:
+    """Replace old company name references with current name."""
+    if not text:
+        return text
+        
+    replacements = {
+        "Byrdi": "Swoop",
+        "byrdi": "swoop",
+        "BYRDI": "SWOOP"
+    }
+    
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    
+    return text
+
 def summarize_lead_interactions(lead_sheet: dict) -> str:
-    """Summarize prior emails and notes from the lead_sheet using OpenAI."""
+    """Collects all prior emails and notes from the lead_sheet."""
     try:
         lead_data = lead_sheet.get("lead_data", {})
         emails = lead_data.get("emails", [])
@@ -344,8 +360,8 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         for email in sorted(emails, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(email, dict):
                 date = email.get('timestamp', '').split('T')[0]
-                subject = email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8')
-                body = email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8')
+                subject = clean_company_name(email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8'))
+                body = clean_company_name(email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8'))
                 direction = email.get('direction', '')
                 body = body.split('On ')[0].strip()
                 email_type = "from the lead" if direction == "INCOMING_EMAIL" else "to the lead"
@@ -365,7 +381,7 @@ def summarize_lead_interactions(lead_sheet: dict) -> str:
         for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
             if isinstance(note, dict):
                 date = note.get('timestamp', '').split('T')[0]
-                content = note.get('body', '').encode('utf-8', errors='ignore').decode('utf-8')
+                content = clean_company_name(note.get('body', '').encode('utf-8', errors='ignore').decode('utf-8'))
                 
                 interaction = {
                     'date': date,
@@ -706,7 +722,7 @@ def get_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
             "sorts": [
                 {
                     "propertyName": "lead_score",
-                    "direction": "DESCENDING"
+                    "direction": "ASCENDING"
                 }
             ]
         }
@@ -794,7 +810,8 @@ def is_company_in_best_state(company_props: Dict) -> bool:
         return False
 
 def replace_placeholders(text: str, lead_data: dict) -> str:
-    """Replace placeholders in the text with actual values."""
+    """Replace placeholders in text with actual values."""
+    text = clean_company_name(text)  # Clean any old company references
     replacements = {
         "[FirstName]": lead_data["lead_data"].get("firstname", ""),
         "[LastName]": lead_data["lead_data"].get("lastname", ""),
@@ -919,12 +936,13 @@ def main_companies_first():
                             # Replace placeholders
                             if isinstance(email_content, dict):
                                 email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
+                                email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
                             elif isinstance(email_content, tuple):
                                 # Assuming email_content is a tuple with (subject, body)
                                 subject, body = email_content
                                 email_content = {
                                     "subject": replace_placeholders(subject, lead_data_full),
-                                    "body": body
+                                    "body": replace_placeholders(body, lead_data_full)
                                 }
                             
                             # Possibly further personalize with xAI
@@ -1208,12 +1226,13 @@ def main_leads_first():
                             # Replace placeholders in subject/body
                             if isinstance(email_content, dict):
                                 email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
+                                email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
                             elif isinstance(email_content, tuple):
                                 # Assuming email_content is a tuple with (subject, body)
                                 subject, body = email_content
                                 email_content = {
                                     "subject": replace_placeholders(subject, lead_data_full),
-                                    "body": body
+                                    "body": replace_placeholders(body, lead_data_full)
                                 }
                             
                             # Further personalize with XAI (if needed)

@@ -391,6 +391,12 @@ def personalize_email_with_xai(
         if isinstance(final_body, dict):
             final_body = final_body.get('body', body)
             
+        # Replace Byrdi with Swoop in response
+        if isinstance(final_body, str):
+            final_body = final_body.replace("Byrdi", "Swoop")
+        if isinstance(final_subject, str):
+            final_subject = final_subject.replace("Byrdi", "Swoop")
+            
         return {
             "subject": final_subject,
             "body": final_body

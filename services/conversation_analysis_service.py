@@ -109,22 +109,27 @@ class ConversationAnalysisService:
         
         try:
             response = openai.ChatCompletion.create(
-                model="gpt-4",
-                temperature=0.2,
+                model="gpt-4o",
+                temperature=0.1,
                 messages=[
                     {
                         "role": "system", 
                         "content": (
                             "You are a sales assistant analyzing email conversations. "
                             "Please provide: "
-                            "1) A brief summary of the conversation thread, "
+                            "1) A brief summary of the conversation thread (2-3 sentences max), "
                             "2) The latest INCOMING response only (ignore outbound messages from Ryan Donovan or Ty Hayes), including the date and who it was from, "
-                            f"3) Whether we responded to the latest incoming message, and if so, what was our response (include the full email text) and how many days ago was it sent relative to {datetime.now().date()}."
+                            f"3) Whether we responded to the latest incoming message, and if so, what was our response (include the full email text) and how many days ago was it sent relative to {datetime.now().date()}. "
+                            "Keep all responses clear and concise."
                         )
                     },
                     {"role": "user", "content": conversation_text}
                 ]
             )
+            logger.info(f"OpenAI Response: {response}")
+            logger.debug(f"Response token usage: {response.usage.total_tokens} tokens")
+            logger.debug(f"Response content: {response.choices[0].message.content}")
+            
             summary_content = response.choices[0].message.content
             logger.debug("Successfully generated AI summary")
             return summary_content
