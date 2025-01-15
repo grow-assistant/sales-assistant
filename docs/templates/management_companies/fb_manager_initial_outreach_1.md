@@ -7,10 +7,3 @@ Hey [FirstName],
 We’re looking for 2–3 management companies to partner with in 2025 at no cost. One of our current partners, Pinetree Country Club, saw a 54% boost in F&B revenue by making orders seamless during each round.
 
 If you're open to a quick chat, I'd love to see how [ManagementCompanyName] could benefit in the same way across your operations. Let me know a good time to connect, and I can share references or more details tailored to your needs.
-
-Cheers,
-Ty
-
-Swoop Golf
-480-225-9702
-swoopgolf.com

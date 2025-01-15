@@ -6,7 +6,7 @@ from utils.logging_setup import logger
 from scripts.golf_outreach_strategy import get_best_outreach_window, adjust_send_time
 from datetime import datetime, timedelta
 import random
-from utils.xai_integration import get_random_subject_template
+
 
 def generate_followup_email_xai(
     lead_id: int, 

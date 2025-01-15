@@ -15,6 +15,10 @@ import uuid
 import threading
 from contextlib import contextmanager
 from pathlib import Path
+from utils.xai_integration import (
+    personalize_email_with_xai,
+    build_context_block
+)
 
 # -----------------------------------------------------------------------------
 # PROJECT IMPORTS (Adjust paths/names as needed)
@@ -22,39 +26,26 @@ from pathlib import Path
 from services.hubspot_service import HubspotService
 from services.company_enrichment_service import CompanyEnrichmentService
 from services.data_gatherer_service import DataGathererService
-from services.leads_service import LeadsService
 from scripts.golf_outreach_strategy import (
     get_best_outreach_window, 
     get_best_month, 
-    get_best_time, 
-    get_best_day, 
     adjust_send_time
 )
-from scripts.job_title_categories import categorize_job_title
 from scripts.build_template import build_outreach_email
-from scheduling.database import get_db_connection, store_email_draft
+from scheduling.database import get_db_connection
 from scheduling.extended_lead_storage import store_lead_email_info
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.followup_scheduler import start_scheduler
-from scheduling.sql_lookup import build_lead_sheet_from_sql
 from config.settings import (
     HUBSPOT_API_KEY, 
     OPENAI_API_KEY, 
     MODEL_FOR_GENERAL, 
-    DEBUG_MODE, 
     PROJECT_ROOT, 
     CLEAR_LOGS_ON_START
 )
 from utils.exceptions import LeadContextError
-from utils.date_utils import convert_to_club_timezone
 from utils.gmail_integration import create_draft, store_draft_info
 from utils.logging_setup import logger, setup_logging
-from utils.season_snippet import get_season_variation_key, pick_season_snippet
-from utils.xai_integration import (
-    _build_icebreaker_from_news, 
-    get_random_subject_template, 
-    personalize_email_with_xai
-)
 from services.conversation_analysis_service import ConversationAnalysisService
 
 # -----------------------------------------------------------------------------
@@ -123,7 +114,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 10
+LEADS_TO_PROCESS = 3
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -925,86 +916,45 @@ def main_companies_first():
                                 "first_name": lead_data_full["lead_data"]["firstname"],
                                 "last_name": lead_data_full["lead_data"]["lastname"],
                                 "job_title": lead_data_full["lead_data"]["jobtitle"],
-                                "company_info": lead_data_full["company_data"].get("club_info", "")
+                                "company_info": lead_data_full["company_data"].get("club_info", ""),
+                                "has_news": personalization.get("has_news", False),
+                                "news_text": personalization.get("news_text", ""),
+                                "ClubName": lead_data_full["company_data"]["name"]
                             },
                             current_month=datetime.now().month,
                             start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
                             end_peak_month=lead_data_full["company_data"].get("peak_season_end_month")
                         )
-                        
+
                         if email_content:
-                            # Replace placeholders
-                            if isinstance(email_content, dict):
-                                email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
-                                email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
-                            elif isinstance(email_content, tuple):
-                                # Assuming email_content is a tuple with (subject, body)
-                                subject, body = email_content
-                                email_content = {
-                                    "subject": replace_placeholders(subject, lead_data_full),
-                                    "body": replace_placeholders(body, lead_data_full)
-                                }
-                            
-                            # Possibly further personalize with xAI
-                            interaction_summary = lead_props.get("recent_interaction", "")
-                            logger.debug(f"Got interaction summary from props: {interaction_summary[:100]}...")
-
-                            conversation_summary = summarize_lead_interactions(lead_sheet={
-                                "lead_data": lead_data_full["lead_data"],
-                                "company_data": lead_data_full["company_data"],
-                                "analysis": {
-                                    "previous_interactions": interaction_summary
-                                }
-                            })
-                            logger.debug(f"Generated conversation summary: {conversation_summary[:100]}...")
-
-                            # Get conversation analysis
+                            # Get conversation analysis for personalization
                             email_address = lead_data_full["lead_data"]["email"]
-                            logger.debug(f"About to analyze conversation for email: {email_address}")
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
-                            logger.info(f"Conversation analysis completed for {email_address}: {conversation_summary}")
-
-                            personalized_content = personalize_email_with_xai(
-                                lead_sheet={
-                                    "lead_data": lead_data_full["lead_data"],
-                                    "company_data": lead_data_full["company_data"],
-                                    "analysis": {
-                                        "previous_interactions": interaction_summary,
-                                        "conversation_summary": conversation_summary
-                                    }
-                                },
-                                subject=email_content["subject"],
-                                body=email_content["body"],
-                                summary=conversation_summary
+                            
+                            # Create context block with the summary
+                            context = build_context_block(
+                                interaction_history=conversation_summary,
+                                original_email={"subject": email_content[0], "body": email_content[1]}
                             )
-                            if personalized_content:
-                                email_content.update(personalized_content)
                             
-                            # Insert news icebreaker if applicable
-                            if personalization.get("has_news") and personalization.get("news_text"):
-                                icebreaker = _build_icebreaker_from_news(
-                                    lead_data_full["company_data"]["name"],
-                                    personalization["news_text"]
-                                )
-                                if icebreaker:
-                                    email_content["body"] = email_content["body"].replace(
-                                        "[ICEBREAKER]", 
-                                        icebreaker
-                                    )
+                            # Use the context in personalization
+                            personalized_content = personalize_email_with_xai(
+                                lead_sheet=lead_data_full,
+                                subject=email_content[0],
+                                body=email_content[1],
+                                summary=conversation_summary,
+                                context=context
+                            )
                             
-                            # Clean up leftover placeholders
-                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n\n", "")
-                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n", "")
-                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]", "")
-                            while "\n\n\n" in email_content["body"]:
-                                email_content["body"] = email_content["body"].replace("\n\n\n", "\n\n")
+                            # Add signature to the personalized body
+                            personalized_content["body"] = personalized_content["body"].rstrip() + get_signature()
                             
-                            # Create the Gmail draft
+                            # Create the Gmail draft with personalized content
                             draft_result = create_draft(
                                 sender="me",
-                                to=lead_data_full["lead_data"]["email"],
-                                subject=email_content["subject"],
-                                message_text=email_content["body"]
+                                to=email_address,
+                                subject=personalized_content["subject"],
+                                message_text=personalized_content["body"]
                             )
                             
                             if draft_result["status"] == "ok":
@@ -1027,8 +977,8 @@ def main_companies_first():
                                     },
                                     draft_id=draft_result["draft_id"],
                                     scheduled_date=send_date,
-                                    subject=email_content["subject"],
-                                    body=email_content["body"],
+                                    subject=email_content[0],
+                                    body=email_content[1],
                                     sequence_num=1
                                 )
                                 logger.info(f"Created draft email for {lead_data_full['lead_data']['email']}")
@@ -1215,86 +1165,48 @@ def main_leads_first():
                                 "first_name": lead_data_full["lead_data"]["firstname"],
                                 "last_name": lead_data_full["lead_data"]["lastname"],
                                 "job_title": lead_data_full["lead_data"]["jobtitle"],
-                                "company_info": lead_data_full["company_data"].get("club_info", "")
+                                "company_info": lead_data_full["company_data"].get("club_info", ""),
+                                "has_news": personalization.get("has_news", False),
+                                "news_text": personalization.get("news_text", ""),
+                                "ClubName": lead_data_full["company_data"]["name"]
                             },
                             current_month=datetime.now().month,
                             start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
                             end_peak_month=lead_data_full["company_data"].get("peak_season_end_month")
                         )
-                        
+
                         if email_content:
-                            # Replace placeholders in subject/body
-                            if isinstance(email_content, dict):
-                                email_content["subject"] = replace_placeholders(email_content["subject"], lead_data_full)
-                                email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
-                            elif isinstance(email_content, tuple):
-                                # Assuming email_content is a tuple with (subject, body)
-                                subject, body = email_content
-                                email_content = {
-                                    "subject": replace_placeholders(subject, lead_data_full),
-                                    "body": replace_placeholders(body, lead_data_full)
-                                }
-                            
-                            # Further personalize with XAI (if needed)
-                            interaction_summary = lead_props.get("recent_interaction", "")
-                            logger.debug(f"Got interaction summary from props: {interaction_summary[:100]}...")
-
-                            conversation_summary = summarize_lead_interactions(lead_sheet={
-                                "lead_data": lead_data_full["lead_data"],
-                                "company_data": lead_data_full["company_data"],
-                                "analysis": {
-                                    "previous_interactions": interaction_summary
-                                }
-                            })
-                            logger.debug(f"Generated conversation summary: {conversation_summary[:100]}...")
-
-                            # Get conversation analysis
+                            # Get conversation analysis for personalization
                             email_address = lead_data_full["lead_data"]["email"]
-                            logger.debug(f"About to analyze conversation for email: {email_address}")
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
                             
-                            personalized_content = personalize_email_with_xai(
-                                lead_sheet={
-                                    "lead_data": lead_data_full["lead_data"],
-                                    "company_data": lead_data_full["company_data"],
-                                    "analysis": {
-                                        "previous_interactions": interaction_summary,
-                                        "conversation_summary": conversation_summary
-                                    }
-                                },
-                                subject=email_content["subject"],
-                                body=email_content["body"],
-                                summary=conversation_summary
+                            # Create context block with the summary
+                            context = build_context_block(
+                                interaction_history=conversation_summary,
+                                original_email={"subject": email_content[0], "body": email_content[1]}
                             )
-                            if personalized_content:
-                                email_content.update(personalized_content)
                             
-                            # Insert news icebreaker if we have recent news
-                            if personalization.get("has_news") and personalization.get("news_text"):
-                                icebreaker = _build_icebreaker_from_news(
-                                    lead_data_full["company_data"]["name"],
-                                    personalization["news_text"]
-                                )
-                                if icebreaker:
-                                    email_content["body"] = email_content["body"].replace("[ICEBREAKER]", icebreaker)
+                            # Use the context in personalization
+                            personalized_content = personalize_email_with_xai(
+                                lead_sheet=lead_data_full,
+                                subject=email_content[0],
+                                body=email_content[1],
+                                summary=conversation_summary,
+                                context=context
+                            )
                             
-                            # Clean up any leftover placeholders
-                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n\n", "")
-                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]\n", "")
-                            email_content["body"] = email_content["body"].replace("[ICEBREAKER]", "")
-                            while "\n\n\n" in email_content["body"]:
-                                email_content["body"] = email_content["body"].replace("\n\n\n", "\n\n")
+                            # Add signature to the personalized body
+                            personalized_content["body"] = personalized_content["body"].rstrip() + get_signature()
                             
-                            # Create the draft
+                            # Create the Gmail draft with personalized content
                             draft_result = create_draft(
                                 sender="me",
-                                to=lead_data_full["lead_data"]["email"],
-                                subject=email_content["subject"],
-                                message_text=email_content["body"]
+                                to=email_address,
+                                subject=personalized_content["subject"],
+                                message_text=personalized_content["body"]
                             )
                             
                             if draft_result["status"] == "ok":
-                                # Store the draft data
                                 store_lead_email_info(
                                     lead_sheet={
                                         "lead_data": {
@@ -1314,8 +1226,8 @@ def main_leads_first():
                                     },
                                     draft_id=draft_result["draft_id"],
                                     scheduled_date=send_date,
-                                    subject=email_content["subject"],
-                                    body=email_content["body"],
+                                    subject=email_content[0],
+                                    body=email_content[1],
                                     sequence_num=1
                                 )
                                 logger.info(f"Created draft email for {lead_data_full['lead_data']['email']}")

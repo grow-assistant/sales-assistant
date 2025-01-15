@@ -7,10 +7,3 @@ Hey [FirstName],
 Consider Pinetree Country Club: after adopting our platform, they saw a 54% increase in F&B sales and a 40% reduction in wait times. According to industry data, using digital ordering often results in a 20–40% bump in ancillary revenue, which can significantly impact your bottom line.
 
 Would a 10-minute call on Thursday at 2 PM or Friday at 10 AM work to discuss? If not, I’m happy to arrange another time.
-
-Cheers,
-Ty
-
-Swoop Golf
-480-225-9702
-swoopgolf.com

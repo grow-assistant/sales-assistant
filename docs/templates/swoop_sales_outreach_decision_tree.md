@@ -160,4 +160,4 @@ flowchart TB
 1. **Assign Roles**: Who checks Mailchimp data vs. who preps research?  
 2. **Customize Templates**: Reference top-engaged content from prior emails.  
 3. **Set CRM Reminders**: Day 0, Day 3, Day 7, Day 10, Day 14.  
-4. **Monitor & Iterate**: Evaluate outcomes and optimize.  
+4. **Monitor & Iterate**: Evaluate outcomes and optimize.

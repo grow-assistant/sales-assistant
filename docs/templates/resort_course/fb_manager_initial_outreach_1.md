@@ -7,10 +7,3 @@ Hey [FirstName],
 We're looking for 2–3 resorts to partner with in 2025 at no cost. One of our partners, Pinetree Country Club, saw a 54% boost in F&B revenue by making orders simple and accessible for visitors throughout their property.
 
 If you’re open to a quick chat, I’d love to see whether [ResortName] could benefit in the same way. Let me know a good time to connect, and I can share references or more details tailored to your needs.
-
-Cheers,
-Ty
-
-Swoop Golf
-480-225-9702
-swoopgolf.com

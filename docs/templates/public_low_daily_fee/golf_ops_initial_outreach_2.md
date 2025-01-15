@@ -7,10 +7,3 @@ Hi [FirstName],
 We’re inviting 2–3 operations to partner with us at no cost in 2025, fine-tuning our platform to your specific requirements. At Pinetree Country Club, average order times dropped 40%, keeping players engaged and on schedule.
 
 Interested in a brief call to explore if this fits [FacilityName]? Let me know, and I’ll share how Swoop can uplift your day-to-day operations.
-
-Cheers,
-Ty
-
-Swoop Golf
-480-225-9702
-swoopgolf.com

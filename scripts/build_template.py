@@ -13,6 +13,7 @@ from utils.xai_integration import (
 )
 from scripts.job_title_categories import categorize_job_title
 from datetime import datetime
+import re
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -101,16 +102,17 @@ def extract_subject_and_body(template_content: str) -> tuple[str, str]:
 ###############################################################################
 # 5) MAIN FUNCTION FOR BUILDING EMAIL
 ###############################################################################
+
 def build_outreach_email(
     template_path: str = None,
     profile_type: str = None,
     last_interaction_days: int = None,
     placeholders: dict = None,
-    current_month: int = 9,  # Default from main_old.py
-    start_peak_month: int = 5,  # Default from main_old.py
-    end_peak_month: int = 8,  # Default from main_old.py
+    current_month: int = 9,
+    start_peak_month: int = 5,
+    end_peak_month: int = 8,
     use_markdown_template: bool = True
-) -> tuple[str, str]:  # Return tuple like main_old.py expects
+) -> tuple[str, str]:
     """Build email content from template."""
     try:
         placeholders = placeholders or {}
@@ -189,13 +191,26 @@ def build_outreach_email(
             # Add Byrdi to Swoop replacement
             body = body.replace("Byrdi", "Swoop")
             print("Replaced 'Byrdi' with 'Swoop' in email body")
+                      
+            # Clean up any double newlines that might have been created
+            while "\n\n\n" in body:
+                body = body.replace("\n\n\n", "\n\n")
             
-            # 5. Get subject (will be ignored by main_old.py but included for completeness)
+            # Get subject (will be ignored by main_old.py but included for completeness)
             subject = pick_subject_line_based_on_lead(profile_type, placeholders)
             print(f"Generated subject line: {subject}")
             
             print(f"Final email body length: {len(body)}")
-            return subject, body
+            
+            # Convert tuple to dict before passing to personalize_email_with_xai
+            if body:
+                email_dict = {
+                    "subject": subject,
+                    "body": body
+                }
+                return subject, body
+            
+            return "", ""  # Return empty strings on error
             
     except Exception as e:
         logger.error(f"Error building email: {str(e)}")

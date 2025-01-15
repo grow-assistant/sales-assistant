@@ -7,10 +7,3 @@ Hey [FirstName],
 We’re looking for 2–3 facilities to partner with in 2025 at no cost. One of our current partners, Pinetree Country Club, saw a 54% boost in F&B revenue by streamlining orders and making it simple for players to purchase during their round.
 
 If you’re open to a short chat, I’d love to see if [FacilityName] could benefit similarly. Let me know a good time to connect.
-
-Cheers,
-Ty
-
-Swoop Golf
-480-225-9702
-swoopgolf.com

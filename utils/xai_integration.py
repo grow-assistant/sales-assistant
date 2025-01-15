@@ -9,7 +9,6 @@ import requests
 
 from typing import Tuple, Dict, Any, List
 from datetime import datetime, date
-from pathlib import Path
 from dotenv import load_dotenv
 
 from utils.logging_setup import logger
@@ -30,17 +29,8 @@ _cache = {
     "icebreakers": {},
 }
 
-SUBJECT_TEMPLATES = [
-    "Quick Chat, [FirstName]?",
-    "Quick Question, [FirstName]?",
-    "Question about 2025",
-    "Quick Question",
-]
 
 
-def get_random_subject_template() -> str:
-    """Returns a random subject line template from the predefined list."""
-    return random.choice(SUBJECT_TEMPLATES)
 
 
 def get_email_rules() -> List[str]:
@@ -53,6 +43,7 @@ def get_email_rules() -> List[str]:
         "**Tone:** Professional but conversational, focusing on starting a dialogue.",
         "**Closing:** End emails directly after your call-to-action.",
         "**Previous Contact:** If no prior replies, do not reference previous emails or special offers.",
+        "**Signature:** DO NOT include a signature block - this will be added later.",
     ]
 
 
@@ -125,7 +116,7 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
                 data = response.json()
                 content = data["choices"][0]["message"]["content"].strip()
 
-                logger.info(
+                logger.error(
                     "Received xAI response:\n%s",
                     content[:200] + "..." if len(content) > 200 else content,
                 )
@@ -196,9 +187,9 @@ def xai_news_search(club_name: str) -> tuple[str, str]:
         "temperature": 0,
     }
 
-    logger.info(f"Searching news for club: {club_name}")
+    logger.error(f"Searching news for club: {club_name}")
     news = _send_xai_request(payload)
-    logger.info(
+    logger.error(
         "News search result for %s:",
         club_name,
         extra={"news": news},
@@ -255,9 +246,9 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
         "temperature": 0.1,
     }
 
-    logger.info(f"Building icebreaker for club: {club_name}")
+    logger.error(f"Building icebreaker for club: {club_name}")
     icebreaker = _send_xai_request(payload)
-    logger.info(
+    logger.error(
         "Generated icebreaker for %s:",
         club_name,
         extra={"icebreaker": icebreaker},
@@ -274,7 +265,8 @@ def personalize_email_with_xai(
     subject: str,
     body: str,
     summary: str = "",
-    news_summary: str = ""
+    news_summary: str = "",
+    context: Dict[str, Any] = None
 ) -> Dict[str, str]:
     """
     Personalizes email content using xAI.
@@ -314,17 +306,23 @@ def personalize_email_with_xai(
             logger.debug("Objection handling content not loaded (lead has not emailed us)")
 
         system_message = (
-            "You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions."
+            "You are a helpful assistant that personalizes outreach emails for golf clubs, focusing on business value and relevant solutions. "
+            "IMPORTANT: Do not include any signature block - this will be added later."
         )
 
         lead_data = lead_sheet.get("lead_data", {})
         company_data = lead_sheet.get("company_data", {})
         
-        context_block = build_context_block(
-            interaction_history=summary if summary else "No previous interactions",
-            objection_handling=objection_handling if has_prior_emails else "",
-            original_email={"subject": subject, "body": body},
-        )
+        # Use provided context if available, otherwise build it
+        if context is None:
+            context_block = build_context_block(
+                interaction_history=summary if summary else "No previous interactions",
+                objection_handling=objection_handling if has_prior_emails else "",
+                original_email={"subject": subject, "body": body}
+            )
+        else:
+            context_block = context
+            
         logger.debug(f"Context block: {json.dumps(context_block, indent=2)}")
 
         rules_text = "\n".join(get_email_rules())
@@ -340,13 +338,14 @@ def personalize_email_with_xai(
             "7. Keep tone professional and direct\n"
             "8. Keep emails concise - under 200 words\n"
             "9. Focus on one key value proposition\n"
-            "10. End with a clear call-to-action\n\n"
+            "10. End with a clear call-to-action\n"
+            "11. DO NOT include a signature - this will be added later\n\n"
             "Required Email Structure:\n"
             "1. Start with 'Hey [FirstName],'\n"
             "2. Quick intro paragraph\n"
             "3. Value proposition paragraph\n"
             "4. CTA paragraph\n"
-            "5. Signature\n\n"
+            "5. DO NOT include a signature\n\n"
             "Format response as:\n"
             "Subject: [keep original subject]\n\n"
             "Body:\n[personalized body]\n\n"
@@ -357,7 +356,8 @@ def personalize_email_with_xai(
             "2. Focus on one key benefit relevant to the club\n"
             "3. Maintain professional tone\n"
             "4. Keep response under 200 words\n"
-            "5. Return ONLY the subject and body"
+            "5. DO NOT include a signature\n"
+            "6. Return ONLY the subject and body"
         )
 
         payload = {
@@ -369,7 +369,7 @@ def personalize_email_with_xai(
             "temperature": EMAIL_TEMPERATURE,
         }
 
-        logger.info(
+        logger.error(
             "Personalizing email for:",
             extra={
                 "company": lead_sheet.get("company_name"),
@@ -377,7 +377,7 @@ def personalize_email_with_xai(
             },
         )
         response = _send_xai_request(payload)
-        logger.info("Email personalization result:", extra={
+        logger.error("Email personalization result:", extra={
             "company": lead_sheet.get("company_name"),
             "response": response
         })
@@ -435,16 +435,6 @@ def _parse_xai_response(response: str) -> Tuple[str, str]:
                 # Simple grouping into paragraphs/signature
                 if line.startswith(("Hey", "Hi", "Dear")):
                     body_lines.append(f"{line}\n\n")
-                elif line in ["Best regards,", "Sincerely,", "Regards,"]:
-                    body_lines.append(f"\n{line}")
-                elif line == "Ty":
-                    body_lines.append(f" {line}\n\n")
-                elif line == "Swoop Golf":
-                    body_lines.append(f"{line}\n")
-                elif line == "480-225-9702":
-                    body_lines.append(f"{line}\n")
-                elif line == "swoopgolf.com":
-                    body_lines.append(line)
                 else:
                     body_lines.append(f"{line}\n\n")
 
@@ -496,9 +486,9 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
         "temperature": ANALYSIS_TEMPERATURE,
     }
 
-    logger.info(f"Generating icebreaker for club: {club_name}")
+    logger.error(f"Generating icebreaker for club: {club_name}")
     response = _send_xai_request(payload, max_retries=3, retry_delay=1)
-    logger.info(
+    logger.error(
         "Generated icebreaker for %s:",
         club_name,
         extra={"icebreaker": response},
@@ -506,184 +496,6 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
 
     _cache["icebreakers"][cache_key] = response
     return response
-
-
-def generate_followup_email_content(
-    first_name: str,
-    company_name: str,
-    original_subject: str,
-    original_date: str,
-    sequence_num: int,
-    original_email: dict = None,
-) -> Tuple[str, str]:
-    """
-    Generate follow-up email content using xAI.
-    Returns (subject, body).
-    """
-    logger.debug(
-        f"[generate_followup_email_content] Called with first_name='{first_name}', "
-        f"company_name='{company_name}', original_subject='{original_subject}', "
-        f"original_date='{original_date}', sequence_num={sequence_num}, "
-        f"original_email keys={list(original_email.keys()) if original_email else 'None'}"
-    )
-    try:
-        if sequence_num == 2 and original_email:
-            logger.debug("[generate_followup_email_content] Handling second follow-up logic.")
-
-            payload = {
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a sales professional writing a brief follow-up email. "
-                            "Keep the tone professional but friendly. "
-                            "The response should be under 50 words and focus on getting a response."
-                        ),
-                    },
-                    {
-                        "role": "user",
-                        "content": f"""
-                        Original Email:
-                        Subject: {original_email['subject']}
-                        Body: {original_email['body']}
-
-                        Write a brief follow-up that starts with:
-                        "I understand my last email might not have made it high enough in your inbox."
-
-                        Requirements:
-                        - Keep it under 50 words
-                        - Be concise and direct
-                        - End with a clear call to action
-                        - Don't repeat information from the original email
-                        """,
-                    },
-                ],
-                "model": MODEL_NAME,
-                "stream": False,
-                "temperature": EMAIL_TEMPERATURE,
-            }
-
-            logger.info(
-                "Generating second follow-up email for:",
-                extra={"company": company_name, "sequence_num": sequence_num},
-            )
-            result = _send_xai_request(payload)
-            logger.info("Second follow-up generation result:", extra={"result": result})
-
-            if not result:
-                logger.error(
-                    "[generate_followup_email_content] Empty response from xAI for follow-up generation."
-                )
-                return "", ""
-
-            follow_up_body = result.strip()
-            subject = f"RE: {original_email['subject']}"
-            body = (
-                f"{follow_up_body}\n\n"
-                f"Best regards,\n"
-                f"Ty\n\n"
-                f"-------- Original Message --------\n"
-                f"Subject: {original_email['subject']}\n"
-                f"Sent: {original_email.get('created_at', 'Unknown date')}\n\n"
-                f"{original_email['body']}"
-            )
-
-            logger.debug(
-                f"[generate_followup_email_content] Returning second follow-up subject='{subject}', "
-                f"body length={len(body)}"
-            )
-            return subject, body
-
-        else:
-            logger.debug("[generate_followup_email_content] Handling default follow-up logic.")
-            prompt = f"""
-            Generate a follow-up email for:
-            - Name: {first_name}
-            - Company: {company_name}
-            - Original Email Subject: {original_subject}
-            - Original Send Date: {original_date}
-
-            This is follow-up #{sequence_num}. Keep it brief and focused on scheduling a call.
-
-            Rules:
-            1. Keep it under 3 short paragraphs
-            2. Reference the original email naturally
-            3. Add new value proposition or insight
-            4. End with clear call to action
-            5. Maintain professional but friendly tone
-
-            Format the response with 'Subject:' and 'Body:' labels.
-            """
-
-            payload = {
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are an expert at writing follow-up emails that are brief, "
-                            "professional, and effective."
-                        ),
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                "model": MODEL_NAME,
-                "temperature": EMAIL_TEMPERATURE,
-            }
-
-            logger.info(
-                "Generating follow-up email for:",
-                extra={"company": company_name, "sequence_num": sequence_num},
-            )
-            result = _send_xai_request(payload)
-            logger.info("Follow-up generation result:", extra={"result": result})
-
-            if not result:
-                logger.error(
-                    "[generate_followup_email_content] Empty response from xAI for default follow-up generation."
-                )
-                return "", ""
-
-            subject, body = _parse_xai_response(result)
-            if not subject or not body:
-                logger.error(
-                    "[generate_followup_email_content] Failed to parse follow-up email content."
-                )
-                return "", ""
-
-            logger.debug(
-                f"[generate_followup_email_content] Returning subject='{subject}', body length={len(body)}"
-            )
-            return subject, body
-
-    except Exception as e:
-        logger.error(
-            f"[generate_followup_email_content] Error generating follow-up email content: {str(e)}"
-        )
-        return "", ""
-
-
-def parse_personalization_response(response_text):
-    """
-    Parse JSON-based email personalization response text from xAI.
-    Returns (subject, body).
-    Falls back to defaults on parsing error.
-    """
-    try:
-        response_data = json.loads(response_text)
-        subject = response_data.get("subject")
-        body = response_data.get("body")
-
-        if not subject or not body:
-            raise ValueError("Subject or body missing in xAI response")
-
-        return subject, body
-
-    except (json.JSONDecodeError, KeyError, ValueError) as e:
-        logger.exception(f"Error parsing xAI response: {str(e)}")
-        return "Follow-up", (
-            "Thank you for your interest. Let me know if you have any other questions!"
-        )
-
 
 def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any]:
     """
@@ -704,7 +516,7 @@ def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any
         logger.debug(f"Using cached segmentation result for {club_name} in {location}")
         return _cache["club_segmentation"][cache_key]
 
-    logger.info(f"Searching for club segmentation info: {club_name} in {location}")
+    logger.error(f"Searching for club segmentation info: {club_name} in {location}")
 
     prompt = f"""
 Classify {club_name} in {location} with precision:
@@ -762,7 +574,7 @@ GOLF HOLES:
     }
 
     response = _send_xai_request(payload)
-    logger.info(
+    logger.error(
         "Club segmentation result for %s:",
         club_name,
         extra={"segmentation": response},
@@ -987,6 +799,7 @@ def get_club_summary(club_name: str, location: str) -> str:
 
 
 def build_context_block(interaction_history=None, objection_handling=None, original_email=None):
+    """Build context block for email personalization."""
     context = {}
     
     if interaction_history:
@@ -996,9 +809,14 @@ def build_context_block(interaction_history=None, objection_handling=None, origi
         context["objection_handling"] = objection_handling
         
     if original_email:
-        context["original_email"] = {
-            "subject": original_email.get("subject", ""),
-            "body": original_email.get("body", "")
-        }
+        # Handle both tuple and dict inputs
+        if isinstance(original_email, tuple):
+            subject, body = original_email
+            context["original_email"] = {
+                "subject": subject,
+                "body": body
+            }
+        else:
+            context["original_email"] = original_email
     
     return context

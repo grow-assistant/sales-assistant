@@ -7,10 +7,3 @@ Hey [FirstName],
 We’re inviting 2–3 management companies to join us at no cost in 2025, ensuring our platform addresses your unique challenges. For instance, at Pinetree Country Club, we helped reduce average order times by 40%, leading to higher guest satisfaction and smoother golf rounds.
 
 Interested in a quick chat about how this might work for [ManagementCompanyName] and its facilities? We’d love to share how Swoop can elevate efficiency and revenue across your portfolio.
-
-Cheers,
-Ty
-
-Swoop Golf
-480-225-9702
-swoopgolf.com
