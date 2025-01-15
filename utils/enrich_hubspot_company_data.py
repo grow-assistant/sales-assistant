@@ -14,7 +14,6 @@ from config.settings import HUBSPOT_API_KEY
 from utils.exceptions import HubSpotError
 from utils.xai_integration import (
     xai_club_segmentation_search,
-    xai_club_info_search,
     get_club_summary
 )
 from utils.logging_setup import logger
@@ -87,34 +86,25 @@ def determine_facility_type(company_name: str, location: str) -> dict:
     if not company_name or not location:
         return {}
 
-    club_info = xai_club_info_search(company_name, location)
+    # Get segmentation data
     segmentation_info = xai_club_segmentation_search(company_name, location)
+    
+    # Get summary for additional context
     club_summary = get_club_summary(company_name, location)
 
-    # Extract name from segmentation info first, then club info, then summary
-    official_name = (
-        segmentation_info.get("name") or 
-        club_info.get("official_name") or 
-        (club_summary.split(",")[0] if club_summary and "," in club_summary else None) or 
-        company_name
-    )
+    # Extract name from segmentation info
+    official_name = segmentation_info.get("name") or company_name
 
     full_info = {
-        "name": official_name,  # Use the extracted official name
+        "name": official_name,
         "club_type": segmentation_info.get("club_type", "Unknown"),
         "facility_complexity": segmentation_info.get("facility_complexity", "Unknown"),
-        "geographic_seasonality": segmentation_info.get(
-            "geographic_seasonality", "Unknown"
-        ),
+        "geographic_seasonality": segmentation_info.get("geographic_seasonality", "Unknown"),
         "has_pool": segmentation_info.get("has_pool", "Unknown"),
         "has_tennis_courts": segmentation_info.get("has_tennis_courts", "Unknown"),
         "number_of_holes": segmentation_info.get("number_of_holes", 0),
-        "club_info": club_summary,
+        "club_info": club_summary
     }
-
-    # Debug print to verify name extraction
-    print(f"Extracted official name: {official_name}")
-    print(f"Original name sources: segmentation={segmentation_info.get('name')}, club_info={club_info.get('official_name')}")
 
     return full_info
 

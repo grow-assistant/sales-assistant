@@ -9,7 +9,7 @@ from dateutil.parser import parse as parse_date
 
 from services.hubspot_service import HubspotService
 from utils.exceptions import HubSpotError
-from utils.xai_integration import xai_news_search, xai_club_info_search
+from utils.xai_integration import xai_news_search, xai_club_segmentation_search
 from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
@@ -192,28 +192,20 @@ class DataGathererService:
             }
 
     def gather_club_info(self, club_name: str, city: str, state: str) -> str:
-        correlation_id = f"club_info_{club_name}"
-        logger.debug("Starting club info search", extra={
-            "club_name": club_name,
-            "city": city,
-            "state": state,
-            "correlation_id": correlation_id
-        })
-        location_str = f"{city}, {state}".strip(", ")
+        """Get club information using segmentation."""
+        if not club_name or not city or not state:
+            return ""
+        
+        location = f"{city}, {state}"
         try:
-            info = xai_club_info_search(club_name, location_str, amenities=None)
-            logger.info("Club info search completed", extra={
-                "club_name": club_name,
-                "has_info": bool(info),
-                "correlation_id": correlation_id
-            })
-            return info
+            # Replace club_info_search with segmentation
+            segmentation_data = xai_club_segmentation_search(club_name, location)
+            return segmentation_data.get("club_info", "")
         except Exception as e:
-            logger.error("Error searching club info", extra={
+            logger.error("Error gathering club info", extra={
                 "club_name": club_name,
-                "error": str(e),
-                "correlation_id": correlation_id
-            }, exc_info=True)
+                "error": str(e)
+            })
             return ""
 
     def gather_club_news(self, club_name: str) -> str:
@@ -265,10 +257,9 @@ class DataGathererService:
             }
         location_str = f"{city}, {state}".strip(", ")
         try:
-            response = xai_club_info_search(company_name, location_str,
-                                            amenities=["Golf Course", "Pool", "Tennis Courts"])
+            segmentation_info = xai_club_segmentation_search(company_name, location_str)
             return {
-                "response": response,
+                "response": segmentation_info,
                 "status": "success"
             }
         except Exception as e:

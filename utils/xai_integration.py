@@ -26,7 +26,7 @@ EMAIL_TEMPERATURE = float(os.getenv("EMAIL_TEMPERATURE", "0.2"))
 # Simple caches to avoid repeated calls
 _cache = {
     "news": {},
-    "club_info": {},
+    "club_segmentation": {},
     "icebreakers": {},
 }
 
@@ -268,150 +268,6 @@ def _build_icebreaker_from_news(club_name: str, news_summary: str) -> str:
 
 
 ##############################################################################
-# Club Info Search
-##############################################################################
-def xai_club_info_search(club_name: str, location: str, amenities: list = None) -> Dict[str, Any]:
-    """
-    Search for club information using xAI.
-    Returns a dict with keys:
-      'overview', 'facility_type', 'has_pool', 'amenities'
-    """
-    cache_key = f"{club_name}_{location}"
-    if cache_key in _cache["club_info"]:
-        logger.debug(f"Using cached club info for {club_name} in {location}")
-        return _cache["club_info"][cache_key]
-
-    logger.info(f"Searching for club info: {club_name} in {location}")
-    amenity_str = ", ".join(amenities) if amenities else ""
-
-    prompt = f"""
-    Please provide a brief overview of {club_name} located in {location}. Include key facts such as:
-    - Type of facility (Public, Private, Municipal, Semi-Private, Country Club, Resort, Management Company)
-    - Does the club have a pool? (Answer with 'Yes' or 'No')
-    - Notable amenities or features (DO NOT include pro shop, fitness center, or dining facilities)
-    - Any other relevant information
-
-    Format your response with these exact headings:
-    OVERVIEW:
-    [Overview text]
-
-    FACILITY TYPE:
-    [Type]
-
-    HAS POOL:
-    [Yes/No]
-
-    AMENITIES:
-    - [amenity 1]
-    - [amenity 2]
-    """
-
-    payload = {
-        "messages": [
-            {
-                "role": "system",
-                "content": (
-                    "You are a factual assistant that provides objective, data-focused overviews of clubs. "
-                    "Focus only on verifiable facts like location, type, amenities, etc. "
-                    "CRITICAL: DO NOT list golf course or pro shop as amenities as these are assumed. "
-                    "Only list additional amenities explicitly verified. "
-                    "Avoid subjective descriptions or flowery language."
-                ),
-            },
-            {"role": "user", "content": prompt},
-        ],
-        "model": MODEL_NAME,
-        "temperature": ANALYSIS_TEMPERATURE,
-    }
-
-    response = _send_xai_request(payload)
-    logger.info(
-        "Club info search result for %s:",
-        club_name,
-        extra={"info": response},
-    )
-
-    parsed_info = _parse_club_response(response)
-    _cache["club_info"][cache_key] = parsed_info
-
-    return parsed_info
-def _parse_club_response(response: str) -> Dict[str, Any]:
-    """Parse the club info response and extract structured data."""
-    result = {
-        'name': '',
-        'club_type': 'Unknown', 
-        'facility_complexity': 'Unknown',
-        'geographic_seasonality': 'Unknown',
-        'has_pool': 'No',
-        'has_tennis_courts': 'No',
-        'number_of_holes': 0,
-        'raw_response': response
-    }
-
-    # Extract official name first
-    name_match = re.search(r'OFFICIAL NAME:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if name_match:
-        result['name'] = name_match.group(1).strip()
-        logger.debug(f"Found official name: {result['name']}")
-    
-    # Use this name for all subsequent operations
-    if result['name']:
-        # Update cache with official name
-        cache_key = result['name'].lower()
-        if cache_key != result['name']:
-            _cache["club_info"][cache_key] = result
-            logger.debug(f"Updated cache with official name: {result['name']}")
-            
-        # Update any existing cache entries
-        old_key = next((k for k in _cache["club_info"] if k.lower() == cache_key), None)
-        if old_key and old_key != cache_key:
-            _cache["club_info"][cache_key] = _cache["club_info"].pop(old_key)
-            logger.debug(f"Migrated cache entry from {old_key} to {cache_key}")
-            
-        # Update news cache if needed
-        if old_key in _cache["news"]:
-            _cache["news"][cache_key] = _cache["news"].pop(old_key)
-            logger.debug(f"Updated news cache with official name")
-
-    # Parse club type
-    type_match = re.search(r'CLUB TYPE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if type_match:
-        result['club_type'] = type_match.group(1).strip()
-
-    # Parse facility complexity
-    complexity_match = re.search(r'FACILITY COMPLEXITY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if complexity_match:
-        result['facility_complexity'] = complexity_match.group(1).strip()
-
-    # Parse seasonality
-    season_match = re.search(r'GEOGRAPHIC SEASONALITY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if season_match:
-        result['geographic_seasonality'] = season_match.group(1).strip()
-
-    # Parse pool info
-    pool_match = re.search(r'POOL:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if pool_match:
-        pool_value = pool_match.group(1).strip().lower()
-        result['has_pool'] = 'Yes' if 'yes' in pool_value else 'No'
-
-    # Parse tennis courts
-    tennis_match = re.search(r'TENNIS COURTS:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if tennis_match:
-        tennis_value = tennis_match.group(1).strip().lower()
-        result['has_tennis_courts'] = 'Yes' if 'yes' in tennis_value else 'No'
-
-    # Parse number of holes
-    holes_match = re.search(r'GOLF HOLES:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
-    if holes_match:
-        holes_text = holes_match.group(1).strip()
-        try:
-            result['number_of_holes'] = int(holes_text)
-        except ValueError:
-            logger.warning(f"Could not parse number of holes from: {holes_text}")
-
-    return result
-
-##############################################################################
 # Personalize Email
 ##############################################################################
 def personalize_email_with_xai(
@@ -635,6 +491,7 @@ def get_xai_icebreaker(club_name: str, recipient_name: str, timeout: int = 10) -
 
     _cache["icebreakers"][cache_key] = response
     return response
+
 
 def generate_followup_email_content(
     first_name: str,
@@ -1072,6 +929,7 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
 
     return result
 
+
 def get_club_summary(club_name: str, location: str) -> str:
     """
     Get a one-paragraph summary of the club using xAI.
@@ -1079,42 +937,39 @@ def get_club_summary(club_name: str, location: str) -> str:
     if not club_name or not location:
         return ""
 
-    # First get verified info from segmentation and club info searches
+    # Only get segmentation info
     segmentation_info = xai_club_segmentation_search(club_name, location)
-    club_info = xai_club_info_search(club_name, location)
 
-    # Get overview from club_info response
-    overview_match = re.search(r'OVERVIEW:\s*(.+?)(?=\n[A-Z ]+?:|$)', club_info.get('raw_response', ''), re.DOTALL)
-    overview = overview_match.group(1).strip() if overview_match else ""
-
-    # Create strict system prompt based on verified info
+    # Create system prompt based on verified info
     verified_info = {
         'type': segmentation_info.get('club_type', 'Unknown'),
         'holes': segmentation_info.get('number_of_holes', 0),
         'has_pool': segmentation_info.get('has_pool', 'No'),
-        'has_tennis': segmentation_info.get('has_tennis_courts', 'No'),
-        'overview': overview
+        'has_tennis': segmentation_info.get('has_tennis_courts', 'No')
     }
+    
     payload = {
         "messages": [
             {
                 "role": "system",
-                "content": "You are a club analyst. Provide a simple one paragraph summary."
+                "content": (
+                    "You are a club analyst. Provide a factual one paragraph summary "
+                    "based on verified information. Do not make assumptions."
+                )
             },
             {
                 "role": "user", 
-                "content": f"Give me a one paragraph summary about {club_name} in {location}."
+                "content": f"Give me a one paragraph summary about {club_name} in {location}, "
+                          f"using these verified facts: {verified_info}"
             }
         ],
         "model": MODEL_NAME,
         "temperature": 0.0,
     }
 
-    logger.info(f"Generating club summary for: {club_name} in {location}")
     response = _send_xai_request(payload)
-    logger.info("Generated club summary:", extra={"summary": response})
-
     return response.strip()
+
 
 def build_context_block(interaction_history=None, objection_handling=None, original_email=None):
     context = {}

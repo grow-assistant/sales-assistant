@@ -4,7 +4,6 @@ from config.settings import HUBSPOT_API_KEY
 from utils.exceptions import HubSpotError
 from utils.xai_integration import (
     xai_club_segmentation_search,
-    xai_club_info_search,
     get_club_summary
 )
 from utils.logging_setup import logger
@@ -126,14 +125,11 @@ class CompanyEnrichmentService:
         if not company_name or not location:
             return {}
 
-        club_info = xai_club_info_search(company_name, location)
         segmentation_info = xai_club_segmentation_search(company_name, location)
         club_summary = get_club_summary(company_name, location)
 
         official_name = (
             segmentation_info.get("name") or 
-            club_info.get("official_name") or 
-            (club_summary.split(",")[0] if club_summary and "," in club_summary else None) or 
             company_name
         )
 
