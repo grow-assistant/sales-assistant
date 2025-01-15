@@ -70,7 +70,7 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
                 "request_details": {
                     "model": payload.get("model", MODEL_NAME),
                     "temperature": payload.get("temperature", EMAIL_TEMPERATURE),
-                    "max_tokens": payload.get("max_tokens", 2000),
+                    "max_tokens": payload.get("max_tokens", 1000),
                     "messages": [
                         {"role": msg.get("role"), "content": msg.get("content")}
                         for msg in payload.get("messages", [])

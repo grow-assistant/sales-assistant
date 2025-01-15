@@ -139,6 +139,18 @@ class DataGathererService:
                 "operation": "gather_lead_data"
             }
         )
+
+        context = {
+            "first_name": contact_props.get("firstname", ""),
+            "club_name": company_props.get("name", ""),
+            "club_data": {
+                "geographic_seasonality": company_props.get("geographic_seasonality"),
+                "peak_season_start_month": company_props.get("peak_season_start_month"),
+                "peak_season_end_month": company_props.get("peak_season_end_month"),
+                # ... other club data ...
+            }
+        }
+
         return lead_sheet
 
     # -------------------------------------------------------------------------
