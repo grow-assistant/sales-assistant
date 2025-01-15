@@ -55,6 +55,7 @@ from utils.xai_integration import (
     get_random_subject_template, 
     personalize_email_with_xai
 )
+from services.conversation_analysis_service import ConversationAnalysisService
 
 # -----------------------------------------------------------------------------
 # GLOBAL WORKFLOW MODE VARIABLE
@@ -129,6 +130,7 @@ LEADS_TO_PROCESS = 25
 # -----------------------------------------------------------------------------
 setup_logging()
 data_gatherer = DataGathererService()
+conversation_analyzer = ConversationAnalysisService()
 
 # -----------------------------------------------------------------------------
 # CONTEXT MANAGER FOR WORKFLOW STEPS
@@ -832,6 +834,7 @@ def main_companies_first():
         hubspot = HubspotService(HUBSPOT_API_KEY)
         company_enricher = CompanyEnrichmentService()
         data_gatherer = DataGathererService()
+        conversation_analyzer = ConversationAnalysisService()
         leads_processed = 0
         
         with workflow_step("1", "Get Country Club companies", workflow_context):
@@ -931,6 +934,13 @@ def main_companies_first():
                                 }
                             })
                             logger.debug(f"Generated conversation summary: {conversation_summary[:100]}...")
+
+                            # Get conversation analysis
+                            email_address = lead_data_full["lead_data"]["email"]
+                            logger.debug(f"About to analyze conversation for email: {email_address}")
+                            conversation_summary = conversation_analyzer.analyze_conversation(email_address)
+                            logger.info(f"Conversation analysis completed for {email_address}: {conversation_summary}")
+
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],
@@ -942,7 +952,7 @@ def main_companies_first():
                                 },
                                 subject=email_content["subject"],
                                 body=email_content["body"],
-                                summary=interaction_summary
+                                summary=conversation_summary
                             )
                             if personalized_content:
                                 email_content.update(personalized_content)
@@ -1033,6 +1043,7 @@ def main_leads_first():
         hubspot = HubspotService(HUBSPOT_API_KEY)
         company_enricher = CompanyEnrichmentService()
         data_gatherer = DataGathererService()
+        conversation_analyzer = ConversationAnalysisService()
         leads_processed = 0
         
         with workflow_step("1", "Initialize and get leads", workflow_context):
@@ -1205,6 +1216,13 @@ def main_leads_first():
                                 }
                             })
                             logger.debug(f"Generated conversation summary: {conversation_summary[:100]}...")
+
+                            # Get conversation analysis
+                            email_address = lead_data_full["lead_data"]["email"]
+                            logger.debug(f"About to analyze conversation for email: {email_address}")
+                            conversation_summary = conversation_analyzer.analyze_conversation(email_address)
+                            logger.info(f"Conversation analysis completed for {email_address}: {conversation_summary}")
+
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],
@@ -1216,7 +1234,7 @@ def main_leads_first():
                                 },
                                 subject=email_content["subject"],
                                 body=email_content["body"],
-                                summary=interaction_summary
+                                summary=conversation_summary
                             )
                             if personalized_content:
                                 email_content.update(personalized_content)

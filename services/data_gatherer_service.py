@@ -49,7 +49,7 @@ class DataGathererService:
     def gather_lead_data(self, lead_email: str, correlation_id: str = None) -> Dict[str, Any]:
         """
         Main entry point for gathering lead data.
-        Gathers all data from HubSpot, notes, emails, then merges competitor & season data.
+        Gathers all data from HubSpot, then merges competitor & season data.
         """
         if correlation_id is None:
             correlation_id = f"gather_{lead_email}"
@@ -75,17 +75,6 @@ class DataGathererService:
         # 4) Get the company data (including city/state, plus new fields)
         company_props = self.hubspot.get_company_data(company_id)
 
-        # 5) Get emails and notes, then analyze them
-        logger.info(f"Fetching emails and notes for contact {contact_id}")
-        emails = self.hubspot.get_all_emails_for_contact(contact_id)
-        notes = self.hubspot.get_all_notes_for_contact(contact_id)
-        
-        logger.info(f"Found {len(emails)} emails and {len(notes)} notes")
-        
-        # Replace conversation analysis with empty string
-        conversation_summary = ""
-        logger.info(f"Generated empty conversation summary")
-
         # Example: competitor check
         competitor_analysis = self.check_competitor_on_website(company_props.get("website", ""))
 
@@ -93,7 +82,7 @@ class DataGathererService:
         club_name = company_props.get("name", "")
         news_result = self.gather_club_news(club_name)
 
-        # Build partial lead_sheet (now without raw emails and notes)
+        # Build partial lead_sheet (now without emails and notes)
         lead_sheet = {
             "metadata": {
                 "contact_id": contact_id,
@@ -104,8 +93,7 @@ class DataGathererService:
             "lead_data": {
                 "id": contact_id,
                 "properties": contact_props,
-                "company_data": company_props,
-                "conversation_summary": conversation_summary
+                "company_data": company_props
             },
             "analysis": {
                 "competitor_analysis": competitor_analysis,
@@ -120,7 +108,6 @@ class DataGathererService:
                     "status": "success",
                     "error": ""
                 },
-                "previous_interactions": self.review_previous_interactions(contact_id),
                 "season_data": self.determine_club_season(
                     company_props.get("city", ""),
                     company_props.get("state", "")
@@ -146,17 +133,6 @@ class DataGathererService:
                 "operation": "gather_lead_data"
             }
         )
-
-        context = {
-            "first_name": contact_props.get("firstname", ""),
-            "club_name": company_props.get("name", ""),
-            "club_data": {
-                "geographic_seasonality": company_props.get("geographic_seasonality"),
-                "peak_season_start_month": company_props.get("peak_season_start_month"),
-                "peak_season_end_month": company_props.get("peak_season_end_month"),
-                
-            }
-        }
 
         return lead_sheet
 
@@ -293,71 +269,6 @@ class DataGathererService:
             return {
                 "response": "",
                 "status": "error"
-            }
-
-    def review_previous_interactions(self, contact_id: str) -> Dict[str, Union[int, str]]:
-        """
-        Review previous interactions for a contact using HubSpot data.
-        """
-        try:
-            lead_data = self.hubspot.get_contact_properties(contact_id)
-            if not lead_data:
-                return {
-                    "emails_opened": 0,
-                    "emails_sent": 0,
-                    "meetings_held": 0,
-                    "last_response": "No data available",
-                    "status": "no_data",
-                    "error": "Contact not found in HubSpot"
-                }
-
-            emails_opened = self._safe_int(lead_data.get("total_opens_weekly"))
-            emails_sent = self._safe_int(lead_data.get("num_contacted_notes"))
-            notes = self.hubspot.get_all_notes_for_contact(contact_id)
-
-            meeting_keywords = {"meeting", "meet", "call", "zoom", "teams"}
-            meetings_held = 0
-            for note in notes:
-                if note.get("body") and any(keyword in note["body"].lower() for keyword in meeting_keywords):
-                    meetings_held += 1
-
-            last_reply = lead_data.get("hs_sales_email_last_replied")
-            if last_reply:
-                try:
-                    dt = parse_date(last_reply.replace("Z", "+00:00"))
-                    now_utc = datetime.datetime.now(datetime.timezone.utc)
-                    if not dt.tzinfo:
-                        dt = dt.replace(tzinfo=datetime.timezone.utc)
-                    days_ago = (now_utc - dt).days
-                    last_response = f"Responded {days_ago} days ago"
-                except ValueError:
-                    last_response = "Responded recently"
-            else:
-                # If no last reply date but they've opened emails, mention it
-                last_response = "No recent response" if emails_opened == 0 else "Opened emails but no direct reply"
-
-            return {
-                "emails_opened": emails_opened,
-                "emails_sent": emails_sent,
-                "meetings_held": meetings_held,
-                "last_response": last_response,
-                "status": "success",
-                "error": ""
-            }
-
-        except Exception as e:
-            logger.error("Failed to review contact interactions", extra={
-                "contact_id": contact_id,
-                "error_type": type(e).__name__,
-                "error": str(e)
-            })
-            return {
-                "emails_opened": 0,
-                "emails_sent": 0,
-                "meetings_held": 0,
-                "last_response": "Error retrieving data",
-                "status": "error",
-                "error": f"Error retrieving interaction data: {str(e)}"
             }
 
     def _safe_int(self, value: Any, default: int = 0) -> int:
