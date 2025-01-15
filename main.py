@@ -83,9 +83,9 @@ COMPANY_FILTERS = [
         "value": "GA"
     },
     {
-        "propertyName": "geographic_seasonality",
+        "propertyName": "name",
         "operator": "EQ",
-        "value": ""
+        "value": "Eagles Landing Country Club"
     },
     {
         "propertyName": "facility_complexity",
@@ -917,11 +917,21 @@ def main_companies_first():
                             
                             # Possibly further personalize with xAI
                             interaction_summary = lead_props.get("recent_interaction", "")
+                            conversation_summary = summarize_lead_interactions(lead_sheet={
+                                "lead_data": lead_data_full["lead_data"],
+                                "company_data": lead_data_full["company_data"],
+                                "analysis": {
+                                    "previous_interactions": interaction_summary
+                                }
+                            })
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],
                                     "company_data": lead_data_full["company_data"],
-                                    "analysis": {"previous_interactions": interaction_summary}
+                                    "analysis": {
+                                        "previous_interactions": interaction_summary,
+                                        "conversation_summary": conversation_summary
+                                    }
                                 },
                                 subject=email_content["subject"],
                                 body=email_content["body"],
@@ -1173,11 +1183,22 @@ def main_leads_first():
                             email_content["body"] = replace_placeholders(email_content["body"], lead_data_full)
                             
                             # Further personalize with XAI (if needed)
+                            interaction_summary = lead_props.get("recent_interaction", "")
+                            conversation_summary = summarize_lead_interactions(lead_sheet={
+                                "lead_data": lead_data_full["lead_data"],
+                                "company_data": lead_data_full["company_data"],
+                                "analysis": {
+                                    "previous_interactions": interaction_summary
+                                }
+                            })
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
                                     "lead_data": lead_data_full["lead_data"],
                                     "company_data": lead_data_full["company_data"],
-                                    "analysis": {"previous_interactions": interaction_summary}
+                                    "analysis": {
+                                        "previous_interactions": interaction_summary,
+                                        "conversation_summary": conversation_summary
+                                    }
                                 },
                                 subject=email_content["subject"],
                                 body=email_content["body"],

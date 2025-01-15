@@ -14,6 +14,7 @@ from utils.web_fetch import fetch_website_html
 from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY, PROJECT_ROOT
 from utils.formatting_utils import clean_html
+from services.conversation_analysis_service import ConversationAnalysisService
 
 # CSV-based Season Data
 CITY_ST_CSV = PROJECT_ROOT / 'docs' / 'golf_seasons' / 'golf_seasons_by_city_st.csv'
@@ -36,6 +37,7 @@ class DataGathererService:
     def __init__(self):
         """Initialize the DataGathererService with HubSpot client and season data."""
         self.hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
+        self.conversation_analyzer = ConversationAnalysisService()
         # Load season data at initialization
         self.load_season_data()
         self.load_state_timezones()
@@ -73,9 +75,19 @@ class DataGathererService:
         # 4) Get the company data (including city/state, plus new fields)
         company_props = self.hubspot.get_company_data(company_id)
 
-        # 5) Add calls to fetch emails and notes from HubSpot
+        # 5) Get emails and notes, then analyze them
         emails = self.hubspot.get_all_emails_for_contact(contact_id)
         notes = self.hubspot.get_all_notes_for_contact(contact_id)
+        
+        # New: Get Gmail emails if needed (assuming you have them)
+        gmail_emails = {}  # Replace with actual Gmail emails if available
+        
+        # Use ConversationAnalysisService to analyze emails
+        conversation_summary = self.conversation_analyzer.analyze_conversation(
+            hubspot_emails=emails,
+            hubspot_notes=notes,
+            gmail_emails=gmail_emails
+        )
 
         # Example: competitor check
         competitor_analysis = self.check_competitor_on_website(company_props.get("website", ""))
@@ -84,7 +96,7 @@ class DataGathererService:
         club_name = company_props.get("name", "")
         news_result = self.gather_club_news(club_name)
 
-        # Build partial lead_sheet
+        # Build partial lead_sheet (now without raw emails and notes)
         lead_sheet = {
             "metadata": {
                 "contact_id": contact_id,
@@ -95,10 +107,8 @@ class DataGathererService:
             "lead_data": {
                 "id": contact_id,
                 "properties": contact_props,
-                # This is where all fields appear (no filtering)
                 "company_data": company_props,
-                "emails": emails,
-                "notes": notes
+                "conversation_summary": conversation_summary
             },
             "analysis": {
                 "competitor_analysis": competitor_analysis,
@@ -147,7 +157,7 @@ class DataGathererService:
                 "geographic_seasonality": company_props.get("geographic_seasonality"),
                 "peak_season_start_month": company_props.get("peak_season_start_month"),
                 "peak_season_end_month": company_props.get("peak_season_end_month"),
-                # ... other club data ...
+                
             }
         }
 
