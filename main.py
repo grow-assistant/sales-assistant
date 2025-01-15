@@ -73,10 +73,10 @@ LEAD_FILTERS = [
         "operator": "GT",
         "value": "0"
     },
-    {  # 3) Optional filter
-        "propertyName": "jobtitle",
-        "operator": "CONTAINS_TOKEN",
-        "value": ""
+    {  # 3) Email reply date filter - exclude recent replies
+        "propertyName": "hs_sales_email_last_replied",
+        "operator": "GTE",  # Changed from GTE to LTE
+        "value": "2020-01-01"  # Exclude leads who replied after this date
     },
     {  # 4) Optional filter
         "propertyName": "recent_interaction",
@@ -91,7 +91,7 @@ LEAD_FILTERS = [
 ]
 
 # Number of leads to process
-LEADS_TO_PROCESS = 2
+LEADS_TO_PROCESS = 25
 
 # Initialize logging and services
 setup_logging()
@@ -646,28 +646,29 @@ def clear_logs():
         logger.error(f"Error clearing log file: {e}")
 
 
-def get_high_scoring_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
+def get_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
     """Get all leads with scores above minimum threshold."""
     try:
         url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
+        
+        # Use the predefined LEAD_FILTERS
+        active_filters = []
+        for filter_def in LEAD_FILTERS:
+            if filter_def["propertyName"] == "lead_score":
+                filter_def["value"] = str(min_score)
+            if filter_def.get("value"):  # Only include filters with values
+                active_filters.append(filter_def)
+        
         payload = {
-            "filterGroups": [
-                {
-                    "filters": [
-                        {
-                            "propertyName": "lead_score",
-                            "operator": "GT",
-                            "value": str(min_score)
-                        }
-                    ]
-                }
-            ],
+            "filterGroups": [{"filters": active_filters}],
             "properties": [
                 "email", 
                 "firstname", 
                 "lastname", 
                 "jobtitle", 
                 "lead_score",
+                "hs_sales_email_last_replied",
+                "recent_interaction",
                 "associatedcompanyid"
             ],
             "limit": 100,
@@ -679,7 +680,18 @@ def get_high_scoring_leads(hubspot: HubspotService, min_score: float = 0) -> Lis
             ]
         }
         response = hubspot._make_hubspot_post(url, payload)
-        return response.get("results", [])
+        
+        # Add debug logging
+        leads = response.get("results", [])
+        logger.info(f"Found {len(leads)} leads after applying filters")
+        for lead in leads:
+            logger.debug(
+                f"Lead {lead.get('id')}: "
+                f"Score = {lead.get('properties', {}).get('lead_score')}, "
+                f"Last reply = {lead.get('properties', {}).get('hs_sales_email_last_replied')}"
+            )
+        
+        return leads
     except Exception as e:
         logger.error(f"Error getting high scoring leads: {e}")
         return []
@@ -754,6 +766,37 @@ def is_company_in_best_state(company_props: Dict) -> bool:
         return False
 
 
+def replace_placeholders(text: str, lead_data: dict) -> str:
+    """Replace all placeholders in the text with actual values."""
+    replacements = {
+        "[FirstName]": lead_data["lead_data"].get("firstname", ""),
+        "[LastName]": lead_data["lead_data"].get("lastname", ""),
+        "[ClubName]": lead_data["company_data"].get("name", ""),
+        "[JobTitle]": lead_data["lead_data"].get("jobtitle", ""),
+        "[CompanyName]": lead_data["company_data"].get("name", ""),
+        "[City]": lead_data["company_data"].get("city", ""),
+        "[State]": lead_data["company_data"].get("state", "")
+    }
+    
+    result = text
+    for placeholder, value in replacements.items():
+        if value:  # Only replace if we have a value
+            result = result.replace(placeholder, value)
+    return result
+
+
+def check_lead_filters(lead_data: dict) -> bool:
+    """Check if lead meets all filter criteria."""
+    logger.debug(f"Checking email reply date for {lead_data['email']}")
+    last_reply = lead_data.get('hs_sales_email_last_replied')
+    if last_reply:
+        logger.debug(f"Last reply date: {last_reply}")
+    else:
+        logger.debug("No previous reply found")
+    
+    # ... rest of the filter checks ...
+
+
 def main():
     """
     Restructured main function:
@@ -771,7 +814,7 @@ def main():
         
         with workflow_step("1", "Initialize and get leads", workflow_context):
             # Pull high-scoring leads first
-            leads = get_high_scoring_leads(hubspot, min_score=0)
+            leads = get_leads(hubspot, min_score=0)
             logger.info(f"Found {len(leads)} total leads (score > 0)")
         
         with workflow_step("2", "Process each lead's associated company", workflow_context):
@@ -816,59 +859,37 @@ def main():
                     filter_value = f["value"]
                     company_value = company_props.get(prop_name, "")
                     
-                    # Log the comparison in a cleaner format
-                    logger.debug(
-                        f"Filter: {prop_name}\n"
-                        f"Expected: {operator} {filter_value}\n"
+                    # Add more detailed logging
+                    logger.info(
+                        f"\nChecking filter for {company_props.get('name', 'Unknown Company')}:\n"
+                        f"Property: {prop_name}\n"
+                        f"Operator: {operator}\n"
+                        f"Expected: {filter_value}\n"
                         f"Actual: {company_value}"
                     )
                     
                     if operator == "EQ":
                         if str(company_value) != str(filter_value):
-                            logger.debug(
-                                f"[FAILED] Value mismatch\n"
-                                f"----------------------------------------"
-                            )
+                            logger.info(f"FAILED: Value mismatch")
                             meets_filters = False
                             break
                     elif operator == "GT":
                         try:
                             if float(company_value) <= float(filter_value):
-                                logger.debug(
-                                    f"[FAILED] Value too low\n"
-                                    f"----------------------------------------"
-                                )
+                                logger.info(f"FAILED: Value too low")
                                 meets_filters = False
                                 break
                         except ValueError:
-                            logger.debug(
-                                f"[FAILED] Invalid numeric value\n"
-                                f"----------------------------------------"
-                            )
+                            logger.info(f"FAILED: Invalid numeric value")
                             meets_filters = False
                             break
-                    elif operator == "CONTAINS_TOKEN":
-                        if str(filter_value).lower() not in str(company_value).lower():
-                            logger.debug(
-                                f"[FAILED] Value not found\n"
-                                f"----------------------------------------"
-                            )
-                            meets_filters = False
-                            break
-                    elif operator == "HAS_PROPERTY":
-                        if not company_value:
-                            logger.debug(
-                                f"[FAILED] Property missing\n"
-                                f"----------------------------------------"
-                            )
+                    elif operator == "LTE":  # Add specific logging for email reply date
+                        if company_value and company_value > filter_value:
+                            logger.info(f"FAILED: Reply date too recent")
                             meets_filters = False
                             break
                     
-                    # Log success
-                    logger.debug(
-                        f"[PASSED]\n"
-                        f"----------------------------------------"
-                    )
+                    logger.info("PASSED")
                 
                 if not meets_filters:
                     logger.info(
@@ -888,6 +909,16 @@ def main():
                         # Extract combined lead+company data
                         lead_data = extract_lead_data(company_props, lead_props)
                         
+                        # Skip if club name contains "Unknown"
+                        if "unknown" in lead_data["company_data"]["name"].lower():
+                            logger.info(f"Skipping lead {lead_id} - Club name contains 'Unknown'")
+                            continue
+                        
+                        # Skip if club type is "Unknown"
+                        if lead_data["company_data"]["club_type"] == "Unknown":
+                            logger.info(f"Skipping lead {lead_id} - Club type is Unknown")
+                            continue
+                            
                         # Instead of SQL summary, use HubSpot data for interaction summary
                         interaction_summary = lead_props.get("recent_interaction", "")
                         
@@ -933,6 +964,10 @@ def main():
                         )
                         
                         if email_content:
+                            # Replace placeholders in subject and body
+                            email_content["subject"] = replace_placeholders(email_content["subject"], lead_data)
+                            email_content["body"] = replace_placeholders(email_content["body"], lead_data)
+                            
                             # Further personalize with XAI
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet={
@@ -971,21 +1006,11 @@ def main():
                                 sender="me",
                                 to=lead_data["lead_data"]["email"],
                                 subject=email_content["subject"],
-                                message_text=email_content["body"] + get_signature()
+                                message_text=email_content["body"]
                             )
                             
                             if draft_result["status"] == "ok":
                                 # Store the draft data
-                                store_draft_info(
-                                    lead_id=lead_id,
-                                    draft_id=draft_result["draft_id"],
-                                    scheduled_date=send_date,
-                                    subject=email_content["subject"],
-                                    body=email_content["body"],
-                                    sequence_num=1
-                                )
-                                
-                                # Store extended lead info
                                 store_lead_email_info(
                                     lead_sheet={
                                         "lead_data": {

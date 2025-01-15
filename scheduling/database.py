@@ -121,23 +121,47 @@ def store_email_draft(cursor, lead_id: int, subject: str, body: str,
     """
     Store email draft in database. Returns email_id.
     """
+    # First check if this draft_id already exists
     cursor.execute("""
-        INSERT INTO emails (
+        SELECT email_id FROM emails 
+        WHERE draft_id = ? AND lead_id = ?
+    """, (draft_id, lead_id))
+    
+    existing = cursor.fetchone()
+    if existing:
+        # Update existing record instead of creating new one
+        cursor.execute("""
+            UPDATE emails 
+            SET name = ?, company_name = ?, company_city = ?, 
+                company_st = ?, company_type = ?, subject = ?, 
+                body = ?, status = ?, scheduled_send_date = ?,
+                sequence_num = ?
+            WHERE draft_id = ? AND lead_id = ?
+        """, (
+            name, company_name, company_city, company_st, company_type,
+            subject, body, status, scheduled_send_date, sequence_num,
+            draft_id, lead_id
+        ))
+        return existing[0]
+    else:
+        # Insert new record
+        cursor.execute("""
+            INSERT INTO emails (
+                lead_id, name, company_name, company_city, company_st, company_type,
+                subject, body, status, scheduled_send_date, created_at,
+                sequence_num, draft_id
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, GETDATE(),
+                ?, ?
+            )
+        """, (
             lead_id, name, company_name, company_city, company_st, company_type,
-            subject, body, status, scheduled_send_date, created_at,
+            subject, body, status, scheduled_send_date,
             sequence_num, draft_id
-        ) VALUES (
-            ?, ?, ?, ?, ?, ?,
-            ?, ?, ?, ?, GETDATE(),
-            ?, ?
-        )
-    """, (
-        lead_id, name, company_name, company_city, company_st, company_type,
-        subject, body, status, scheduled_send_date,
-        sequence_num, draft_id
-    ))
-    cursor.execute("SELECT SCOPE_IDENTITY()")
-    return cursor.fetchone()[0]
+        ))
+        cursor.execute("SELECT SCOPE_IDENTITY()")
+        return cursor.fetchone()[0]
 
 if __name__ == "__main__":
     init_db()

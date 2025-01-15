@@ -431,7 +431,22 @@ def personalize_email_with_xai(
             logger.warning(f"Invalid lead_sheet type: {type(lead_sheet)}. Using empty dict.")
             lead_sheet = {}
 
-        previous_interactions = lead_sheet.get("analysis", {}).get("previous_interactions", {})
+        # Create a filtered company_data without club_info
+        company_data = lead_sheet.get("company_data", {})
+        filtered_company_data = {
+            k: v for k, v in company_data.items() 
+            if k not in ['club_info', 'overview']  # Add any other fields you want to exclude
+        }
+        
+        # Update lead_sheet with filtered company data
+        filtered_lead_sheet = {
+            "lead_data": lead_sheet.get("lead_data", {}),
+            "company_data": filtered_company_data,
+            "analysis": lead_sheet.get("analysis", {})
+        }
+        
+        # Use filtered_lead_sheet in the rest of the function
+        previous_interactions = filtered_lead_sheet.get("analysis", {}).get("previous_interactions", {})
         has_prior_emails = bool(lead_sheet.get("lead_data", {}).get("emails", []))
         logger.debug(f"Has the lead previously emailed us? {has_prior_emails}")
 
