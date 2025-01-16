@@ -1,5 +1,3 @@
-# scripts/build_template.py
-
 import os
 import random
 from utils.doc_reader import DocReader
@@ -38,17 +36,19 @@ def pick_subject_line_based_on_lead(profile_type: str, placeholders: dict) -> st
         chosen_template = random.choice(SUBJECT_TEMPLATES)
         logger.debug(f"Selected template: {chosen_template}")
 
-        # Normalize placeholder keys to match template format
+        # Normalize placeholder keys to match template format exactly
         normalized_placeholders = {
-            k[0].upper() + k[1:]: v  # Convert 'firstname' to 'Firstname'
-            for k, v in placeholders.items()
+            "FirstName": placeholders.get("firstname", ""),  # Match exact case
+            "LastName": placeholders.get("lastname", ""),
+            "CompanyName": placeholders.get("company_name", ""),
+            # Add other placeholders as needed
         }
         
         # Replace placeholders in the subject
         for key, val in normalized_placeholders.items():
             if val:  # Only replace if value exists
                 placeholder = f"[{key}]"
-                if placeholder in chosen_template:  # Only attempt replacement if placeholder exists
+                if placeholder in chosen_template:
                     chosen_template = chosen_template.replace(placeholder, str(val))
                     logger.debug(f"Replaced placeholder {placeholder} with {val}")
                 
@@ -337,7 +337,7 @@ def parse_template(template_content):
         'subject': None,  # Subject will be set from CONDITION_SUBJECTS
         'body': template_content.strip()
     }
-    
+     
     logger.debug(f"Parsed template - Body length: {len(result['body'])}")
     return result
 
@@ -392,7 +392,7 @@ def process_template(template_path):
         logger.error(f"Error reading template file: {e}")
         return ""
 
-def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
+def get_template_path(club_type: str, role: str) -> str:
     """Get the appropriate template path based on club type and role."""
     try:
         # Normalize inputs
@@ -410,6 +410,10 @@ def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
         # Get template name or default to general manager
         template_name = template_map.get(role_category, "general_manager_initial_outreach")
         
+        # Randomly select sequence number (1 or 2)
+        sequence_num = random.randint(1, 2)
+        logger.debug(f"Selected template variation {sequence_num} for {template_name} (role: {role})")
+        
         # Build template path
         template_path = os.path.join(
             PROJECT_ROOT,
@@ -419,7 +423,7 @@ def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
             f"{template_name}_{sequence_num}.md"
         )
         
-        logger.debug(f"Selected template path: {template_path} for role: {role} (category: {role_category})")
+        logger.debug(f"Using template path: {template_path}")
         
         if not os.path.exists(template_path):
             logger.warning(f"Template not found: {template_path}, falling back to general manager template")

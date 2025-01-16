@@ -44,20 +44,15 @@ def pick_season_snippet(season_key):
         "approaching": [
             "As you prepare for the upcoming season,",
             "With the season just around the corner,",
-            "As you gear up for the season ahead,"
         ],
         "in_season": [
-            "I hope the season is going well for you,",
             "With the season in full swing,"
 
         ],
         "winding_down": [
             "As the season winds down,",
-            "As your peak season comes to a close,"
         ],
         "off_season": [
-            "As you look forward to the coming season,",
-            "While planning for next season,",
             "As you prepare for the year ahead,"
         ]
     }

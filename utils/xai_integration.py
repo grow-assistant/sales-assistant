@@ -328,29 +328,17 @@ def personalize_email_with_xai(
             "5. Avoid presumptive descriptions of club features\n"
             "6. Keep club references brief and relevant to the service\n"
             "7. Keep tone professional and direct\n"
-            "8. Keep emails concise - under 200 words\n"
-            "9. Focus on one key value proposition\n"
-            "10. End with a clear call-to-action\n"
-            "11. DO NOT include a signature - this will be added later\n"
-            "12. Keep any specific day/time mentioned in the original CTA exactly as is\n\n"
-            "Required Email Structure:\n"
-            "1. Start with 'Hey [FirstName],'\n"
-            "2. Quick intro paragraph\n"
-            "3. Value proposition paragraph\n"
-            "4. CTA paragraph\n"
-            "5. DO NOT include a signature\n\n"
+            "8. ONLY modify the first paragraph of the email - leave the rest unchanged\n"
             "Format response as:\n"
             "Subject: [keep original subject]\n\n"
             "Body:\n[personalized body]\n\n"
             f"CONTEXT:\n{json.dumps(context_block, indent=2)}\n\n"
             f"RULES:\n{rules_text}\n\n"
             "TASK:\n"
-            "1. Follow the required email structure exactly\n"
-            "2. Focus on one key benefit relevant to the club\n"
-            "3. Maintain professional tone\n"
-            "4. Keep response under 200 words\n"
-            "5. DO NOT include a signature\n"
-            "6. Return ONLY the subject and body"
+            "1. Focus on one key benefit relevant to the club\n"
+            "2. Maintain professional tone\n"
+            "3. Return ONLY the subject and body\n"
+            "4. Only modify the first paragraph after the greeting - keep all other paragraphs exactly as provided"
         )
 
         payload = {
@@ -380,20 +368,8 @@ def personalize_email_with_xai(
             final_body = final_body.replace("Byrdi", "Swoop")
         if isinstance(final_subject, str):
             final_subject = final_subject.replace("Byrdi", "Swoop")
-            
-        # Add placeholder replacement check and handling
-        first_name = lead_data.get("first_name", "").strip()
-        
-        # Replace placeholders with actual values
-        if first_name:
-            final_subject = final_subject.replace("[FirstName]", first_name)
-            final_body = final_body.replace("[FirstName]", first_name)
-        else:
-            logger.warning(f"No first_name found in lead_data for placeholder replacement")
-            # Optionally provide a fallback
-            final_subject = final_subject.replace("[FirstName]", "there")
-            final_body = final_body.replace("[FirstName]", "there")
 
+        # Check for any remaining placeholders (for debugging)
         remaining_placeholders = check_for_placeholders(final_subject) + check_for_placeholders(final_body)
         if remaining_placeholders:
             logger.warning(f"Unreplaced placeholders found: {remaining_placeholders}")

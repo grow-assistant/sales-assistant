@@ -53,7 +53,7 @@ from services.conversation_analysis_service import ConversationAnalysisService
 # -----------------------------------------------------------------------------
 # Choose "companies" if you want to filter for companies first.
 # Choose "leads" if you want to filter for leads first.
-WORKFLOW_MODE = "companies"
+WORKFLOW_MODE = "leads"
 
 # -----------------------------------------------------------------------------
 # FILTERS
@@ -67,12 +67,12 @@ COMPANY_FILTERS = [
     {
         "propertyName": "annualrevenue",
         "operator": "GT",
-        "value": "1000000"
+        "value": ""
     },
     {
         "propertyName": "state",
         "operator": "EQ",
-        "value": "GA"
+        "value": ""
     },
     {
         "propertyName": "name",
@@ -95,7 +95,7 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": ""
+        "value": "0"
     },
     {
         "propertyName": "hs_sales_email_last_replied",
@@ -114,7 +114,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 10
+LEADS_TO_PROCESS = 3
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -618,10 +618,12 @@ def get_next_month_first_day(current_date):
         return current_date.replace(year=current_date.year + 1, month=1, day=1)
     return current_date.replace(month=current_date.month + 1, day=1)
 
-def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
+def get_template_path(club_type: str, role: str) -> str:
     """
     Get the appropriate template path based on club type and role.
     """
+    logger.info(f"🎯 Selecting template for club_type={club_type}, role={role}")
+    
     club_type_map = {
         "Country Club": "country_club",
         "Private Course": "private_course",
@@ -661,11 +663,16 @@ def get_template_path(club_type: str, role: str, sequence_num: int = 1) -> str:
     normalized_club_type = club_type_map.get(club_type, "country_club")
     normalized_role = role_map.get(role, "general_manager")
     
+    # Randomly select template variation
+    sequence_num = random.randint(1, 2)
+    logger.info(f"🎲 Selected template variation {sequence_num}")
+    
     template_path = Path(PROJECT_ROOT) / "docs" / "templates" / normalized_club_type / f"{normalized_role}_initial_outreach_{sequence_num}.md"
+    logger.info(f"📂 Using template path: {template_path}")
     
     if not template_path.exists():
         fallback_path = Path(PROJECT_ROOT) / "docs" / "templates" / normalized_club_type / f"fallback_{sequence_num}.md"
-        logger.warning(f"Specific template not found at {template_path}, falling back to {fallback_path}")
+        logger.warning(f"❌ Specific template not found at {template_path}, falling back to {fallback_path}")
         template_path = fallback_path
     
     return str(template_path)
@@ -888,8 +895,7 @@ def main_companies_first():
                         # Decide which template
                         template_path = get_template_path(
                             club_type=lead_data_full["company_data"]["club_type"],
-                            role=lead_data_full["lead_data"]["jobtitle"],
-                            sequence_num=1
+                            role=lead_data_full["lead_data"]["jobtitle"]
                         )
                         
                         # Calculate a good send date
@@ -923,21 +929,25 @@ def main_companies_first():
                         )
 
                         if email_content:
-                            # Get conversation analysis for personalization
+                            # First replace placeholders
+                            subject = replace_placeholders(email_content[0], lead_data_full)
+                            body = replace_placeholders(email_content[1], lead_data_full)
+                            
+                            # Then get conversation analysis
                             email_address = lead_data_full["lead_data"]["email"]
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
                             
-                            # Create context block with the summary
+                            # Create context block with placeholder-replaced content
                             context = build_context_block(
                                 interaction_history=conversation_summary,
-                                original_email={"subject": email_content[0], "body": email_content[1]}
+                                original_email={"subject": subject, "body": body}
                             )
                             
-                            # Use the context in personalization
+                            # Finally, personalize with xAI using the placeholder-replaced content
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet=lead_data_full,
-                                subject=email_content[0],
-                                body=email_content[1],
+                                subject=subject,
+                                body=body,
                                 summary=conversation_summary,
                                 context=context
                             )
@@ -1134,8 +1144,7 @@ def main_leads_first():
                         # Get correct template
                         template_path = get_template_path(
                             club_type=lead_data_full["company_data"]["club_type"],
-                            role=lead_data_full["lead_data"]["jobtitle"],
-                            sequence_num=1
+                            role=lead_data_full["lead_data"]["jobtitle"]
                         )
                         
                         # Calculate send date
@@ -1169,21 +1178,25 @@ def main_leads_first():
                         )
 
                         if email_content:
-                            # Get conversation analysis for personalization
+                            # First replace placeholders
+                            subject = replace_placeholders(email_content[0], lead_data_full)
+                            body = replace_placeholders(email_content[1], lead_data_full)
+                            
+                            # Then get conversation analysis
                             email_address = lead_data_full["lead_data"]["email"]
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
                             
-                            # Create context block with the summary
+                            # Create context block with placeholder-replaced content
                             context = build_context_block(
                                 interaction_history=conversation_summary,
-                                original_email={"subject": email_content[0], "body": email_content[1]}
+                                original_email={"subject": subject, "body": body}
                             )
                             
-                            # Use the context in personalization
+                            # Finally, personalize with xAI using the placeholder-replaced content
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet=lead_data_full,
-                                subject=email_content[0],
-                                body=email_content[1],
+                                subject=subject,
+                                body=body,
                                 summary=conversation_summary,
                                 context=context
                             )
