@@ -62,7 +62,7 @@ COMPANY_FILTERS = [
     {
         "propertyName": "club_type",
         "operator": "EQ",
-        "value": "Country Club"
+        "value": ""
     },
     {
         "propertyName": "annualrevenue",
@@ -114,7 +114,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 3
+LEADS_TO_PROCESS = 50
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING

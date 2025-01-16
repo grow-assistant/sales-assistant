@@ -1,9 +1,9 @@
-Hi [FirstName],
+Hey [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], Swoop Golf goes beyond single-site operations to accommodate multiple properties under one management company—organizing beverage cart requests, snack-bar orders, and to-go pickups efficiently across each facility.
+[SEASON_VARIATION], I'd love to introduce Swoop Golf—a platform that enables your courses to streamline F&B operations through mobile ordering. We've recently expanded into a comprehensive golf experience platform that can be deployed across your portfolio, managing everything from on-course requests to clubhouse dining and sophisticated to-go services.
 
-We’re inviting 2–3 management companies to join us at no cost for 2025, ensuring our platform aligns perfectly with multi-course challenges. For instance, at Pinetree Country Club, we decreased average order times by 40%, helping keep players happy and reducing slowdowns.
+We’re looking for a management group to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-Interested in a brief conversation about how this might scale for [ManagementCompanyName]? We’d love to share how Swoop can uplift all your properties.
+Let's discuss how Swoop could enhance operations and revenue potential across your properties. Would you have time to explore this opportunity for [ClubName]?

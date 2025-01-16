@@ -2,6 +2,8 @@ Hey [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], Swoop Golf’s platform has expanded into a full-resort solution—covering on-course deliveries, poolside F&B, and convenient to-go orders. By centralizing these services, we help resorts reduce operational bottlenecks, boost efficiency, and keep guests happy no matter where they are on the property.
+[SEASON_VARIATION], I'd love to introduce Swoop Golf—a platform that enables resort guests to effortlessly order food & beverages from their mobile devices. We've recently expanded into a full-service resort experience platform, covering everything from on-course requests to poolside service, spa amenities, and resort-wide dining options.
 
-One of our recent partners, Pinetree Country Club, saw a 40% decrease in average order times. Let’s schedule a brief call to explore how Swoop could enhance [ResortName]’s operations. What does your availability look like next week?
+We're inviting 2-3 premier resorts to join us at no cost for 2025, to ensure we perfectly address the needs of luxury hospitality properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
+
+Swoop will help streamline your guest services while maintaining the premium experience they expect. Let's chat about how this might work for [ClubName]?

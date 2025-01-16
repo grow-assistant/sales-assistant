@@ -2,8 +2,8 @@ Hey [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], I wanted to share how Swoop Golf’s new concierge platform could help streamline [ClubName]’s operations. From golf course deliveries to poolside ordering and to-go pickups, our platform makes it easy to provide seamless service for members while reducing strain on staff.
+[SEASON_VARIATION], I'd love to introduce Swoop Golf—a platform that enables members to effortlessly order food & beverages from their mobile devices. We've recently expanded into a full-service golf experience platform, covering everything from on-course requests to halfway house orders and clubhouse dining.
 
-We're inviting 2–3 clubs to partner with us at no cost for 2025 to tailor our platform for their unique needs. For example, at Pinetree Country Club, we helped increase F&B revenue by 54% and reduced wait times by 40%—results we believe [ClubName] could replicate.
+We’re inviting 2–3 clubs to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-Would a quick 10-minute call on Thursday at 2 PM or Friday at 10 AM work to explore this further? If another time is better, feel free to let me know.
+Swoop will enhance your members’ experience and preserve the exclusivity they value. Let’s chat about how this might work for [ClubName]?

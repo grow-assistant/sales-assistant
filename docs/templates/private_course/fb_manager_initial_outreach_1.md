@@ -2,8 +2,8 @@ Hey [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], Swoop Golf can act as a full club concierge, covering not just on-course ordering but also poolside service and streamlined to-go operations. We designed it to help you and your team serve members quickly and conveniently—without juggling multiple systems.
+[SEASON_VARIATION], I'd love to introduce Swoop Golf—a platform that enables members to effortlessly order food & beverages from their mobile devices. We've recently expanded into a full-service golf experience platform, covering everything from on-course requests to halfway house orders and clubhouse dining.
 
-We're looking for 2–3 clubs to partner with in 2025 at no cost. One of our current partners, Pinetree Country Club, saw a 54% boost in F&B revenue by making orders simple and accessible for members.
+We’re inviting 2–3 clubs to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-If you're open to a quick chat, I'd love to see if [ClubName] could benefit in the same way. Feel free to let me know a good time to connect, and I can share references or more details tailored to your needs.
+Swoop will enhance your members’ experience and preserve the exclusivity they value. Let’s chat about how this might work for [ClubName]?

@@ -2,8 +2,8 @@ Hey [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], Swoop Golf is more than a basic golf service—we’re an on-course ordering platform built to boost F&B revenue while delivering a top-tier experience. By centralizing beverage cart and snack-bar requests, we help you serve premium clientele quickly and efficiently.
+[SEASON_VARIATION], I'd love to introduce Swoop Golf—a platform that enables golfers to effortlessly order food & beverages from their mobile devices. We've recently expanded into a full-service golf experience platform, covering everything from on-course requests to clubhouse dining and to-go offerings.
 
-We’re looking for 2–3 facilities to partner with at no cost in 2025. Pinetree Country Club, for example, saw a 54% boost in F&B revenue by making on-course orders simple and accessible.
+We’re inviting 2–3 clubs to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-If you’re open to a short call, I’d love to see if [FacilityName] could experience similar success. Let me know a good time to connect, and I can share references or more details tailored to your needs.
+Swoop will enhance your members’ experience and preserve the exclusivity they value. Let’s chat about how this might work for [ClubName]?
