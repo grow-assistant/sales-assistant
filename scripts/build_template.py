@@ -157,118 +157,77 @@ def build_outreach_email(
         
         logger.info(f"Building email for {profile_type}")
         
-        print(f"Starting build_outreach_email with template_path: {template_path}")
-        print(f"Placeholders: {placeholders}")
-        
         if template_path and Path(template_path).exists():
-            print(f"Template file exists at {template_path}")
             with open(template_path, 'r', encoding='utf-8') as f:
                 body = f.read().strip()
-            print(f"Raw template body length: {len(body)}")
             
             # 1. Handle season variation first
             if "[SEASON_VARIATION]" in body:
-                print("Found [SEASON_VARIATION] placeholder")
                 season_key = get_season_variation_key(
                     current_month=current_month,
                     start_peak_month=start_peak_month,
                     end_peak_month=end_peak_month
                 )
-                logger.debug(f"Generated season key: {season_key}")
-                print(f"Season key: {season_key}")
-                
                 season_snippet = pick_season_snippet(season_key)
-                logger.debug(f"Selected season snippet: {season_snippet}")
-                print(f"Season snippet: {season_snippet}")
-                
                 body = body.replace("[SEASON_VARIATION]", season_snippet)
-                logger.debug(f"Applied season variation: {season_snippet}")
-                print("Applied season variation")
             
-            # 2. Handle icebreaker exactly like main_old.py
+            # 2. Handle icebreaker
             try:
                 has_news = placeholders.get('has_news', False)
                 news_result = placeholders.get('news_text', '')
                 club_name = placeholders.get('ClubName', '')
                 
-                print(f"Icebreaker params - has_news: {has_news}, club_name: {club_name}")
-                print(f"News result length: {len(news_result)}")
-                
                 if has_news and news_result and "has not been in the news" not in news_result.lower():
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
                     if icebreaker:
-                        print(f"Generated icebreaker: {icebreaker}")
                         body = body.replace("[ICEBREAKER]", icebreaker)
                     else:
-                        print("No icebreaker generated, removing placeholder")
                         body = body.replace("[ICEBREAKER]\n\n", "")
                         body = body.replace("[ICEBREAKER]\n", "")
                         body = body.replace("[ICEBREAKER]", "")
                 else:
-                    print("No valid news, removing icebreaker placeholder")
                     body = body.replace("[ICEBREAKER]\n\n", "")
                     body = body.replace("[ICEBREAKER]\n", "")
                     body = body.replace("[ICEBREAKER]", "")
             except Exception as e:
                 logger.error(f"Icebreaker generation error: {e}")
-                print(f"Error generating icebreaker: {e}")
                 body = body.replace("[ICEBREAKER]\n\n", "")
                 body = body.replace("[ICEBREAKER]\n", "")
                 body = body.replace("[ICEBREAKER]", "")
             
             # 3. Clean up multiple newlines
-            print("Cleaning up multiple newlines")
             while "\n\n\n" in body:
                 body = body.replace("\n\n\n", "\n\n")
             
             # 4. Replace remaining placeholders
-            print("Replacing remaining placeholders")
             for key, value in placeholders.items():
                 if value:
-                    print(f"Replacing [{key}] with {value}")
                     body = body.replace(f"[{key}]", str(value))
             
             # Add Byrdi to Swoop replacement
             body = body.replace("Byrdi", "Swoop")
-            print("Replaced 'Byrdi' with 'Swoop' in email body")
                       
-            # Clean up any double newlines that might have been created
+            # Clean up any double newlines
             while "\n\n\n" in body:
                 body = body.replace("\n\n\n", "\n\n")
             
-            # Get subject (will be ignored by main_old.py but included for completeness)
+            # Get subject
             subject = pick_subject_line_based_on_lead(profile_type, placeholders)
-            print(f"Generated subject line: {subject}")
             
-            print(f"Final email body length: {len(body)}")
+            # Remove signature as it's in the HTML template
+            body = body.split("\n\nCheers,")[0].strip()
             
-            # Convert tuple to dict before passing to personalize_email_with_xai
             if body:
                 logger.info("Successfully built email template")
             else:
                 logger.error("Failed to build email template")
                 
-            # Generate icebreaker using xAI
-            icebreaker = generate_icebreaker(
-                has_news=bool(placeholders.get('has_news', False)),
-                club_name=str(placeholders.get('company_name', '')),
-                news_text=placeholders.get('news_text', '')
-            )
-            
-            # Only log at debug level for normal operation
-            logger.debug(f"Generated icebreaker: {icebreaker}")
-            
-            # Only log error if we expected an icebreaker but didn't get one
-            if placeholders.get('has_news', False) and not icebreaker:
-                logger.error("Failed to generate icebreaker for news item")
-            
             return subject, body
             
     except Exception as e:
         logger.error(f"Error building email: {str(e)}")
         logger.error("Full traceback:", exc_info=True)
-        print(f"Error in build_outreach_email: {e}")
-        return "", ""  # Return empty strings on error
+        return "", ""
 
 def get_fallback_template() -> str:
     """Returns a basic fallback template if all other templates fail."""

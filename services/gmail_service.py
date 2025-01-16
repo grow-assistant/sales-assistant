@@ -1,14 +1,13 @@
 from typing import List, Dict, Any, Optional
 from utils.gmail_integration import (
-    search_inbound_messages_for_email,
-    search_messages,
     get_gmail_service,
     create_message,
     create_draft,
     send_message,
-    get_or_create_label,
+    search_messages,
     check_thread_for_reply,
-    get_signature
+    search_inbound_messages_for_email,
+    get_or_create_label
 )
 from utils.logging_setup import logger
 from datetime import datetime
@@ -106,9 +105,6 @@ class GmailService:
         """Check if there has been a reply in the thread."""
         return check_thread_for_reply(thread_id)
 
-    def get_email_signature(self) -> str:
-        """Get the HTML formatted signature."""
-        return get_signature()
     
     def _get_header(self, message: Dict[str, Any], header_name: str) -> str:
         """Extract header value from Gmail message."""

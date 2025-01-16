@@ -66,15 +66,71 @@ def get_gmail_service():
         logger.error(f"Error setting up Gmail service: {str(e)}")
         raise
 
+def get_gmail_template(service, template_name: str = "sales") -> str:
+    """Fetch HTML email template from Gmail drafts."""
+    try:
+        # First try to list all drafts
+        drafts = service.users().drafts().list(userId='me').execute()
+        if not drafts.get('drafts'):
+            logger.error("No drafts found in Gmail account")
+            return ""
+
+        # Log all available drafts for debugging
+        draft_subjects = []
+        template_html = ""
+        
+        for draft in drafts.get('drafts', []):
+            msg = service.users().messages().get(
+                userId='me',
+                id=draft['message']['id'],
+                format='full'
+            ).execute()
+            
+            # Get subject from headers
+            headers = msg['payload']['headers']
+            subject = next(
+                (h['value'] for h in headers if h['name'].lower() == 'subject'),
+                ''
+            ).lower()
+            draft_subjects.append(subject)
+            
+            # If this is our template
+            if template_name.lower() in subject:
+                logger.debug(f"Found template draft with subject: {subject}")
+                
+                # Extract HTML content
+                if 'parts' in msg['payload']:
+                    for part in msg['payload']['parts']:
+                        if part['mimeType'] == 'text/html':
+                            template_html = base64.urlsafe_b64decode(
+                                part['body']['data']
+                            ).decode('utf-8')
+                            break
+                elif msg['payload']['mimeType'] == 'text/html':
+                    template_html = base64.urlsafe_b64decode(
+                        msg['payload']['body']['data']
+                    ).decode('utf-8')
+                
+                if template_html:
+                    return template_html
+
+        if not template_html:
+            logger.error(
+                f"No template found with name: {template_name}. "
+                f"Available draft subjects: {draft_subjects}"
+            )
+        return template_html
+
+    except Exception as e:
+        logger.error(f"Error fetching Gmail template: {str(e)}", exc_info=True)
+        return ""
+
 def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
-    """Create an HTML-formatted email message."""
+    """Create an HTML-formatted email message using Gmail template."""
     try:
         # Validate inputs
         if not all([to, subject, body]):
-            logger.error(
-                "Missing required email fields",
-                extra={"has_to": bool(to), "has_subject": bool(subject), "has_body": bool(body)},
-            )
+            logger.error("Missing required email fields")
             return {}
 
         # Ensure all inputs are strings
@@ -82,33 +138,56 @@ def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
         subject = str(subject).strip()
         body = str(body).strip()
 
-        logger.debug(
-            "Creating HTML email message",
-            extra={"to": to, "subject": subject, "body_length": len(body)},
-        )
+        logger.debug("Creating HTML email message")
 
         # Create the MIME Multipart message
         message = MIMEMultipart('alternative')
         message["to"] = to
         message["subject"] = subject
 
-        # Format the HTML body with inline CSS
-        formatted_body = body.replace('\n\n', '</p><p>').replace('\n', '<br>')
-        html_body = f"""
-        <html>
-            <head>
-                <style>
-                    body {{ font-family: Arial, sans-serif; line-height: 1.6; color: #333333; }}
-                    p {{ margin: 1em 0; }}
-                    .signature {{ margin-top: 20px; color: #666666; }}
-                    .company-info {{ margin-top: 10px; }}
-                </style>
-            </head>
-            <body>
-                <p>{formatted_body}</p>
-            </body>
-        </html>
-        """
+        # Format the body text with paragraphs
+        div_start = "<div style='margin-bottom: 20px;'>"
+        div_end = "</div>"
+        formatted_body = div_start + body.replace('\n\n', div_end + div_start) + div_end
+
+        # Get Gmail service and template
+        service = get_gmail_service()
+        template = get_gmail_template(service, "sales")
+        
+        if not template:
+            logger.error("Failed to get Gmail template, using plain text")
+            html_body = formatted_body
+        else:
+            # Look for common content placeholders in the template
+            placeholders = ['{{content}}', '{content}', '[content]', '{{body}}', '{body}', '[body]']
+            template_with_content = template
+            
+            # Try each placeholder until one works
+            for placeholder in placeholders:
+                if placeholder in template:
+                    template_with_content = template.replace(placeholder, formatted_body)
+                    logger.debug(f"Found and replaced placeholder: {placeholder}")
+                    break
+            
+            if template_with_content == template:
+                # No placeholder found, try to insert before the first signature or calendar section
+                signature_markers = ['</signature>', 'calendar-section', 'signature-section']
+                inserted = False
+                
+                for marker in signature_markers:
+                    if marker in template.lower():
+                        parts = template.lower().split(marker, 1)
+                        template_with_content = parts[0] + formatted_body + marker + parts[1]
+                        inserted = True
+                        logger.debug(f"Inserted content before marker: {marker}")
+                        break
+                
+                if not inserted:
+                    # If no markers found, prepend content to template
+                    template_with_content = formatted_body + template
+                    logger.debug("No markers found, prepended content to template")
+            
+            html_body = template_with_content
 
         # Create both plain text and HTML versions
         text_part = MIMEText(body, 'plain')
@@ -118,10 +197,11 @@ def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
         message.attach(text_part)  # Fallback plain text version
         message.attach(html_part)  # Primary HTML version
 
-        # Encode as base64url
+        # Encode the message
         raw_message = message.as_string()
         encoded_message = base64.urlsafe_b64encode(raw_message.encode("utf-8")).decode("utf-8")
-
+        
+        logger.debug(f"Created message with HTML length: {len(html_body)}")
         return {"raw": encoded_message}
 
     except Exception as e:
@@ -380,17 +460,3 @@ def search_inbound_messages_for_email(email_address: str, max_results: int = 1) 
             logger.error(f"Error fetching message {m['id']} from {email_address}: {e}")
 
     return snippets
-
-def get_signature() -> str:
-    """Return HTML-formatted signature block."""
-    return """
-        <div class="signature">
-            Best regards,<br>
-            Ty<br>
-            <div class="company-info">
-                Swoop Golf<br>
-                480-225-9702<br>
-                <a href="https://swoopgolf.com">swoopgolf.com</a>
-            </div>
-        </div>
-    """

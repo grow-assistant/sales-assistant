@@ -53,7 +53,7 @@ from services.conversation_analysis_service import ConversationAnalysisService
 # -----------------------------------------------------------------------------
 # Choose "companies" if you want to filter for companies first.
 # Choose "leads" if you want to filter for leads first.
-WORKFLOW_MODE = "leads"
+WORKFLOW_MODE = "companies"
 
 # -----------------------------------------------------------------------------
 # FILTERS
@@ -62,17 +62,17 @@ COMPANY_FILTERS = [
     {
         "propertyName": "club_type",
         "operator": "EQ",
-        "value": ""
+        "value": "Country Club"
     },
     {
         "propertyName": "annualrevenue",
         "operator": "GT",
-        "value": ""
+        "value": "1000000"
     },
     {
         "propertyName": "state",
         "operator": "EQ",
-        "value": ""
+        "value": "GA"
     },
     {
         "propertyName": "name",
@@ -95,7 +95,7 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": "0"
+        "value": ""
     },
     {
         "propertyName": "hs_sales_email_last_replied",
@@ -561,10 +561,6 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
         if 'conn' in locals():
             conn.close()
 
-def get_signature() -> str:
-    """Return standardized signature block."""
-    return "\n\nCheers,\nTy\n\nSwoop Golf\n480-225-9702\nswoopgolf.com"
-
 def calculate_send_date(geography, persona, state_code, season_data=None):
     """Calculate optimal send date based on geography and persona."""
     try:
@@ -946,9 +942,6 @@ def main_companies_first():
                                 context=context
                             )
                             
-                            # Add signature to the personalized body
-                            personalized_content["body"] = personalized_content["body"].rstrip() + get_signature()
-                            
                             # Create the Gmail draft with personalized content
                             draft_result = create_draft(
                                 sender="me",
@@ -1194,9 +1187,6 @@ def main_leads_first():
                                 summary=conversation_summary,
                                 context=context
                             )
-                            
-                            # Add signature to the personalized body
-                            personalized_content["body"] = personalized_content["body"].rstrip() + get_signature()
                             
                             # Create the Gmail draft with personalized content
                             draft_result = create_draft(

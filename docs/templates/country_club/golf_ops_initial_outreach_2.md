@@ -2,8 +2,8 @@ Hi [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], Swoop Golf is now a high-end concierge platform—covering pickleball-court deliveries, poolside F&B, and on-course requests. We aim to deliver a truly elite experience while preserving pace of play and reducing logistical headaches for your operations team.
+[SEASON_VARIATION], Swoop Golf has elevated its offering into a full-service full-club concierge platform—managing poolside F&B, pickleball-court deliveries, on-course orders, and sophisticated to-go services. Our mission is to uphold the elevated standards your members expect while boosting efficiency.
 
-We’re inviting 2–3 clubs to join us at no cost for 2025 to ensure our system meets every detail of your refined environment. At Pinetree Country Club, we minimized average order times by 40%, resulting in top-tier member satisfaction.
+We’re inviting 2–3 clubs to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-Interested in a short chat about how this might work for [ClubName]? We’d love to show you how Swoop can complement your exclusive setting.
+Interested in a quick chat on how this might work for [ClubName]? We’d love to share how Swoop can elevate your members’ experience, guaranteeing a faster pace of play and top-tier service.

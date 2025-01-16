@@ -2,8 +2,8 @@ Hey [FirstName],
 
 [ICEBREAKER]
 
-[SEASON_VARIATION], I wanted to show how Swoop Golf’s full-club concierge platform can elevate [ClubName]’s member experience—from pickleball-court and poolside orders to on-course service. By integrating order flow, we help reduce wait times and fuel F&B revenue growth.
+[SEASON_VARIATION], Swoop Golf has elevated its offering into a full-service full-club concierge platform—managing poolside F&B, pickleball-court deliveries, on-course orders, and sophisticated to-go services. Our mission is to uphold the elevated standards your members expect while boosting efficiency.
 
-Consider Pinetree Country Club: after adopting our platform, they experienced a 54% rise in F&B sales and a 40% drop in wait times. Data from top industry sources indicates that exclusive clubs using digital solutions can see a 20–40% increase in ancillary revenue—improving the bottom line without compromising the high standards members expect.
+We’re inviting 2–3 clubs to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-Would a quick 10-minute call on Thursday at 2 PM or Friday at 10 AM work to discuss? If not, I’m happy to find a more convenient time.
+Interested in a quick chat on how this might work for [ClubName]? We’d love to share how Swoop can elevate your members’ experience, while optimizing club-wide operations.
