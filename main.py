@@ -65,19 +65,13 @@ COMPANY_FILTERS = {
         {
             "filters": [
                 {
-                    "propertyName": "state",
-                    "operator": "IN",
-                    "values": ["mi", "ca", "tx"]  # Must use "values" (list) for the IN operator
-                },
-                {
                     "propertyName": "hs_object_id",
                     "operator": "EQ",
-                    "value": "7042020395"
+                    "value": "6627466568"
                 },
                 {
                     "propertyName": "notes_last_contacted",
-                    "operator": "GTE",
-                    "value": "2025-01-01T00:00:00Z"
+                    "operator": "NOT_HAS_PROPERTY",
                 }
             ]
         }
@@ -86,14 +80,23 @@ COMPANY_FILTERS = {
 
 # COMPANY_FILTERS_ARCHIVE = [
 #     {
-#         "propertyName": "hs_object_id",
+#         "propertyName": "hs_object_id", 
 #         "operator": "EQ",
-#         "value": "7042020395"  # Specific company ID
+#         "value": "7042020395"  # Filter for a specific company by its HubSpot ID
 #     },
 #     {
 #         "propertyName": "notes_last_contacted",
-#         "operator": "LTE",
-#         "value": "2025-01-01T00:00:00Z"
+#         "operator": "LTE", 
+#         "value": "2025-01-01T00:00:00Z"  # Only include companies last contacted before 2025
+#     },
+#     {
+#         "propertyName": "state",
+#         "operator": "IN",
+#         "values": ["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM"]  # Only include companies in standard season states
+#     },
+#     {
+#         "propertyName": "notes_last_contacted",
+#         "operator": "NOT_HAS_PROPERTY"  # Only include companies that have never been contacted
 #     }
 # ]
 
@@ -1203,7 +1206,7 @@ def main_leads_first():
                 company_props.update(enrichment_result.get("data", {}))
                 
                 # 3) Check if this company meets the workflow's COMPANY_FILTERS 
-                active_company_filters = [f for f in COMPANY_FILTERS if f.get("value")]
+                active_company_filters = [f for f in COMPANY_FILTERS["filterGroups"][0]["filters"]]  # Don't filter out empty values
                 logger.debug(f"\nChecking filters for {company_props.get('name', 'Unknown Company')} (ID: {company_id})")
                 logger.debug("----------------------------------------")
                 
@@ -1211,7 +1214,7 @@ def main_leads_first():
                 for f in active_company_filters:
                     prop_name = f["propertyName"]
                     operator = f["operator"]
-                    filter_value = f["value"]
+                    filter_value = f.get("value")  # Use get() since value might not exist
                     company_value = company_props.get(prop_name, "")
                     
                     logger.info(
@@ -1229,7 +1232,6 @@ def main_leads_first():
                             break
                     elif operator == "GT":
                         try:
-                            # Convert revenue string to numeric value by removing non-numeric characters
                             company_value = ''.join(filter(str.isdigit, str(company_value))) if company_value else '0'
                             filter_value = ''.join(filter(str.isdigit, str(filter_value)))
                             
@@ -1241,9 +1243,18 @@ def main_leads_first():
                             logger.info(f"FAILED: Invalid numeric value")
                             meets_filters = False
                             break
+                    elif operator == "NOT_HAS_PROPERTY":
+                        if company_value:  # If the property exists (has any value)
+                            logger.info(f"FAILED: Property exists")
+                            meets_filters = False
+                            break
+                    elif operator == "HAS_PROPERTY":
+                        if not company_value:  # If the property doesn't exist
+                            logger.info(f"FAILED: Property doesn't exist")
+                            meets_filters = False
+                            break
                     elif operator == "LTE":
-                        # If you had a "less than or equal" comparison, handle it here
-                        # (Not used in your code, but left as an example)
+                        # Handle LTE comparison if needed
                         pass
                     
                     logger.info("PASSED")
