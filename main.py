@@ -19,6 +19,7 @@ from utils.xai_integration import (
     personalize_email_with_xai,
     build_context_block
 )
+from utils.gmail_integration import search_messages
 
 # -----------------------------------------------------------------------------
 # PROJECT IMPORTS (Adjust paths/names as needed)
@@ -114,7 +115,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 50
+LEADS_TO_PROCESS = 100
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -622,7 +623,7 @@ def get_template_path(club_type: str, role: str) -> str:
     """
     Get the appropriate template path based on club type and role.
     """
-    logger.info(f"🎯 Selecting template for club_type={club_type}, role={role}")
+    logger.info(f"[TARGET] Selecting template for club_type={club_type}, role={role}")
     
     club_type_map = {
         "Country Club": "country_club",
@@ -665,10 +666,10 @@ def get_template_path(club_type: str, role: str) -> str:
     
     # Randomly select template variation
     sequence_num = random.randint(1, 2)
-    logger.info(f"🎲 Selected template variation {sequence_num}")
+    logger.info(f"[VARIANT] Selected template variation {sequence_num}")
     
     template_path = Path(PROJECT_ROOT) / "docs" / "templates" / normalized_club_type / f"{normalized_role}_initial_outreach_{sequence_num}.md"
-    logger.info(f"📂 Using template path: {template_path}")
+    logger.info(f"[PATH] Using template path: {template_path}")
     
     if not template_path.exists():
         fallback_path = Path(PROJECT_ROOT) / "docs" / "templates" / normalized_club_type / f"fallback_{sequence_num}.md"
@@ -829,6 +830,25 @@ def check_lead_filters(lead_data: dict) -> bool:
     # Just a placeholder for demonstration.
     return True
 
+def has_recent_email(email_address: str, months: int = 3) -> bool:
+    """Check if we've sent an email to this address in the last X months."""
+    try:
+        # Calculate date 6 months ago
+        cutoff_date = (datetime.now() - timedelta(days=30 * months)).strftime('%Y/%m/%d')
+        
+        # Search for sent emails to this address after cutoff date
+        query = f"to:{email_address} after:{cutoff_date}"
+        messages = search_messages(query=query)
+        
+        if messages:
+            logger.info(f"Found previous email to {email_address} within last {months} months")
+            return True
+        return False
+        
+    except Exception as e:
+        logger.error(f"Error checking recent emails for {email_address}: {str(e)}")
+        return False
+
 # -----------------------------------------------------------------------------
 # COMPANIES-FIRST WORKFLOW
 # -----------------------------------------------------------------------------
@@ -952,6 +972,11 @@ def main_companies_first():
                                 context=context
                             )
                             
+                            # Check for recent emails
+                            if has_recent_email(email_address):
+                                logger.info(f"Skipping {email_address} - email sent in last 6 months")
+                                continue
+                                
                             # Create the Gmail draft with personalized content
                             draft_result = create_draft(
                                 sender="me",
@@ -1201,6 +1226,11 @@ def main_leads_first():
                                 context=context
                             )
                             
+                            # Check for recent emails
+                            if has_recent_email(email_address):
+                                logger.info(f"Skipping {email_address} - email sent in last 6 months")
+                                continue
+                                
                             # Create the Gmail draft with personalized content
                             draft_result = create_draft(
                                 sender="me",

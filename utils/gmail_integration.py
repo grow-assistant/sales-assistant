@@ -144,6 +144,7 @@ def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
         message = MIMEMultipart('alternative')
         message["to"] = to
         message["subject"] = subject
+        message["bcc"] = "20057893@bcc.hubspot.com"
 
         # Format the body text with paragraphs
         div_start = "<div style='margin-bottom: 20px;'>"

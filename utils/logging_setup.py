@@ -2,6 +2,7 @@ import logging
 import os
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
+import sys
 
 def setup_logging():
     """Configure logging with both file and console handlers."""
@@ -17,12 +18,14 @@ def setup_logging():
     log_dir = Path(__file__).parent.parent / 'logs'
     log_dir.mkdir(exist_ok=True)
     
-    # File handler
-    file_handler = RotatingFileHandler(
-        log_dir / 'app.log',
-        maxBytes=10*1024*1024,  # 10MB
-        backupCount=5
-    )
+    # Force UTF-8 encoding for the log file
+    if sys.platform == 'win32':
+        import codecs
+        sys.stdout = codecs.getwriter('utf-8')(sys.stdout.buffer, 'strict')
+        sys.stderr = codecs.getwriter('utf-8')(sys.stderr.buffer, 'strict')
+
+    # Update file handler to use UTF-8
+    file_handler = logging.FileHandler('logs/app.log', encoding='utf-8')
     file_handler.setLevel(logging.DEBUG)
     
     # Console handler
