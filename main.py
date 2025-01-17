@@ -94,45 +94,17 @@ def get_company_filters_with_conditions(
         base_filters.append(state_filter)
         logger.debug(f"Added states filter: {json.dumps(state_filter, indent=2)}")
     
-    # # Add pool filter if specified
-    # if has_pool is not None:
-    #     base_filters.append({
-    #         "propertyName": "has_pool",
-    #         "operator": "EQ",
-    #         "value": str(has_pool).lower()
-    #     })
-    #     logger.debug(f"Added pool filter: {has_pool}")
+    # Add pool filter if specified
+    if has_pool is not None:
+        base_filters.append({
+            "propertyName": "has_pool",
+            "operator": "EQ",
+            "value": has_pool
+        })
+        logger.debug(f"Added pool filter: {has_pool}")
 
     # Initialize filter groups with base filters
     filter_groups = []
-    
-    # # If we have contact conditions, create separate groups for each (OR logic among them)
-    # if contact_conditions:
-    #     for condition in contact_conditions:
-    #         group_filters = base_filters.copy()  # Start with base filters
-    #         contact_filter = {
-    #             "propertyName": "notes_last_contacted",
-    #             "operator": condition["operator"]
-    #         }
-    #         if "value" in condition:
-    #             contact_filter["value"] = condition["value"]
-    #         group_filters.append(contact_filter)
-    #         filter_groups.append({"filters": group_filters})
-    #         logger.debug(f"Added contact condition group: {condition}")
-    
-    # # If we have club type conditions, create separate groups for each (OR logic among them)
-    # if club_type_conditions:
-    #     for condition in club_type_conditions:
-    #         group_filters = base_filters.copy()
-    #         club_filter = {
-    #             "propertyName": "club_type",
-    #             "operator": condition["operator"]
-    #         }
-    #         if "value" in condition:
-    #             club_filter["value"] = condition["value"]
-    #         group_filters.append(club_filter)
-    #         filter_groups.append({"filters": group_filters})
-    #         logger.debug(f"Added club type condition group: {condition}")
     
     # If no conditions were specified, just use base filters
     if not filter_groups and base_filters:
@@ -147,16 +119,8 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    # contact_conditions=[
-    #     {"operator": "NOT_HAS_PROPERTY"},  # never contacted
-    #     {"operator": "LTE", "value": "2025-01-01T00:00:00Z"}  # or contacted before 2025
-    # ],
-    # club_type_conditions=[
-    #     {"operator": "NOT_HAS_PROPERTY"},  # no club_type property
-    #     {"operator": "EQ", "value": "Country Club"}  # or is Country Club
-    # ],
     states=["OK", "CA", "TX"],  # Must be in these states
-    has_pool=True,              # Must have a pool
+    has_pool="Yes",              # Must have a pool
     company_id=6920180575             # Example placeholder, or set a specific ID
 )
 
@@ -923,6 +887,80 @@ def has_recent_email(email_address: str, months: int = 2) -> bool:
         logger.error(f"Error checking recent emails for {email_address}: {str(e)}")
         return False
 
+def check_company_conditions(company_props: Dict, contact_conditions: List[Dict] = None, club_type_conditions: List[Dict] = None) -> bool:
+    """
+    Test if a company meets the contact and club type conditions.
+    Returns True if company passes all checks, False otherwise.
+    """
+    logger.debug(
+        f"\nChecking conditions for {company_props.get('name', 'Unknown Company')}:\n"
+        f"Contact conditions: {contact_conditions}\n"
+        f"Club type conditions: {club_type_conditions}"
+    )
+
+    # Check contact conditions (OR logic)
+    if contact_conditions:
+        contact_passed = False
+        last_contacted = company_props.get("notes_last_contacted")
+        logger.debug(f"Checking contact conditions - Last contacted: {last_contacted}")
+        
+        for condition in contact_conditions:
+            operator = condition["operator"]
+            value = condition.get("value")
+            
+            logger.debug(f"Testing contact condition: operator={operator}, value={value}")
+            
+            if operator == "NOT_HAS_PROPERTY" and not last_contacted:
+                contact_passed = True
+                logger.debug("PASSED: No contact history found")
+                break
+            elif operator == "LTE" and last_contacted and last_contacted <= value:
+                contact_passed = True
+                logger.debug(f"PASSED: Last contact ({last_contacted}) is before {value}")
+                break
+            # Add other operators as needed
+        
+        if not contact_passed:
+            logger.info(
+                f"Company failed contact conditions:\n"
+                f"Last contacted: {last_contacted}\n"
+                f"Required conditions: {contact_conditions}"
+            )
+            return False
+
+    # Check club type conditions (OR logic)
+    if club_type_conditions:
+        club_type_passed = False
+        club_type = company_props.get("club_type")
+        logger.debug(f"Checking club type conditions - Club type: {club_type}")
+        
+        for condition in club_type_conditions:
+            operator = condition["operator"]
+            value = condition.get("value")
+            
+            logger.debug(f"Testing club type condition: operator={operator}, value={value}")
+            
+            if operator == "NOT_HAS_PROPERTY" and not club_type:
+                club_type_passed = True
+                logger.debug("PASSED: No club type specified")
+                break
+            elif operator == "EQ" and club_type == value:
+                club_type_passed = True
+                logger.debug(f"PASSED: Club type matches {value}")
+                break
+            # Add other operators as needed
+            
+        if not club_type_passed:
+            logger.info(
+                f"Company failed club type conditions:\n"
+                f"Current club type: {club_type}\n"
+                f"Required conditions: {club_type_conditions}"
+            )
+            return False
+
+    logger.debug("Company passed all conditions")
+    return True
+
 # -----------------------------------------------------------------------------
 # COMPANIES-FIRST WORKFLOW
 # -----------------------------------------------------------------------------
@@ -948,6 +986,21 @@ def main_companies_first():
             for company in companies:
                 company_id = company.get("id")
                 company_props = company.get("properties", {})
+                
+                # Add the check here, after getting company data
+                if not check_company_conditions(
+                    company_props,
+                    contact_conditions=[
+                        {"operator": "NOT_HAS_PROPERTY"},  # never contacted
+                        {"operator": "LTE", "value": "2025-01-01T00:00:00Z"}  # or contacted before 2025
+                    ],
+                    club_type_conditions=[
+                        {"operator": "NOT_HAS_PROPERTY"},  # no club_type property
+                        {"operator": "EQ", "value": "Country Club"}  # or is Country Club
+                    ]
+                ):
+                    logger.info(f"Company {company_id} failed condition checks, skipping.")
+                    continue
                 
                 # Check for competitor info first
                 website = company_props.get("website")
@@ -1141,7 +1194,7 @@ def main_companies_first():
 def main_leads_first():
     """
     1) Get leads first
-    2) Retrieve each lead’s associated company
+    2) Retrieve each lead's associated company
     3) Check if that company passes the workflow filters
     4) Build and store the outreach email
     """
@@ -1177,6 +1230,21 @@ def main_leads_first():
                 
                 if not company_id:
                     logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
+                    continue
+                
+                # Add the check here, after getting company data
+                if not check_company_conditions(
+                    company_props,
+                    contact_conditions=[
+                        {"operator": "NOT_HAS_PROPERTY"},  # never contacted
+                        {"operator": "LTE", "value": "2025-01-01T00:00:00Z"}  # or contacted before 2025
+                    ],
+                    club_type_conditions=[
+                        {"operator": "NOT_HAS_PROPERTY"},  # no club_type property
+                        {"operator": "EQ", "value": "Country Club"}  # or is Country Club
+                    ]
+                ):
+                    logger.info(f"Company {company_id} failed condition checks, skipping lead {lead_id}.")
                     continue
                 
                 # 2) Enrich the company data
