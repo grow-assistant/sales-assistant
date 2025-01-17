@@ -54,38 +54,58 @@ from services.conversation_analysis_service import ConversationAnalysisService
 # -----------------------------------------------------------------------------
 # Choose "companies" if you want to filter for companies first.
 # Choose "leads" if you want to filter for leads first.
-WORKFLOW_MODE = "leads"
+WORKFLOW_MODE = "companies"
 
 # -----------------------------------------------------------------------------
 # FILTERS
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = [
     {
-        "propertyName": "club_type",
+        "propertyName": "hs_object_id",
         "operator": "EQ",
-        "value": ""
+        "value": "7042020395"  # Specific company ID
     },
     {
-        "propertyName": "annualrevenue",
-        "operator": "GT",
-        "value": ""
-    },
-    {
-        "propertyName": "state",
-        "operator": "EQ",
-        "value": ""
-    },
-    {
-        "propertyName": "name",
-        "operator": "EQ",
-        "value": ""
-    },
-    {
-        "propertyName": "facility_complexity",
-        "operator": "EQ",
-        "value": ""
+        "propertyName": "notes_last_contacted",
+        "operator": "LTE",
+        "value": "2025-01-01T00:00:00Z"
     }
 ]
+
+
+#club_type
+#city
+#state 
+#club_info
+#peak_season_start_month
+#peak_season_end_month
+#start_month
+#end_month
+#number_of_holes
+#public_private_flag
+#facility_complexity
+#has_pool
+#has_tennis_courts
+
+# COMPANY_FILTERS_ARCHIVE = [
+#     {
+#         "propertyName": "hs_object_id",
+#         "operator": "EQ",
+#         "value": "7042020395"  # Specific company ID
+#     },
+#     {
+#         "propertyName": "notes_last_contacted",
+#         "operator": "GTE",
+#         "value": "2025-01-01T00:00:00Z"
+#     }
+# ]
+# Operator mapping reference:
+# ==  | eq  | Equal to
+# !=  | ne  | Not equal to
+# >   | gt  | Greater than
+# >=  | gte | Greater than or equal to
+# <   | lt  | Less than
+# <=  | lte | Less than or equal to
 
 LEAD_FILTERS = [
     {
@@ -96,7 +116,7 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": "0"
+        "value": ""
     },
     {
         "propertyName": "hs_sales_email_last_replied",
@@ -114,6 +134,7 @@ LEAD_FILTERS = [
         "value": ""
     }
 ]
+
 
 LEADS_TO_PROCESS = 100
 
@@ -830,10 +851,10 @@ def check_lead_filters(lead_data: dict) -> bool:
     # Just a placeholder for demonstration.
     return True
 
-def has_recent_email(email_address: str, months: int = 3) -> bool:
+def has_recent_email(email_address: str, months: int = 2) -> bool:
     """Check if we've sent an email to this address in the last X months."""
     try:
-        # Calculate date 6 months ago
+        # Calculate date 2 months ago
         cutoff_date = (datetime.now() - timedelta(days=30 * months)).strftime('%Y/%m/%d')
         
         # Search for sent emails to this address after cutoff date
@@ -897,6 +918,12 @@ def main_companies_first():
                     lead_id = lead.get("id")
                     lead_props = lead.get("properties", {})
                     logger.info(f"Processing lead: {lead_props.get('email')} (ID: {lead_id})")
+                    
+                    # Check for recent emails early
+                    email_address = lead_props["email"]
+                    if has_recent_email(email_address):
+                        logger.info(f"Skipping {email_address} - email sent in last 2 months")
+                        continue
                     
                     # Build your email (same as in main_leads_first)
                     try:
@@ -1154,6 +1181,12 @@ def main_leads_first():
                         
                         if not check_lead_filters(lead_data_full["lead_data"]):
                             logger.info(f"Lead {lead_id} did not pass custom checks, skipping.")
+                            continue
+                        
+                        # Check for recent emails early
+                        email_address = lead_data_full["lead_data"]["email"]
+                        if has_recent_email(email_address):
+                            logger.info(f"Skipping {email_address} - email sent in last 2 months")
                             continue
                         
                         # Instead of SQL summary, just use the 'recent_interaction' property from HubSpot
