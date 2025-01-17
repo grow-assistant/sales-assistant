@@ -20,6 +20,7 @@ from utils.xai_integration import (
     build_context_block
 )
 from utils.gmail_integration import search_messages
+import json
 
 # -----------------------------------------------------------------------------
 # PROJECT IMPORTS (Adjust paths/names as needed)
@@ -59,19 +60,67 @@ WORKFLOW_MODE = "companies"
 # -----------------------------------------------------------------------------
 # FILTERS
 # -----------------------------------------------------------------------------
-COMPANY_FILTERS = [
-    {
-        "propertyName": "hs_object_id",
-        "operator": "EQ",
-        "value": "7042020395"  # Specific company ID
-    },
-    {
-        "propertyName": "notes_last_contacted",
-        "operator": "LTE",
-        "value": "2025-01-01T00:00:00Z"
-    }
-]
+COMPANY_FILTERS = {
+    "filterGroups": [
+        {
+            "filters": [
+                {
+                    "propertyName": "state",
+                    "operator": "IN",
+                    "values": ["mi", "ca", "tx"]  # Must use "values" (list) for the IN operator
+                },
+                {
+                    "propertyName": "hs_object_id",
+                    "operator": "EQ",
+                    "value": "7042020395"
+                },
+                {
+                    "propertyName": "notes_last_contacted",
+                    "operator": "GTE",
+                    "value": "2025-01-01T00:00:00Z"
+                }
+            ]
+        }
+    ]
+}
 
+# COMPANY_FILTERS_ARCHIVE = [
+#     {
+#         "propertyName": "hs_object_id",
+#         "operator": "EQ",
+#         "value": "7042020395"  # Specific company ID
+#     },
+#     {
+#         "propertyName": "notes_last_contacted",
+#         "operator": "LTE",
+#         "value": "2025-01-01T00:00:00Z"
+#     }
+# ]
+
+# COMPANY_FILTERS_WITH_DATES = {
+#     "filterGroups": [
+#         {
+#             # Group 1: Never contacted
+#             "filters": [
+#                 {
+#                     "propertyName": "notes_last_contacted",
+#                     "operator": "HAS_PROPERTY",
+#                     "value": "false"
+#                 }
+#             ]
+#         },
+#         {
+#             # Group 2: Contacted before 2025
+#             "filters": [
+#                 {
+#                     "propertyName": "notes_last_contacted",
+#                     "operator": "LTE",
+#                     "value": "2025-01-01T00:00:00Z"
+#                 }
+#             ]
+#         }
+#     ]
+# }
 
 #club_type
 #city
@@ -87,23 +136,11 @@ COMPANY_FILTERS = [
 #has_pool
 #has_tennis_courts
 
-# COMPANY_FILTERS_ARCHIVE = [
-#     {
-#         "propertyName": "hs_object_id",
-#         "operator": "EQ",
-#         "value": "7042020395"  # Specific company ID
-#     },
-#     {
-#         "propertyName": "notes_last_contacted",
-#         "operator": "GTE",
-#         "value": "2025-01-01T00:00:00Z"
-#     }
-# ]
 # Operator mapping reference:
 # ==  | eq  | Equal to
 # !=  | ne  | Not equal to
 # >   | gt  | Greater than
-# >=  | gte | Greater than or equal to
+# >=  | gte | Greater than or equal to (for dates: after)
 # <   | lt  | Less than
 # <=  | lte | Less than or equal to
 
@@ -137,6 +174,57 @@ LEAD_FILTERS = [
 
 
 LEADS_TO_PROCESS = 100
+
+# -----------------------------------------------------------------------------
+# FILTER TEMPLATES FOR DIFFERENT SEARCH TYPES
+# -----------------------------------------------------------------------------
+def get_company_filters_with_states(states: List[str], has_pool: bool = None) -> Dict:
+    """
+    Generate company filters using IN operator for states.
+    Preserves existing company ID and contact date filters.
+    """
+    base_filters = []
+    
+    # Add state filter with IN operator
+    if states:
+        base_filters.append({
+            "propertyName": "state",
+            "operator": "IN",
+            "values": states  # Note plural 'values' for IN operator
+        })
+    
+    # Add pool filter if specified
+    if has_pool is not None:
+        base_filters.append({
+            "propertyName": "has_pool",
+            "operator": "EQ",
+            "value": str(has_pool).lower()
+        })
+    
+    return {
+        "filterGroups": [
+            {
+                # Group 1: Never contacted + specified filters
+                "filters": base_filters + [
+                    {
+                        "propertyName": "notes_last_contacted",
+                        "operator": "HAS_PROPERTY",
+                        "value": "false"
+                    }
+                ]
+            },
+            {
+                # Group 2: Contacted before 2025 + specified filters
+                "filters": base_filters + [
+                    {
+                        "propertyName": "notes_last_contacted",
+                        "operator": "LTE",
+                        "value": "2025-01-01T00:00:00Z"
+                    }
+                ]
+            }
+        ]
+    }
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -194,15 +282,13 @@ def clear_files_on_start():
     except Exception as e:
         logger.error(f"Error clearing files: {str(e)}")
 
-def get_country_club_companies(hubspot: HubspotService) -> List[Dict[str, Any]]:
+def get_country_club_companies(hubspot: HubspotService, states: List[str] = None) -> List[Dict[str, Any]]:
     """Get all country club companies using HubspotService and our filter groups."""
     try:
-        # Only include filters that have a valid value
-        active_filters = [f for f in COMPANY_FILTERS if f.get("value") not in [None, "", []]]
-        
         url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
+        
         payload = {
-            "filterGroups": [{"filters": active_filters}],
+            "filterGroups": COMPANY_FILTERS["filterGroups"],
             "properties": [
                 "name",
                 "city",
@@ -218,13 +304,18 @@ def get_country_club_companies(hubspot: HubspotService) -> List[Dict[str, Any]]:
                 "peak_season_start_month",
                 "peak_season_end_month",
                 "start_month",
-                "end_month"
+                "end_month",
+                "notes_last_contacted"
             ],
             "limit": 100
         }
         
-        logger.debug(f"Searching companies with filters: {active_filters}")
+        logger.debug(f"Searching companies with payload: {json.dumps(payload, indent=2)}")
         response = hubspot._make_hubspot_post(url, payload)
+        
+        if not response.get("results"):
+            logger.warning(f"No results found. Response: {json.dumps(response, indent=2)}")
+            
         results = response.get("results", [])
         logger.info(f"Found {len(results)} companies matching filters")
         
@@ -888,7 +979,11 @@ def main_companies_first():
         leads_processed = 0
         
         with workflow_step("1", "Get Country Club companies", workflow_context):
-            companies = get_country_club_companies(hubspot)
+            # Example: Filter for specific states
+            companies = get_country_club_companies(
+                hubspot=hubspot,
+                states=["ny", "ca", "tx"]  # Now this matches the function definition
+            )
             logger.info(f"Found {len(companies)} companies to process")
         
         with workflow_step("2", "Process each company & its leads", workflow_context):
