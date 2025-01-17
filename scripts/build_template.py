@@ -19,10 +19,7 @@ import re
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
 ###############################################################################
 SUBJECT_TEMPLATES = [
-    "Quick Chat, [FirstName]?",
-    "Quick Question, [FirstName]?",
-    "Question about 2025",
-    "Quick Question"
+    "Question about 2025"
 ]
 
 

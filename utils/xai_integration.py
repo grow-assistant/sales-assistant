@@ -116,7 +116,7 @@ def _send_xai_request(payload: dict, max_retries: int = 3, retry_delay: int = 1)
                 data = response.json()
                 content = data["choices"][0]["message"]["content"].strip()
 
-                logger.error(
+                logger.debug(
                     "Received xAI response:\n%s",
                     content[:200] + "..." if len(content) > 200 else content,
                 )
@@ -270,11 +270,12 @@ def personalize_email_with_xai(
             logger.warning(f"Invalid lead_sheet type: {type(lead_sheet)}. Using empty dict.")
             lead_sheet = {}
 
-        # Create a filtered company_data without club_info
+        # Create a filtered company_data with only specific fields
         company_data = lead_sheet.get("company_data", {})
+        allowed_fields = ['name', 'city', 'state', 'has_pool']
         filtered_company_data = {
             k: v for k, v in company_data.items() 
-            if k not in ['club_info', 'overview']  # Add any other fields you want to exclude
+            if k in allowed_fields
         }
         
         # Update lead_sheet with filtered company data
@@ -310,9 +311,12 @@ def personalize_email_with_xai(
             context_block = build_context_block(
                 interaction_history=summary if summary else "No previous interactions",
                 objection_handling=objection_handling if has_prior_emails else "",
-                original_email={"subject": subject, "body": body}
+                original_email={"subject": subject, "body": body},
+                company_data=filtered_company_data
             )
         else:
+            # Add filtered company data to existing context
+            context.update({"company_data": filtered_company_data})
             context_block = context
             
         logger.debug(f"Context block: {json.dumps(context_block, indent=2)}")
@@ -783,7 +787,7 @@ def get_club_summary(club_name: str, location: str) -> str:
     return response.strip()
 
 
-def build_context_block(interaction_history=None, objection_handling=None, original_email=None):
+def build_context_block(interaction_history=None, objection_handling=None, original_email=None, company_data=None):
     """Build context block for email personalization."""
     context = {}
     
@@ -803,6 +807,9 @@ def build_context_block(interaction_history=None, objection_handling=None, origi
             }
         else:
             context["original_email"] = original_email
+    
+    if company_data:
+        context["company_data"] = company_data
     
     return context
 

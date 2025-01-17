@@ -119,9 +119,9 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["OK", "CA", "TX"],  # Must be in these states
-    has_pool="Yes",              # Must have a pool
-    company_id=6920180575             # Example placeholder, or set a specific ID
+    states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM"],  # Must be in these states
+    has_pool=None,              # Must have a pool
+    company_id=None             # Example placeholder, or set a specific ID
 )
 
 # -----------------------------------------------------------------------------
@@ -136,7 +136,7 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": ""
+        "value": "0"
     },
     {
         "propertyName": "hs_sales_email_last_replied",
@@ -292,16 +292,15 @@ def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict
                     "direction": "DESCENDING"
                 }
             ],
-            "limit": 100
+            "limit": 1  # Changed from 100 to 1 to only get the first lead
         }
         
         logger.debug(f"Searching leads with filters: {active_filters}")
         response = hubspot._make_hubspot_post(url, payload)
         results = response.get("results", [])
-        sorted_results = results
         
-        logger.info(f"Found {len(sorted_results)} leads for company {company_id}")
-        return sorted_results
+        logger.info(f"Found {len(results)} leads for company {company_id}")
+        return results[:1]  # Extra safety to ensure only one lead is returned
         
     except Exception as e:
         logger.error(f"Error getting leads for company {company_id}: {str(e)}", exc_info=True)
@@ -961,14 +960,22 @@ def check_company_conditions(company_props: Dict, contact_conditions: List[Dict]
     logger.debug("Company passed all conditions")
     return True
 
+def check_pool_in_club_info(lead_data_full: Dict) -> Dict:
+    """Check if pool is mentioned in club_info and update has_pool if needed"""
+    club_info = lead_data_full.get("company_data", {}).get("club_info", "").lower()
+    if "pool" in club_info and lead_data_full.get("company_data", {}).get("has_pool") != "Yes":
+        logger.debug("Found pool mention in club_info, updating has_pool to Yes")
+        lead_data_full["company_data"]["has_pool"] = "Yes"
+    return lead_data_full
+
 # -----------------------------------------------------------------------------
 # COMPANIES-FIRST WORKFLOW
 # -----------------------------------------------------------------------------
 def main_companies_first():
     """
-    1) Filter for companies first via COMPANY_FILTERS
-    2) For each matching company, get leads (LEAD_FILTERS)
-    3) Build and store the outreach email for each lead
+    1) Get companies first
+    2) For each company, get its leads
+    3) Process each lead
     """
     try:
         workflow_context = {'correlation_id': str(uuid.uuid4())}
@@ -979,28 +986,18 @@ def main_companies_first():
         leads_processed = 0
         
         with workflow_step("1", "Get Country Club companies", workflow_context):
-            companies = get_country_club_companies(hubspot=hubspot, states=["ny", "ca", "tx"])
+            # Get companies
+            companies = get_country_club_companies(hubspot)
             logger.info(f"Found {len(companies)} companies to process")
-        
+            
+            # Randomize the order
+            random.shuffle(companies)
+            
         with workflow_step("2", "Process each company & its leads", workflow_context):
+            # Process each company
             for company in companies:
                 company_id = company.get("id")
                 company_props = company.get("properties", {})
-                
-                # Add the check here, after getting company data
-                if not check_company_conditions(
-                    company_props,
-                    contact_conditions=[
-                        {"operator": "NOT_HAS_PROPERTY"},  # never contacted
-                        {"operator": "LTE", "value": "2025-01-01T00:00:00Z"}  # or contacted before 2025
-                    ],
-                    club_type_conditions=[
-                        {"operator": "NOT_HAS_PROPERTY"},  # no club_type property
-                        {"operator": "EQ", "value": "Country Club"}  # or is Country Club
-                    ]
-                ):
-                    logger.info(f"Company {company_id} failed condition checks, skipping.")
-                    continue
                 
                 # Check for competitor info first
                 website = company_props.get("website")
@@ -1030,14 +1027,18 @@ def main_companies_first():
                 # Update company properties all at once
                 company_props.update(enrichment_result.get("data", {}))
                 
-                # Check if Club Essentials after all updates are complete
-                if enrichment_result.get("data", {}).get("competitor") == "Club Essentials":
-                    logger.info(f"Skipping company {company_id} - uses Club Essentials (found during enrichment)")
-                    continue
+                # Simple direct checks
+                club_type = company_props.get("club_type", "")
+                last_contacted = company_props.get("notes_last_contacted")
                 
-                # Optional: check if the company meets your filter/time-of-year logic
-                if not is_company_in_best_state(company_props):
-                    logger.info(f"Company {company_id} not in best outreach window, skipping.")
+                # # Check if club type is valid (must be Country Club or not specified)
+                # if club_type and club_type != "Country Club":
+                #     logger.info(f"Skipping company {company_id} - Club type is {club_type}")
+                #     continue
+                    
+                # Check if we've contacted them recently
+                if last_contacted and last_contacted > "2025-01-01T00:00:00Z":
+                    logger.info(f"Skipping company {company_id} - Last contacted on {last_contacted}")
                     continue
                 
                 # Get the leads for this company
@@ -1116,6 +1117,9 @@ def main_companies_first():
                             email_address = lead_data_full["lead_data"]["email"]
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
                             
+                            # Check club_info for pool mentions before personalization
+                            lead_data_full = check_pool_in_club_info(lead_data_full)
+                            
                             # Create context block with placeholder-replaced content
                             context = build_context_block(
                                 interaction_history=conversation_summary,
@@ -1130,12 +1134,7 @@ def main_companies_first():
                                 summary=conversation_summary,
                                 context=context
                             )
-                            
-                            # Double-check for recent emails
-                            if has_recent_email(email_address):
-                                logger.info(f"Skipping {email_address} - email sent in last 6 months")
-                                continue
-                                
+                                                            
                             # Create the Gmail draft with personalized content
                             draft_result = create_draft(
                                 sender="me",
@@ -1232,21 +1231,6 @@ def main_leads_first():
                     logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
                     continue
                 
-                # Add the check here, after getting company data
-                if not check_company_conditions(
-                    company_props,
-                    contact_conditions=[
-                        {"operator": "NOT_HAS_PROPERTY"},  # never contacted
-                        {"operator": "LTE", "value": "2025-01-01T00:00:00Z"}  # or contacted before 2025
-                    ],
-                    club_type_conditions=[
-                        {"operator": "NOT_HAS_PROPERTY"},  # no club_type property
-                        {"operator": "EQ", "value": "Country Club"}  # or is Country Club
-                    ]
-                ):
-                    logger.info(f"Company {company_id} failed condition checks, skipping lead {lead_id}.")
-                    continue
-                
                 # 2) Enrich the company data
                 enrichment_result = company_enricher.enrich_company(company_id)
                 if not enrichment_result.get("success", False):
@@ -1254,66 +1238,18 @@ def main_leads_first():
                     continue
                 company_props.update(enrichment_result.get("data", {}))
                 
-                # 3) Check if this company meets the workflow's COMPANY_FILTERS 
-                #    (For brevity, we just reuse the first filter group in COMPANY_FILTERS.)
-                active_company_filters = [f for f in COMPANY_FILTERS["filterGroups"][0]["filters"]]
-                logger.debug(f"\nChecking filters for {company_props.get('name', 'Unknown Company')} (ID: {company_id})")
-                logger.debug("----------------------------------------")
+                # Simple direct checks
+                club_type = company_props.get("club_type", "")
+                last_contacted = company_props.get("notes_last_contacted")
                 
-                meets_filters = True
-                for f in active_company_filters:
-                    prop_name = f["propertyName"]
-                    operator = f["operator"]
-                    filter_value = f.get("value")
-                    company_value = company_props.get(prop_name, "")
+                # Check if club type is valid (must be Country Club or not specified)
+                if club_type and club_type != "Country Club":
+                    logger.info(f"Skipping company {company_id} - Club type is {club_type}")
+                    continue
                     
-                    logger.info(
-                        f"\nChecking filter for {company_props.get('name', 'Unknown Company')}:\n"
-                        f"Property: {prop_name}\n"
-                        f"Operator: {operator}\n"
-                        f"Expected: {filter_value}\n"
-                        f"Actual: {company_value}"
-                    )
-                    
-                    if operator == "EQ":
-                        if str(company_value) != str(filter_value):
-                            logger.info("FAILED: Value mismatch")
-                            meets_filters = False
-                            break
-                    elif operator == "GT":
-                        try:
-                            company_value = ''.join(filter(str.isdigit, str(company_value))) if company_value else '0'
-                            filter_value = ''.join(filter(str.isdigit, str(filter_value)))
-                            
-                            if not company_value or float(company_value) <= float(filter_value):
-                                logger.info("FAILED: Value too low or empty")
-                                meets_filters = False
-                                break
-                        except ValueError:
-                            logger.info("FAILED: Invalid numeric value")
-                            meets_filters = False
-                            break
-                    elif operator == "NOT_HAS_PROPERTY":
-                        if company_value:
-                            logger.info("FAILED: Property exists")
-                            meets_filters = False
-                            break
-                    elif operator == "HAS_PROPERTY":
-                        if not company_value:
-                            logger.info("FAILED: Property doesn't exist")
-                            meets_filters = False
-                            break
-                    elif operator == "LTE":
-                        # Handle if needed
-                        pass
-                    
-                    logger.info("PASSED")
-                
-                if not meets_filters:
-                    logger.info(
-                        f"{company_props.get('name', 'Unknown Company')} "
-                        f"(ID: {company_id}) filtered out - failed filter checks"
-                    )
+                # Check if we've contacted them recently
+                if last_contacted and last_contacted > "2025-01-01T00:00:00Z":
+                    logger.info(f"Skipping company {company_id} - Last contacted on {last_contacted}")
                     continue
                 
                 # 4) Check if the current month is in the "best" time for outreach
@@ -1389,6 +1325,9 @@ def main_leads_first():
                             
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
                             
+                            # Check club_info for pool mentions before personalization
+                            lead_data_full = check_pool_in_club_info(lead_data_full)
+                            
                             context = build_context_block(
                                 interaction_history=conversation_summary,
                                 original_email={"subject": subject, "body": body}
@@ -1401,11 +1340,7 @@ def main_leads_first():
                                 summary=conversation_summary,
                                 context=context
                             )
-                            
-                            if has_recent_email(email_address):
-                                logger.info(f"Skipping {email_address} - email sent in last 6 months")
-                                continue
-                                
+                                                            
                             draft_result = create_draft(
                                 sender="me",
                                 to=email_address,

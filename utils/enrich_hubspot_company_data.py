@@ -114,6 +114,12 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
     Updates the company's properties in HubSpot based on club segmentation info.
     """
     try:
+        # Check club_info for pool mentions before processing
+        club_info_text = str(confirmed_updates.get('club_info', '')).lower()
+        if 'pool' in club_info_text and confirmed_updates.get('has_pool') in ['Unknown', 'No']:
+            logger.debug(f"Found pool mention in club_info, updating has_pool to Yes")
+            confirmed_updates['has_pool'] = 'Yes'
+
         # Debug input values
         logger.debug("Input values for update:")
         for key, value in confirmed_updates.items():
