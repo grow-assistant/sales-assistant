@@ -72,11 +72,18 @@ class DataGathererService:
         # 3) Get the associated company_id
         company_id = self.hubspot.get_associated_company_id(contact_id)
 
-        # 4) Get the company data (including city/state, plus new fields)
+        # 4) Get the company data (including domain)
         company_props = self.hubspot.get_company_data(company_id)
 
-        # Example: competitor check
-        competitor_analysis = self.check_competitor_on_website(company_props.get("website", ""))
+        # Example: competitor check using domain
+        competitor_analysis = self.check_competitor_on_website(
+            company_props.get("domain", "")
+        )
+        if competitor_analysis["status"] == "success" and competitor_analysis["competitor"]:
+            # Update HubSpot with competitor info
+            self.hubspot.update_company_properties(company_id, {
+                "competitor": competitor_analysis["competitor"]
+            })
 
         # Example: gather news just once
         club_name = company_props.get("name", "")
@@ -124,44 +131,75 @@ class DataGathererService:
         self._save_lead_context(lead_sheet, lead_email)
 
         return lead_sheet
-
     # -------------------------------------------------------------------------
     # Competitor-check logic
     # -------------------------------------------------------------------------
     def check_competitor_on_website(self, domain: str, correlation_id: str = None) -> Dict[str, str]:
+        """Check for competitor software mentions on the website."""
         if correlation_id is None:
             correlation_id = f"competitor_check_{domain}"
         try:
             if not domain:
                 return {
                     "competitor": "",
-                    "status": "no_data",
+                    "status": "no_data", 
                     "error": "No domain provided"
                 }
-            url = domain.strip().lower()
-            if not url.startswith("http"):
-                url = f"https://{url}"
-            html = fetch_website_html(url)
-            if not html:
-                return {
-                    "competitor": "",
-                    "status": "error",
-                    "error": "Could not fetch website content"
-                }
-            # Sample competitor mention
-            competitor_mentions = ["jonas club software", "jonas software", "jonasclub"]
-            for mention in competitor_mentions:
-                if mention in html.lower():
-                    return {
-                        "competitor": "Jonas",
-                        "status": "success",
-                        "error": ""
-                    }
+
+            # Try different URL variations
+            urls_to_try = []
+            base_url = domain.strip().lower()
+            if not base_url.startswith('http'):
+                urls_to_try.extend([f"https://{base_url}", f"http://{base_url}"])
+            else:
+                urls_to_try.append(base_url)
+            
+            # Add www. version if not present
+            urls_to_try.extend([url.replace('://', '://www.') for url in urls_to_try])
+            
+            for url in urls_to_try:
+                try:
+                    html = fetch_website_html(url)
+                    if html:
+                        html_lower = html.lower()
+                        
+                        # Check for Club Essentials mentions first
+                        clubessential_mentions = [
+                            "copyright clubessential",
+                            "clubessential, llc",
+                            "www.clubessential.com",
+                            "http://www.clubessential.com",
+                            "clubessential"
+                        ]
+                        for mention in clubessential_mentions:
+                            if mention in html_lower:
+                                logger.debug(f"Found Club Essentials on {url}")
+                                return {
+                                    "competitor": "Club Essentials",
+                                    "status": "success",
+                                    "error": ""
+                                }
+                        
+                        # Check for Jonas mentions
+                        jonas_mentions = ["jonas club software", "jonas software", "jonasclub"]
+                        for mention in jonas_mentions:
+                            if mention in html_lower:
+                                logger.debug(f"Found Jonas on {url}")
+                                return {
+                                    "competitor": "Jonas",
+                                    "status": "success",
+                                    "error": ""
+                                }
+                except Exception as e:
+                    logger.debug(f"Failed to fetch {url}: {str(e)}")
+                    continue
+            
             return {
                 "competitor": "",
                 "status": "success",
                 "error": ""
             }
+            
         except Exception as e:
             logger.error("Error checking competitor on website", extra={
                 "domain": domain,

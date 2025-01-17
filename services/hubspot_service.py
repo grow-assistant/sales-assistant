@@ -48,7 +48,9 @@ class HubspotService:
             "start_month": "start_month",
             "end_month": "end_month",
             "peak_season_start_month": "peak_season_start_month",
-            "peak_season_end_month": "peak_season_end_month"
+            "peak_season_end_month": "peak_season_end_month",
+            "competitor": "competitor",
+            "domain": "domain"
         }
 
         self.property_value_mapping = {
@@ -75,6 +77,11 @@ class HubspotService:
                 "Peak Summer Season": "Peak Summer Season",
                 "Short Summer Season": "Short Summer Season",
                 "Unknown": "Unknown"
+            },
+            "competitor": {
+                "Club Essentials": "Club Essentials",
+                "Jonas": "Jonas",
+                "Unknown": "Unknown"
             }
         }
 
@@ -93,7 +100,7 @@ class HubspotService:
                     "has_pool", "has_tennis_courts", "number_of_holes",
                     "public_private_flag", "club_info",
                     "peak_season_start_month", "peak_season_end_month",
-                    "start_month", "end_month"
+                    "start_month", "end_month", "domain"
                 ],
                 "filterGroups": [{
                     "filters": [{

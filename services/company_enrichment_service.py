@@ -8,6 +8,7 @@ from utils.xai_integration import (
 )
 from utils.logging_setup import logger
 from scripts.golf_outreach_strategy import get_best_outreach_window
+from utils.web_fetch import fetch_website_html
 
 
 class CompanyEnrichmentService:
@@ -15,47 +16,59 @@ class CompanyEnrichmentService:
         logger.debug("Initializing CompanyEnrichmentService")
         self.hubspot = HubspotService(api_key=api_key)
 
-    def enrich_company(self, company_id: str) -> Dict[str, Any]:
-        """Main method to enrich company data."""
-        logger.info(f"Starting enrichment for company {company_id}")
+    def enrich_company(self, company_id: str, additional_data: Dict[str, Any] = None) -> Dict[str, bool]:
+        """Enriches company data with facility type and competitor information."""
         try:
-            company_info = self._get_facility_info(company_id)
-            
-            if not company_info.get('name') or not company_info.get('state'):
-                return {
-                    'success': False,
-                    'message': 'Missing required company information (name or state)',
-                    'data': company_info
-                }
+            # Get current company info
+            current_info = self._get_facility_info(company_id)
+            if not current_info:
+                return {"success": False, "error": "Failed to get company info"}
 
-            facility_data = self._determine_facility_type(
-                company_info['name'],
-                company_info['state']
-            )
+            # Get company name and location
+            company_name = current_info.get('name', '')
+            location = f"{current_info.get('city', '')}, {current_info.get('state', '')}"
             
-            season_data = self._determine_seasonality(company_info['state'])
+            # IMPORTANT: Save the competitor value found in _get_facility_info
+            competitor = current_info.get('competitor', 'Unknown')
+            logger.debug(f"Competitor found in _get_facility_info: {competitor}")
+
+            # Determine facility type
+            facility_info = self._determine_facility_type(company_name, location)
             
-            enriched_data = {**company_info, **facility_data, **season_data}
+            # Get seasonality info
+            seasonality_info = self._determine_seasonality(current_info.get('state', ''))
             
-            updates = self._prepare_updates(company_info, enriched_data)
-            
-            success = self.hubspot.update_company_properties(company_id, updates)
-            
-            result = {
-                'success': success,
-                'message': 'Successfully updated company information' if success else 'Failed to update company information',
-                'data': enriched_data
+            # Combine all new info
+            new_info = {
+                **facility_info,
+                **seasonality_info,
+                'competitor': competitor  # Explicitly set competitor here
             }
-            logger.info(f"Enrichment complete for company {company_id}")
-            return result
+            
+            # Add any additional data
+            if additional_data:
+                new_info.update(additional_data)
+                
+            # Log the competitor value before preparing updates
+            logger.debug(f"Competitor value before _prepare_updates: {new_info.get('competitor', 'Unknown')}")
+            
+            # Prepare the final updates
+            updates = self._prepare_updates(current_info, new_info)
+            
+            # Log the final competitor value
+            logger.debug(f"Final competitor value in updates: {updates.get('competitor', 'Unknown')}")
+            
+            # Update the company in HubSpot
+            if updates:
+                success = self._update_company_properties(company_id, updates)
+                if success:
+                    return {"success": True, "data": updates}
+            
+            return {"success": False, "error": "Failed to update company"}
             
         except Exception as e:
-            logger.error(f"Error enriching company {company_id}: {str(e)}", exc_info=True)
-            return {
-                'success': False,
-                'message': f"Error: {str(e)}",
-                'data': {}
-            }
+            logger.error(f"Error enriching company {company_id}: {str(e)}")
+            return {"success": False, "error": str(e)}
 
     def _get_facility_info(self, company_id: str) -> Dict[str, Any]:
         """Fetches the company's current properties from HubSpot."""
@@ -67,26 +80,70 @@ class CompanyEnrichmentService:
                 "has_tennis_courts", "number_of_holes",
                 "geographic_seasonality", "public_private_flag",
                 "club_info", "peak_season_start_month",
-                "peak_season_end_month", "start_month", "end_month"
+                "peak_season_end_month", "start_month", "end_month",
+                "competitor", "domain"
             ]
-            
-            url = f"{self.hubspot.companies_endpoint}/{company_id}"
-            params = {"properties": properties}
             
             company_data = self.hubspot.get_company_by_id(company_id, properties)
             
             if not company_data:
                 return {}
             
-            annual_revenue = company_data.get('properties', {}).get('annualrevenue', '')
-            if annual_revenue:
-                annual_revenue = ''.join(filter(str.isdigit, str(annual_revenue)))
+            # Check domain for competitor software
+            domain = company_data.get('properties', {}).get('domain', '')
+            competitor = company_data.get('properties', {}).get('competitor', 'Unknown')
+            
+            if domain:
+                # Try different URL variations
+                urls_to_try = []
+                base_url = domain.strip().lower()
+                if not base_url.startswith('http'):
+                    urls_to_try.extend([f"https://{base_url}", f"http://{base_url}"])
+                else:
+                    urls_to_try.append(base_url)
+                
+                # Add www. version if not present
+                urls_to_try.extend([url.replace('://', '://www.') for url in urls_to_try])
+                
+                for url in urls_to_try:
+                    try:
+                        html_content = fetch_website_html(url)
+                        if html_content:
+                            html_lower = html_content.lower()
+                            # Check for Club Essentials mentions
+                            clubessential_mentions = [
+                                "copyright clubessential",
+                                "clubessential, llc",
+                                "www.clubessential.com",
+                                "http://www.clubessential.com",
+                                "clubessential"
+                            ]
+                            for mention in clubessential_mentions:
+                                if mention in html_lower:
+                                    competitor = "Club Essentials"
+                                    logger.debug(f"Found Club Essentials on {url}")
+                                    break
+                                    
+                            # Check for Jonas mentions if not Club Essentials
+                            if competitor == "Unknown":
+                                jonas_mentions = ["jonas club software", "jonas software", "jonasclub"]
+                                for mention in jonas_mentions:
+                                    if mention in html_lower:
+                                        competitor = "Jonas"
+                                        logger.debug(f"Found Jonas on {url}")
+                                        break
+                            
+                            if competitor != "Unknown":
+                                break
+                    except Exception as e:
+                        logger.debug(f"Failed to fetch {url}: {str(e)}")
+                        continue
             
             return {
                 'name': company_data.get('properties', {}).get('name', ''),
                 'city': company_data.get('properties', {}).get('city', ''),
                 'state': company_data.get('properties', {}).get('state', ''),
-                'annual_revenue': annual_revenue,
+                'annual_revenue': company_data.get('properties', {}).get('annualrevenue', ''),
                 'create_date': company_data.get('properties', {}).get('createdate', ''),
                 'last_modified': company_data.get('properties', {}).get('hs_lastmodifieddate', ''),
                 'object_id': company_data.get('properties', {}).get('hs_object_id', ''),
@@ -97,7 +154,8 @@ class CompanyEnrichmentService:
                 'number_of_holes': company_data.get('properties', {}).get('number_of_holes', 0),
                 'geographic_seasonality': company_data.get('properties', {}).get('geographic_seasonality', 'Unknown'),
                 'public_private_flag': company_data.get('properties', {}).get('public_private_flag', 'Unknown'),
-                'club_info': company_data.get('properties', {}).get('club_info', '')
+                'club_info': company_data.get('properties', {}).get('club_info', ''),
+                'competitor': competitor
             }
         except Exception as e:
             logger.error(f"Error fetching company data: {e}")
@@ -126,7 +184,8 @@ class CompanyEnrichmentService:
             "has_pool": segmentation_info.get("has_pool", "Unknown"),
             "has_tennis_courts": segmentation_info.get("has_tennis_courts", "Unknown"),
             "number_of_holes": segmentation_info.get("number_of_holes", 0),
-            "club_info": club_summary
+            "club_info": club_summary,
+            "competitor": segmentation_info.get("competitor", "Unknown")
         }
 
     def _determine_seasonality(self, state: str) -> Dict[str, Any]:
@@ -186,44 +245,97 @@ class CompanyEnrichmentService:
     def _prepare_updates(self, current_info: Dict[str, Any], new_info: Dict[str, Any]) -> Dict[str, Any]:
         """Prepares the final update payload with validated values."""
         try:
+            # Get competitor value with explicit logging
+            competitor = new_info.get('competitor', current_info.get('competitor', 'Unknown'))
+            logger.debug(f"Processing competitor value in _prepare_updates: {competitor}")
+
+            # Initialize updates with default values for required fields
             updates = {
                 "name": new_info.get("name", current_info.get("name", "")),
                 "club_type": new_info.get("club_type", current_info.get("club_type", "Unknown")),
                 "facility_complexity": new_info.get("facility_complexity", current_info.get("facility_complexity", "Unknown")),
                 "geographic_seasonality": new_info.get("geographic_seasonality", current_info.get("geographic_seasonality", "Unknown")),
+                "has_pool": "No",  # Default value
                 "has_tennis_courts": new_info.get("has_tennis_courts", current_info.get("has_tennis_courts", "No")),
                 "number_of_holes": new_info.get("number_of_holes", current_info.get("number_of_holes", 0)),
                 "public_private_flag": new_info.get("public_private_flag", current_info.get("public_private_flag", "Unknown")),
                 "start_month": new_info.get("start_month", current_info.get("start_month", "")),
                 "end_month": new_info.get("end_month", current_info.get("end_month", "")),
                 "peak_season_start_month": new_info.get("peak_season_start_month", current_info.get("peak_season_start_month", "")),
-                "peak_season_end_month": new_info.get("peak_season_end_month", current_info.get("peak_season_end_month", ""))
+                "peak_season_end_month": new_info.get("peak_season_end_month", current_info.get("peak_season_end_month", "")),
+                "competitor": competitor,
+                "club_info": new_info.get("club_info", current_info.get("club_info", ""))
             }
 
-            club_info = new_info.get("club_info", "")
-            if club_info:
-                updates["club_info"] = club_info
-                updates["has_pool"] = "Yes" if "pool" in club_info.lower() else "No"
+            # Handle pool information
+            club_info = new_info.get("club_info", "").lower()
+            if "pool" in club_info:
+                updates["has_pool"] = "Yes"
             else:
                 updates["has_pool"] = current_info.get("has_pool", "No")
 
-            if updates["club_type"] == "Private Course":
-                updates["club_type"] = "Private"
-
+            # Convert numeric fields to integers
             for key in ["number_of_holes", "start_month", "end_month", "peak_season_start_month", "peak_season_end_month"]:
-                if updates[key]:
+                if updates.get(key):
                     try:
                         updates[key] = int(updates[key])
                     except (ValueError, TypeError):
                         updates[key] = 0
 
-            for key in ["has_tennis_courts"]:
-                updates[key] = "Yes" if str(updates[key]).lower() in ["yes", "true", "1"] else "No"
+            # Convert boolean fields to Yes/No
+            for key in ["has_tennis_courts", "has_pool"]:
+                updates[key] = "Yes" if str(updates.get(key, "")).lower() in ["yes", "true", "1"] else "No"
 
+            # Validate competitor value
+            valid_competitors = ["Club Essentials", "Jonas", "Unknown"]
+            if competitor in valid_competitors:
+                updates["competitor"] = competitor
+                logger.debug(f"Set competitor to valid value: {competitor}")
+            else:
+                logger.debug(f"Invalid competitor value ({competitor}), defaulting to Unknown")
+                updates["competitor"] = "Unknown"
+
+            # Map values to HubSpot-accepted values
+            property_value_mapping = {
+                "club_type": {
+                    "Private": "Private",
+                    "Public": "Public",
+                    "Public - Low Daily Fee": "Public - Low Daily Fee",
+                    "Public - High Daily Fee": "Public - High Daily Fee",
+                    "Municipal": "Municipal",
+                    "Semi-Private": "Semi-Private",
+                    "Resort": "Resort",
+                    "Country Club": "Country Club",
+                    "Private Country Club": "Country Club",
+                    "Management Company": "Management Company",
+                    "Unknown": "Unknown"
+                },
+                "facility_complexity": {
+                    "Single-Course": "Standard",
+                    "Multi-Course": "Multi-Course",
+                    "Resort": "Resort",
+                    "Unknown": "Unknown"
+                },
+                "geographic_seasonality": {
+                    "Year-Round Golf": "Year-Round",
+                    "Peak Summer Season": "Peak Summer Season",
+                    "Short Summer Season": "Short Summer Season",
+                    "Unknown": "Unknown"
+                }
+            }
+
+            # Apply mappings
+            for key, mapping in property_value_mapping.items():
+                if key in updates:
+                    updates[key] = mapping.get(str(updates[key]), updates[key])
+
+            logger.debug(f"Final prepared updates: {updates}")
             return updates
 
         except Exception as e:
             logger.error(f"Error preparing updates: {str(e)}")
+            logger.debug(f"Current info: {current_info}")
+            logger.debug(f"New info: {new_info}")
             return {}
 
     def _update_company_properties(self, company_id: str, updates: Dict[str, Any]) -> bool:
@@ -253,6 +365,11 @@ class CompanyEnrichmentService:
                     "Year-Round Golf": "Year-Round",
                     "Peak Summer Season": "Peak Summer Season",
                     "Short Summer Season": "Short Summer Season",
+                    "Unknown": "Unknown"
+                },
+                "competitor": {
+                    "Jonas": "Jonas",
+                    "Club Essentials": "Club Essentials",
                     "Unknown": "Unknown"
                 }
             }
