@@ -73,6 +73,21 @@ def get_company_filters_with_conditions(
     """
     # Build base filters (these will be applied to all groups)
     base_filters = []
+    
+    # # Add contact count filter
+    # base_filters.append({
+    #     "propertyName": "num_contacted_notes",
+    #     "operator": "LT",
+    #     "value": "3"  # Only include companies contacted less than 3 times
+    # })
+
+    # # Add minimum associated contacts filter
+    # base_filters.append({
+    #     "propertyName": "num_associated_contacts",
+    #     "operator": "EQ",
+    #     "value": ""  # Only include companies with at least 1 contact
+    # })
+
     # Add company ID filter if specified
     if company_id:
         base_filters.append({
@@ -119,9 +134,10 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM"],  # Must be in these states
+    states=["VA","TX"],  # Must be in these states
+    #states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],  Early Season States
     has_pool=None,              # Must have a pool
-    company_id=None             # Example placeholder, or set a specific ID
+    company_id=6926190170             # Example placeholder, or set a specific ID
 )
 
 # -----------------------------------------------------------------------------
@@ -960,14 +976,6 @@ def check_company_conditions(company_props: Dict, contact_conditions: List[Dict]
     logger.debug("Company passed all conditions")
     return True
 
-def check_pool_in_club_info(lead_data_full: Dict) -> Dict:
-    """Check if pool is mentioned in club_info and update has_pool if needed"""
-    club_info = lead_data_full.get("company_data", {}).get("club_info", "").lower()
-    if "pool" in club_info and lead_data_full.get("company_data", {}).get("has_pool") != "Yes":
-        logger.debug("Found pool mention in club_info, updating has_pool to Yes")
-        lead_data_full["company_data"]["has_pool"] = "Yes"
-    return lead_data_full
-
 # -----------------------------------------------------------------------------
 # COMPANIES-FIRST WORKFLOW
 # -----------------------------------------------------------------------------
@@ -1116,9 +1124,6 @@ def main_companies_first():
                             # Then get conversation analysis
                             email_address = lead_data_full["lead_data"]["email"]
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
-                            
-                            # Check club_info for pool mentions before personalization
-                            lead_data_full = check_pool_in_club_info(lead_data_full)
                             
                             # Create context block with placeholder-replaced content
                             context = build_context_block(
@@ -1324,9 +1329,6 @@ def main_leads_first():
                             body = replace_placeholders(email_content[1], lead_data_full)
                             
                             conversation_summary = conversation_analyzer.analyze_conversation(email_address)
-                            
-                            # Check club_info for pool mentions before personalization
-                            lead_data_full = check_pool_in_club_info(lead_data_full)
                             
                             context = build_context_block(
                                 interaction_history=conversation_summary,

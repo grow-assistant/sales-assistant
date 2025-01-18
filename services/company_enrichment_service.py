@@ -110,7 +110,7 @@ class CompanyEnrichmentService:
                         html_content = fetch_website_html(url)
                         if html_content:
                             html_lower = html_content.lower()
-                            # Check for Club Essentials mentions
+                            # Check for Club Essentials mentions first
                             clubessential_mentions = [
                                 "copyright clubessential",
                                 "clubessential, llc",
@@ -131,6 +131,20 @@ class CompanyEnrichmentService:
                                     if mention in html_lower:
                                         competitor = "Jonas"
                                         logger.debug(f"Found Jonas on {url}")
+                                        break
+                            
+                            # Check for Northstar mentions if still Unknown
+                            if competitor == "Unknown":
+                                northstar_mentions = [
+                                    "northstar technologies",
+                                    "globalnorthstar.com",
+                                    "northstar club management",
+                                    "northstartech"
+                                ]
+                                for mention in northstar_mentions:
+                                    if mention in html_lower:
+                                        competitor = "Northstar"
+                                        logger.debug(f"Found Northstar on {url}")
                                         break
                             
                             if competitor != "Unknown":

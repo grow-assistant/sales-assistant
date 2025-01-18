@@ -66,6 +66,8 @@ def init_db():
                     company_city       VARCHAR(100),
                     company_st         VARCHAR(2),
                     company_type       VARCHAR(50),
+                    email_address      VARCHAR(255),
+                    gmail_id           VARCHAR(100),
                     subject            VARCHAR(500),
                     body               VARCHAR(MAX),
                     status             VARCHAR(50) DEFAULT 'pending',

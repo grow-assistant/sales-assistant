@@ -50,7 +50,10 @@ class HubspotService:
             "peak_season_start_month": "peak_season_start_month",
             "peak_season_end_month": "peak_season_end_month",
             "competitor": "competitor",
-            "domain": "domain"
+            "domain": "domain",
+            "notes_last_contacted": "notes_last_contacted",
+            "num_contacted_notes": "num_contacted_notes",
+            "num_associated_contacts": "num_associated_contacts"
         }
 
         self.property_value_mapping = {
@@ -81,6 +84,7 @@ class HubspotService:
             "competitor": {
                 "Club Essentials": "Club Essentials",
                 "Jonas": "Jonas",
+                "Northstar": "Northstar",
                 "Unknown": "Unknown"
             }
         }
@@ -100,7 +104,9 @@ class HubspotService:
                     "has_pool", "has_tennis_courts", "number_of_holes",
                     "public_private_flag", "club_info",
                     "peak_season_start_month", "peak_season_end_month",
-                    "start_month", "end_month", "domain"
+                    "start_month", "end_month", "domain",
+                    "notes_last_contacted", "num_contacted_notes",
+                    "num_associated_contacts"
                 ],
                 "filterGroups": [{
                     "filters": [{
@@ -163,7 +169,9 @@ class HubspotService:
 
                     # Type-specific handling
                     if internal_key in ["number_of_holes", "start_month", "end_month", 
-                                      "peak_season_start_month", "peak_season_end_month"]:
+                                      "peak_season_start_month", "peak_season_end_month",
+                                      "notes_last_contacted", "num_contacted_notes",
+                                      "num_associated_contacts"]:
                         logger.debug(f"Converting numeric value for {internal_key}: {value}")
                         value = int(value) if str(value).isdigit() else 0
                     elif internal_key in ["has_pool", "has_tennis_courts"]:
@@ -348,7 +356,8 @@ class HubspotService:
         hs_object_id, club_type, facility_complexity, has_pool,
         has_tennis_courts, number_of_holes, geographic_seasonality,
         public_private_flag, club_info, peak_season_start_month,
-        peak_season_end_month, start_month, end_month.
+        peak_season_end_month, start_month, end_month, notes_last_contacted,
+        num_contacted_notes, num_associated_contacts.
         """
         if not company_id:
             return {}
@@ -373,7 +382,10 @@ class HubspotService:
             "&properties=peak_season_start_month",
             "&properties=peak_season_end_month",
             "&properties=start_month",
-            "&properties=end_month"
+            "&properties=end_month",
+            "&properties=notes_last_contacted",
+            "&properties=num_contacted_notes",
+            "&properties=num_associated_contacts"
         )
         try:
             response = requests.get(url, headers=self.headers)

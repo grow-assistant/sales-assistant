@@ -139,7 +139,10 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
             "season_start": "start_month",
             "season_end": "end_month",
             "peak_season_start_month": "peak_season_start_month",
-            "peak_season_end_month": "peak_season_end_month"
+            "peak_season_end_month": "peak_season_end_month",
+            "notes_last_contacted": "notes_last_contacted",
+            "num_contacted_notes": "num_contacted_notes",
+            "num_associated_contacts": "num_associated_contacts"
         }
 
         # Value transformations for HubSpot - EXACT matches for HubSpot enum values
@@ -189,7 +192,8 @@ def update_company_properties(company_id: str, club_info: dict, confirmed_update
                     logger.debug(f"Enum transformation for {internal_key}: {original_value} -> {value}")
 
                 # Type-specific handling
-                if internal_key in ["number_of_holes", "season_start", "season_end", "peak_season_start_month", "peak_season_end_month"]:
+                if internal_key in ["number_of_holes", "season_start", "season_end", "peak_season_start_month", "peak_season_end_month",
+                                   "notes_last_contacted", "num_contacted_notes", "num_associated_contacts"]:
                     original_value = value
                     value = int(value) if str(value).isdigit() else 0
                     logger.debug(f"Number conversion for {internal_key}: {original_value} -> {value}")
@@ -407,7 +411,10 @@ def _search_companies_with_filters(hubspot: HubspotService, batch_size=25) -> Li
                     "start_month",
                     "end_month",
                     "peak_season_start_month",
-                    "peak_season_end_month"
+                    "peak_season_end_month",
+                    "notes_last_contacted",
+                    "num_contacted_notes",
+                    "num_associated_contacts"
                 ],
                 "filterGroups": [
                     {

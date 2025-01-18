@@ -3,6 +3,7 @@ from typing import Optional
 from utils.logging_setup import logger
 import urllib3
 import random
+from urllib.parse import urlparse, urlunparse
 
 # Disable SSL verification warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -14,17 +15,39 @@ USER_AGENTS = [
     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15',
 ]
 
+def sanitize_url(url: str) -> str:
+    """Sanitize and normalize URL format."""
+    parsed = urlparse(url)
+    if not parsed.scheme:
+        parsed = parsed._replace(scheme="https")
+    if not parsed.netloc.startswith("www."):
+        parsed = parsed._replace(netloc=f"www.{parsed.netloc}")
+    return urlunparse(parsed)
+
 def fetch_website_html(url: str) -> Optional[str]:
     """Fetch HTML content from a website with proper headers and error handling."""
     if not url:
+        logger.error("No URL provided")
         return None
         
     # Clean up the URL
     url = url.strip().lower()
-    if not url.startswith(('http://', 'https://')):
-        url = f'https://{url}'
+    logger.debug(f"Original URL: {url}")
     
-    # Setup headers
+    # Generate URL variations
+    parsed_url = urlparse(url)
+    base_domain = parsed_url.netloc.replace('www.', '')
+    
+    urls_to_try = [
+        f"https://www.{base_domain}{parsed_url.path}",
+        f"https://{base_domain}{parsed_url.path}",
+        f"http://www.{base_domain}{parsed_url.path}",
+        f"http://{base_domain}{parsed_url.path}"
+    ]
+    
+    logger.debug(f"Will try URLs: {urls_to_try}")
+    
+    # Setup headers with additional browser-like headers
     headers = {
         'User-Agent': random.choice(USER_AGENTS),
         'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -36,35 +59,40 @@ def fetch_website_html(url: str) -> Optional[str]:
         'Sec-Fetch-Mode': 'navigate',
         'Sec-Fetch-Site': 'none',
         'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0'
+        'Cache-Control': 'max-age=0',
+        'DNT': '1',  # Do Not Track
+        'Pragma': 'no-cache'
     }
     
-    urls_to_try = [
-        url,
-        url.replace('https://', 'http://'),
-        url.replace('http://', 'https://'),
-        url.replace('://', '://www.'),
-        url.replace('://www.', '://')
-    ]
+    session = requests.Session()
     
     for attempt_url in urls_to_try:
         try:
-            response = requests.get(
+            logger.debug(f"Trying to fetch: {attempt_url}")
+            
+            response = session.get(
                 attempt_url,
                 headers=headers,
                 timeout=10,
-                verify=False,  # Disable SSL verification
+                verify=False,  # Still keeping verify=False for testing
                 allow_redirects=True
             )
             
+            logger.debug(f"Response code: {response.status_code} for URL: {attempt_url}")
+            logger.debug(f"Response headers: {dict(response.headers)}")
+            
             # Check if we got a successful response
             if response.status_code == 200:
-                return response.text
+                content = response.text
+                logger.debug(f"Content preview: {content[:200]}")
+                return content
             else:
-                logger.debug(f"Failed to fetch {attempt_url} with status code {response.status_code}")
+                logger.debug(f"Failed with status code {response.status_code}")
+                if response.text:
+                    logger.debug(f"Error response preview: {response.text[:200]}")
                 
         except requests.RequestException as e:
-            logger.debug(f"Error fetching {attempt_url}: {str(e)}")
+            logger.error(f"Error fetching {attempt_url}: {str(e)}", exc_info=True)
             continue
             
     logger.error(f"Failed to fetch website content after trying multiple URLs for {url}")
