@@ -91,10 +91,9 @@ def get_pending_emails(lead_id: int) -> list:
       - status IN ('pending','draft','sent')
       
     The table columns are:
-      email_id, lead_id, name, company_name, company_city, company_st,
-      company_type, subject, body, status, scheduled_send_date,
-      actual_send_date, created_at, sequence_num, draft_id, email_address,
-      gmail_id
+      email_id, lead_id, name, email_address, sequence_num,
+      body, scheduled_send_date, actual_send_date, created_at,
+      status, draft_id, gmail_id
     """
     try:
         with get_db_connection() as conn:
@@ -103,19 +102,14 @@ def get_pending_emails(lead_id: int) -> list:
                 SELECT email_id,
                        lead_id,
                        name,
-                       company_name,
-                       company_city,
-                       company_st,
-                       company_type,
-                       subject,
+                       email_address,
+                       sequence_num,
                        body,
-                       status,
                        scheduled_send_date,
                        actual_send_date,
                        created_at,
-                       sequence_num,
+                       status,
                        draft_id,
-                       email_address,
                        gmail_id
                   FROM emails
                  WHERE lead_id = ?
@@ -129,20 +123,15 @@ def get_pending_emails(lead_id: int) -> list:
                 'email_id': row[0],
                 'lead_id': row[1],
                 'name': row[2],
-                'company_name': row[3],
-                'company_city': row[4],
-                'company_st': row[5],
-                'company_type': row[6],
-                'subject': row[7],
-                'body': row[8],
+                'email_address': row[3],
+                'sequence_num': row[4],
+                'body': row[5],
+                'scheduled_send_date': str(row[6]) if row[6] else None,
+                'actual_send_date': str(row[7]) if row[7] else None,
+                'created_at': str(row[8]) if row[8] else None,
                 'status': row[9],
-                'scheduled_send_date': str(row[10]) if row[10] else None,
-                'actual_send_date': str(row[11]) if row[11] else None,
-                'created_at': str(row[12]) if row[12] else None,
-                'sequence_num': row[13],
-                'draft_id': row[14],
-                'email_address': row[15],
-                'gmail_id': row[16],  # should be None if it's truly pending/draft
+                'draft_id': row[10],
+                'gmail_id': row[11]
             }
             results.append(record)
         return results

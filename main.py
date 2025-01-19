@@ -81,12 +81,12 @@ def get_company_filters_with_conditions(
     #     "value": "3"  # Only include companies contacted less than 3 times
     # })
 
-    # # Add minimum associated contacts filter
-    # base_filters.append({
-    #     "propertyName": "num_associated_contacts",
-    #     "operator": "EQ",
-    #     "value": ""  # Only include companies with at least 1 contact
-    # })
+    # Add minimum associated contacts filter
+    base_filters.append({
+        "propertyName": "num_associated_contacts",
+        "operator": "GTE",
+        "value": "1"  # Only include companies with at least 1 contact
+    })
 
     # Add company ID filter if specified
     if company_id:
@@ -134,10 +134,10 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["VA","TX"],  # Must be in these states
+    states=["TN"],  # Must be in these states
     #states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],  Early Season States
     has_pool=None,              # Must have a pool
-    company_id=6926190170             # Example placeholder, or set a specific ID
+    company_id=None             # Example placeholder, or set a specific ID
 )
 
 # -----------------------------------------------------------------------------
@@ -152,7 +152,7 @@ LEAD_FILTERS = [
     {
         "propertyName": "lead_score",
         "operator": "GT",
-        "value": "0"
+        "value": ""
     },
     {
         "propertyName": "hs_sales_email_last_replied",
@@ -563,9 +563,23 @@ def schedule_followup(lead_id: int, email_id: int):
         if 'conn' in locals():
             conn.close()
 
-def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft_id):
+def store_draft_info(lead_id, name, email_address, sequence_num, body, scheduled_date, draft_id):
     """
-    Persists the draft info (subject, body, scheduled send date, etc.) to the 'emails' table.
+    Persists the draft info to the 'emails' table.
+    
+    Fields ordered as per schema:
+    - email_id (auto-generated)
+    - lead_id
+    - name
+    - email_address
+    - sequence_num
+    - body
+    - scheduled_send_date
+    - actual_send_date (auto-managed)
+    - created_at (auto-managed)
+    - status
+    - draft_id
+    - gmail_id (managed elsewhere)
     """
     try:
         logger.debug(f"[store_draft_info] Attempting to store draft info for lead_id={lead_id}, scheduled_date={scheduled_date}")
@@ -575,31 +589,48 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
         cursor.execute(
             """
             UPDATE emails
-            SET subject = ?, body = ?, scheduled_send_date = ?, sequence_num = ?, draft_id = ?
+            SET name = ?, 
+                email_address = ?, 
+                sequence_num = ?,
+                body = ?,
+                scheduled_send_date = ?,
+                draft_id = ?
             WHERE lead_id = ? AND sequence_num = ?
             
             IF @@ROWCOUNT = 0
             BEGIN
-                INSERT INTO emails
-                    (lead_id, subject, body, scheduled_send_date, sequence_num, draft_id, status)
-                VALUES
-                    (?, ?, ?, ?, ?, ?, 'draft')
+                INSERT INTO emails (
+                    lead_id,
+                    name,
+                    email_address,
+                    sequence_num,
+                    body,
+                    scheduled_send_date,
+                    status,
+                    draft_id
+                ) VALUES (
+                    ?, ?, ?, ?, ?, ?, 'draft', ?
+                )
             END
             """,
             (
-                subject, 
+                # UPDATE parameters
+                name,
+                email_address,
+                sequence_num,
                 body,
                 scheduled_date,
-                sequence_num,
                 draft_id,
-                lead_id, 
+                lead_id,
                 sequence_num,
                 
+                # INSERT parameters
                 lead_id,
-                subject,
+                name,
+                email_address,
+                sequence_num,
                 body,
                 scheduled_date,
-                sequence_num,
                 draft_id
             )
         )
@@ -609,7 +640,8 @@ def store_draft_info(lead_id, subject, body, scheduled_date, sequence_num, draft
         
     except Exception as e:
         logger.error(f"[store_draft_info] Failed to store draft info: {str(e)}")
-        conn.rollback()
+        if 'conn' in locals():
+            conn.rollback()
         raise
     finally:
         if 'cursor' in locals():
@@ -1168,7 +1200,6 @@ def main_companies_first():
                                     },
                                     draft_id=draft_result["draft_id"],
                                     scheduled_date=send_date,
-                                    subject=email_content[0],
                                     body=email_content[1],
                                     sequence_num=1
                                 )
@@ -1370,7 +1401,6 @@ def main_leads_first():
                                     },
                                     draft_id=draft_result["draft_id"],
                                     scheduled_date=send_date,
-                                    subject=email_content[0],
                                     body=email_content[1],
                                     sequence_num=1
                                 )

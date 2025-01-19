@@ -29,14 +29,12 @@ def check_and_send_followups():
                 e.email_id,
                 l.email,
                 l.first_name,
-                c.name,
-                e.subject,
+                e.name,
                 e.body,
                 e.created_at,
-                c.state
+                e.email_address
             FROM emails e
             JOIN leads l ON l.lead_id = e.lead_id
-            LEFT JOIN companies c ON l.company_id = c.company_id
             WHERE e.sequence_num = 1
             AND e.status = 'sent'
             AND l.email IS NOT NULL
@@ -48,17 +46,16 @@ def check_and_send_followups():
         """)
         
         for row in cursor.fetchall():
-            lead_id, email_id, email, first_name, company_name, subject, body, created_at, state = row
+            lead_id, email_id, email, first_name, name, body, created_at, email_address = row
             
             # Package original email data
             original_email = {
                 'email': email,
                 'first_name': first_name,
-                'name': company_name,
-                'subject': subject,
+                'name': name,
                 'body': body,
                 'created_at': created_at,
-                'state': state
+                'email_address': email_address
             }
             
             # Generate follow-up content
@@ -74,7 +71,6 @@ def check_and_send_followups():
                 draft_result = create_draft(
                     sender="me",
                     to=followup_data['email'],
-                    subject=followup_data['subject'],
                     message_text=followup_data['body']
                 )
 
@@ -83,8 +79,8 @@ def check_and_send_followups():
                     store_email_draft(
                         cursor,
                         lead_id=lead_id,
-                        subject=followup_data['subject'],
                         body=followup_data['body'],
+                        email_address=followup_data['email'],
                         scheduled_send_date=followup_data['scheduled_send_date'],
                         sequence_num=followup_data['sequence_num'],
                         draft_id=draft_result["draft_id"],

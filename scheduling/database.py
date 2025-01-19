@@ -62,20 +62,15 @@ def init_db():
                     email_id            INT IDENTITY(1,1) PRIMARY KEY,
                     lead_id            INT NOT NULL,
                     name               VARCHAR(100),
-                    company_name       VARCHAR(200),
-                    company_city       VARCHAR(100),
-                    company_st         VARCHAR(2),
-                    company_type       VARCHAR(50),
                     email_address      VARCHAR(255),
-                    gmail_id           VARCHAR(100),
-                    subject            VARCHAR(500),
+                    sequence_num       INT NULL,
                     body               VARCHAR(MAX),
-                    status             VARCHAR(50) DEFAULT 'pending',
                     scheduled_send_date DATETIME NULL,
                     actual_send_date   DATETIME NULL,
                     created_at         DATETIME DEFAULT GETDATE(),
-                    sequence_num       INT NULL,
-                    draft_id           VARCHAR(100) NULL
+                    status             VARCHAR(50) DEFAULT 'pending',
+                    draft_id           VARCHAR(100) NULL,
+                    gmail_id           VARCHAR(100)
                 )
             END
         """)
@@ -110,18 +105,29 @@ def clear_tables():
         logger.exception(f"Failed to clear emails table: {str(e)}")
         raise e
 
-def store_email_draft(cursor, lead_id: int, subject: str, body: str, 
-                     name: str = None,
-                     company_name: str = None,
-                     company_city: str = None,
-                     company_st: str = None,
-                     company_type: str = None,
-                     scheduled_send_date: datetime = None, 
+def store_email_draft(cursor, lead_id: int, name: str = None,
+                     email_address: str = None,
                      sequence_num: int = None,
+                     body: str = None,
+                     scheduled_send_date: datetime = None,
                      draft_id: str = None,
                      status: str = 'pending') -> int:
     """
     Store email draft in database. Returns email_id.
+    
+    Table schema:
+    - email_id (auto-generated)
+    - lead_id
+    - name
+    - email_address
+    - sequence_num
+    - body
+    - scheduled_send_date
+    - actual_send_date (auto-managed)
+    - created_at (auto-managed)
+    - status
+    - draft_id
+    - gmail_id (managed elsewhere)
     """
     # First check if this draft_id already exists
     cursor.execute("""
@@ -134,33 +140,49 @@ def store_email_draft(cursor, lead_id: int, subject: str, body: str,
         # Update existing record instead of creating new one
         cursor.execute("""
             UPDATE emails 
-            SET name = ?, company_name = ?, company_city = ?, 
-                company_st = ?, company_type = ?, subject = ?, 
-                body = ?, status = ?, scheduled_send_date = ?,
-                sequence_num = ?
+            SET name = ?,
+                email_address = ?,
+                sequence_num = ?,
+                body = ?,
+                scheduled_send_date = ?,
+                status = ?
             WHERE draft_id = ? AND lead_id = ?
         """, (
-            name, company_name, company_city, company_st, company_type,
-            subject, body, status, scheduled_send_date, sequence_num,
-            draft_id, lead_id
+            name,
+            email_address,
+            sequence_num,
+            body,
+            scheduled_send_date,
+            status,
+            draft_id,
+            lead_id
         ))
         return existing[0]
     else:
         # Insert new record
         cursor.execute("""
             INSERT INTO emails (
-                lead_id, name, company_name, company_city, company_st, company_type,
-                subject, body, status, scheduled_send_date, created_at,
-                sequence_num, draft_id
+                lead_id,
+                name,
+                email_address,
+                sequence_num,
+                body,
+                scheduled_send_date,
+                status,
+                draft_id
             ) VALUES (
-                ?, ?, ?, ?, ?, ?,
-                ?, ?, ?, ?, GETDATE(),
-                ?, ?
+                ?, ?, ?, ?,
+                ?, ?, ?, ?
             )
         """, (
-            lead_id, name, company_name, company_city, company_st, company_type,
-            subject, body, status, scheduled_send_date,
-            sequence_num, draft_id
+            lead_id,
+            name,
+            email_address,
+            sequence_num,
+            body,
+            scheduled_send_date,
+            status,
+            draft_id
         ))
         cursor.execute("SELECT SCOPE_IDENTITY()")
         return cursor.fetchone()[0]
