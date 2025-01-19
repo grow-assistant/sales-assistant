@@ -5,6 +5,7 @@ import pytz
 from utils.gmail_integration import get_gmail_service
 from utils.logging_setup import logger
 from scheduling.database import get_db_connection
+import base64
 
 ###############################################################################
 #                           CONSTANTS
@@ -77,6 +78,36 @@ def get_gmail_draft_by_id(service, draft_id: str) -> dict:
         logger.error(f"Error fetching draft {draft_id}: {str(e)}")
         return {}
 
+def get_draft_body(message: dict) -> str:
+    """Extract the body text from a Gmail draft message."""
+    try:
+        body = ""
+        if 'payload' in message and 'parts' in message['payload']:
+            for part in message['payload']['parts']:
+                if part['mimeType'] == 'text/plain':
+                    body = base64.urlsafe_b64decode(part['body']['data']).decode('utf-8')
+                    break
+        elif 'payload' in message and 'body' in message['payload']:
+            body = base64.urlsafe_b64decode(message['payload']['body']['data']).decode('utf-8')
+        
+        if not body:
+            logger.error("No body content found in message")
+            return ""
+            
+        # Log the first few characters to help with debugging
+        preview = body[:100] + "..." if len(body) > 100 else body
+        logger.debug(f"Retrieved draft body preview: {preview}")
+        
+        # Check for template placeholders
+        if "[FirstName]" in body or "{{" in body or "}}" in body:
+            logger.warning("Found template placeholders in draft body - draft may not be properly personalized")
+            
+        return body
+        
+    except Exception as e:
+        logger.error(f"Error extracting draft body: {str(e)}")
+        return ""
+
 def translate_label_ids_to_names(service, label_ids: list) -> list:
     """Convert Gmail label IDs to their corresponding names."""
     try:
@@ -92,20 +123,36 @@ def translate_label_ids_to_names(service, label_ids: list) -> list:
         logger.error(f"Error translating label IDs: {str(e)}")
         return label_ids
 
-def update_email_status(email_id: int, new_status: str):
-    """Update the status field in the emails table."""
+def update_email_status(email_id: int, new_status: str, body: str = None):
+    """
+    Update the emails table with the new status and optionally update the body.
+    Similar to update_email_record in check_for_sent_emails.py
+    """
     try:
-        with get_db_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute("""
+        if body:
+            sql = """
+                UPDATE emails
+                   SET status = ?,
+                       body = ?
+                 WHERE email_id = ?
+            """
+            params = (new_status, body, email_id)
+        else:
+            sql = """
                 UPDATE emails
                    SET status = ?
                  WHERE email_id = ?
-            """, (new_status, email_id))
+            """
+            params = (new_status, email_id)
+            
+        with get_db_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(sql, params)
             conn.commit()
-            logger.info(f"Updated email_id={email_id} status to '{new_status}'")
+            logger.info(f"Email ID {email_id} updated: status='{new_status}'" + 
+                       (", body updated" if body else ""))
     except Exception as e:
-        logger.error(f"Error updating email status for ID {email_id}: {str(e)}", exc_info=True)
+        logger.error(f"Error updating email ID {email_id}: {str(e)}", exc_info=True)
 
 ###############################################################################
 #                               MAIN PROCESS
@@ -160,8 +207,17 @@ def main():
 
         # Check for reviewed label and update SQL status
         if REVIEWED_LABEL.lower() in [ln.lower() for ln in label_names]:
-            logger.info(f"Draft {draft_id} marked as '{REVIEWED_LABEL}'. Updating SQL status.")
-            update_email_status(email_id, SQL_REVIEWED_STATUS)
+            logger.info(f"Draft {draft_id} marked as '{REVIEWED_LABEL}'. Updating SQL status and body.")
+            # Get the draft body text
+            body = get_draft_body(message)
+            if body:
+                logger.debug(f"Retrieved body text ({len(body)} chars) for draft_id={draft_id}")
+                # Update both status and body
+                update_email_status(email_id, SQL_REVIEWED_STATUS, body)
+            else:
+                logger.warning(f"Could not retrieve body text for draft_id={draft_id}")
+                # Update only status if no body could be retrieved
+                update_email_status(email_id, SQL_REVIEWED_STATUS)
         elif TO_REVIEW_LABEL.lower() in [ln.lower() for ln in label_names]:
             logger.info(f"Draft {draft_id} still labeled '{TO_REVIEW_LABEL}'. No action needed.")
         else:

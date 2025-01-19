@@ -9,19 +9,15 @@ def should_include_file(filepath):
     # List of primary files to include based on most frequently referenced
     primary_files = [
         'main.py',
-        # 'main_old.py',
-        'utils/xai_integration.py',
-        'services/data_gatherer_service.py', 
-        # 'scripts/build_template.py',
-        # 'utils/logging_setup.py',
-        # 'scripts/golf_outreach_strategy.py',
-        # 'services/email_service.py',
+        'scripts/golf_outreach_strategy.py',
         'scheduling/database.py',
-        'scheduling/extended_lead_storage.py'
-        # 'scheduling/followup_scheduler.py',
-        # 'scheduling/followup_generation.py'
+        'scheduling/extended_lead_storage.py', 
+        'scheduling/followup_scheduler.py',
+        'scheduling/followup_generation.py',
+        'utils/gmail_integration.py',
+        'utils/xai_integration.py',
+        'scripts/build_template.py'
     ]
-    
     # Check if file is in primary files list
     for primary_file in primary_files:
         if filepath.endswith(primary_file):
@@ -60,7 +56,6 @@ def get_file_content(filepath):
 {content}
 """
 
-# Add new function to write the export
 def export_files(output_path='exported_codebase.md'):
     """Export all primary files to a markdown file."""
     all_content = []
@@ -81,7 +76,6 @@ def export_files(output_path='exported_codebase.md'):
     
     return output_path
 
-# Add if main block
 if __name__ == '__main__':
     output_file = export_files()
     print(f'Codebase exported to: {output_file}')

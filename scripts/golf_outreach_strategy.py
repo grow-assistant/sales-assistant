@@ -6,6 +6,7 @@ import csv
 import logging
 from datetime import datetime, timedelta
 import os
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -94,42 +95,64 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
 def get_best_time(persona: str) -> dict:
     """
     Determine best time of day based on persona.
-    Returns a dict with start and end hours in 24-hour format.
+    Returns a dict with start and end hours/minutes in 24-hour format.
+    Randomly selects between morning and afternoon windows.
     """
     time_windows = {
-        "General Manager": {"start": 9, "end": 11},  # 9am-11am
-        "Membership Director": {"start": 13, "end": 15},  # 1pm-3pm
-        "Food & Beverage Director": {"start": 10, "end": 12},  # 10am-12pm
-        "Golf Professional": {"start": 8, "end": 10},  # 8am-10am
-        "Superintendent": {"start": 7, "end": 9}  # 7am-9am
+        "General Manager": [
+            {
+                "start_hour": 8, "start_minute": 30,
+                "end_hour": 10, "end_minute": 30
+            },  # 8:30-10:30 AM
+            {
+                "start_hour": 15, "start_minute": 0,
+                "end_hour": 16, "end_minute": 30
+            }   # 3:00-4:30 PM
+        ],
+        "Food & Beverage Director": [
+            {
+                "start_hour": 9, "start_minute": 30,
+                "end_hour": 11, "end_minute": 30
+            },  # 9:30-11:30 AM
+            {
+                "start_hour": 15, "start_minute": 0,
+                "end_hour": 16, "end_minute": 30
+            }   # 3:00-4:30 PM
+        ],
+        "Golf Professional": [
+            {
+                "start_hour": 8, "start_minute": 0,
+                "end_hour": 10, "end_minute": 0
+            }   # 8:00-10:00 AM
+        ],
+        "Membership Director": [
+            {
+                "start_hour": 13, "start_minute": 0,
+                "end_hour": 15, "end_minute": 0
+            }   # 1:00-3:00 PM
+        ]
     }
     
     # Convert persona to title case to handle different formats
     persona = " ".join(word.capitalize() for word in persona.split("_"))
-    return time_windows.get(persona, {"start": 9, "end": 11})
-
-def get_best_day(persona: str) -> list:
-    """
-    Determine best days of week based on persona.
-    Returns a list of day numbers (0 = Monday, 6 = Sunday)
-    """
-    day_mappings = {
-        "General Manager": [1, 3],  # Tuesday, Thursday
-        "Membership Director": [2, 3],  # Wednesday, Thursday
-        "Food & Beverage Director": [2, 3],  # Wednesday, Thursday
-        "Golf Professional": [1, 2],  # Tuesday, Wednesday
-        "Superintendent": [1, 2]  # Tuesday, Wednesday
-    }
     
-    # Convert persona to title case to handle different formats
-    persona = " ".join(word.capitalize() for word in persona.split("_"))
-    return day_mappings.get(persona, [1, 3])
+    # Get time windows for the persona, defaulting to GM times if not found
+    windows = time_windows.get(persona, time_windows["General Manager"])
+    
+    # Randomly select between morning and afternoon windows if multiple exist
+    selected_window = random.choice(windows)
+    
+    # Update calculate_send_date function expects start/end format
+    return {
+        "start": selected_window["start_hour"] + selected_window["start_minute"] / 60,
+        "end": selected_window["end_hour"] + selected_window["end_minute"] / 60
+    }
 
 def get_best_outreach_window(persona: str, geography: str, club_type: str = None, season_data: dict = None) -> Dict[str, Any]:
     """Get the optimal outreach window based on persona and geography."""
     best_months = get_best_month(geography, club_type, season_data)
     best_time = get_best_time(persona)
-    best_days = get_best_day(persona)
+    best_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday (0 = Monday, 6 = Sunday)
     
     logger.debug(f"Calculated base outreach window", extra={
         "persona": persona,
@@ -145,12 +168,12 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
         "Best Day": best_days
     }
 
-def calculate_send_date(geography: str, profile_type: str, state: str, preferred_days: list, preferred_time: dict) -> datetime:
-    """
-    Calculate the next appropriate send date based on outreach window and preferred days/time.
-    """
-    outreach_window = get_best_outreach_window(geography, profile_type)
+def calculate_send_date(geography: str, persona: str, state: str, season_data: dict = None) -> datetime:
+    """Calculate the next appropriate send date based on outreach window."""
+    outreach_window = get_best_outreach_window(geography, persona, season_data=season_data)
     best_months = outreach_window["Best Month"]
+    preferred_time = outreach_window["Best Time"]
+    preferred_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
     
     # Find the next preferred day of week
     today = datetime.now().date()
@@ -171,4 +194,5 @@ def calculate_send_date(geography: str, profile_type: str, state: str, preferred
     # Apply preferred time
     target_date = target_date.replace(hour=preferred_time["start"])
     
-    return target_date
+    # Adjust for state timezone
+    return adjust_send_time(target_date, state)

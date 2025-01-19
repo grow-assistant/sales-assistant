@@ -134,7 +134,7 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["TN"],  # Must be in these states
+    states=["SC"],  # Must be in these states
     #states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],  Early Season States
     has_pool=None,              # Must have a pool
     company_id=None             # Example placeholder, or set a specific ID
@@ -666,7 +666,7 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         
         best_months = outreach_window.get("Best Month", [])
         best_time = outreach_window.get("Best Time", {"start": 9, "end": 11})
-        best_days = outreach_window.get("Best Day", [0,1,2,3,4])  # Mon-Fri default
+        best_days = outreach_window.get("Best Day", [1,2,3])  # Mon-Fri default
         
         now = datetime.now()
         target_date = now + timedelta(days=1)
