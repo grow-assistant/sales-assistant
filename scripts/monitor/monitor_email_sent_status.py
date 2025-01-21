@@ -1,5 +1,11 @@
 import os
 import sys
+from pathlib import Path
+
+# Add project root to Python path
+project_root = str(Path(__file__).parent.parent.parent)
+sys.path.append(project_root)
+
 import base64
 from datetime import datetime
 import pytz
@@ -318,19 +324,15 @@ def get_draft_emails(email_id: int = None) -> list:
                 cursor.execute("""
                     SELECT email_id,
                            lead_id,
-                           subject,
                            name,
-                           company_name,
+                           email_address,
+                           sequence_num,
                            body,
                            scheduled_send_date,
+                           actual_send_date,
                            created_at,
-                           draft_id,
-                           email_address,
                            status,
-                           company_city,
-                           company_st,
-                           company_type,
-                           sequence_num,
+                           draft_id,
                            gmail_id
                       FROM emails 
                      WHERE email_id = ?
@@ -340,19 +342,15 @@ def get_draft_emails(email_id: int = None) -> list:
                 cursor.execute("""
                     SELECT email_id,
                            lead_id,
-                           subject,
                            name,
-                           company_name,
+                           email_address,
+                           sequence_num,
                            body,
                            scheduled_send_date,
+                           actual_send_date,
                            created_at,
-                           draft_id,
-                           email_address,
                            status,
-                           company_city,
-                           company_st,
-                           company_type,
-                           sequence_num,
+                           draft_id,
                            gmail_id
                       FROM emails 
                      WHERE status = 'draft'
@@ -365,20 +363,16 @@ def get_draft_emails(email_id: int = None) -> list:
                 results.append({
                     'email_id': row[0],
                     'lead_id': row[1],
-                    'subject': row[2],
-                    'name': row[3],
-                    'company_name': row[4],
+                    'name': row[2],
+                    'email_address': row[3],
+                    'sequence_num': row[4],
                     'body': row[5],
                     'scheduled_send_date': str(row[6]) if row[6] else None,
-                    'created_at': str(row[7]) if row[7] else None,
-                    'draft_id': row[8],
-                    'email_address': row[9],
-                    'status': row[10],
-                    'company_city': row[11],
-                    'company_st': row[12],
-                    'company_type': row[13],
-                    'sequence_num': row[14],
-                    'gmail_id': row[15]
+                    'actual_send_date': str(row[7]) if row[7] else None,
+                    'created_at': str(row[8]) if row[8] else None,
+                    'status': row[9],
+                    'draft_id': row[10],
+                    'gmail_id': row[11]
                 })
             return results
     except Exception as e:
@@ -405,7 +399,6 @@ def main():
         email_id = record['email_id']
         lead_id = record['lead_id']
         to_address = record['email_address']
-        subject = record['subject'] or ""
         scheduled_dt = parse_sql_datetime(record['scheduled_send_date'])
         created_dt = parse_sql_datetime(record['created_at'])
 
@@ -413,7 +406,6 @@ def main():
         logger.info(f"Email ID: {email_id}")
         logger.info(f"Lead ID: {lead_id}")
         logger.info(f"Current email address: {to_address}")
-        logger.info(f"Subject: {subject}")
         logger.info(f"Scheduled: {scheduled_dt}")
         logger.info(f"Created: {created_dt}")
 
@@ -439,8 +431,8 @@ def main():
                 logger.error(f"Error fetching HubSpot data: {str(e)}", exc_info=True)
                 continue
 
-        # Now proceed with Gmail search
-        messages = search_gmail_for_messages(to_address, subject, scheduled_dt)
+        # Now proceed with Gmail search - without subject
+        messages = search_gmail_for_messages(to_address, "", scheduled_dt)
         if not messages:
             logger.info(f"No matching Gmail messages found for email_id={email_id}.")
             continue

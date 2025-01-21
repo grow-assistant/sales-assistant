@@ -40,10 +40,14 @@ def adjust_send_time(send_time: datetime, state_code: str) -> datetime:
         return send_time
     
     # Determine if we're in DST
-    is_dst = datetime.now().astimezone().dst() != timedelta(0)
+    # In US, DST is from second Sunday in March to first Sunday in November
+    dt = datetime.now()
+    is_dst = 3 <= dt.month <= 11  # True if between March and November
+    
+    # Get the offset relative to Arizona time
     offset_hours = offsets['dst'] if is_dst else offsets['std']
     
-    # Apply offset
+    # Apply offset from Arizona time
     adjusted_time = send_time + timedelta(hours=offset_hours)
     logger.debug(f"Adjusted time from {send_time} to {adjusted_time} for state {state_code} (offset: {offset_hours}h, DST: {is_dst})")
     return adjusted_time
@@ -112,27 +116,27 @@ def get_best_time(persona: str) -> dict:
                 "start_hour": 8, "start_minute": 30,
                 "end_hour": 10, "end_minute": 30
             },  # 8:30-10:30 AM
-            # {
-            #     "start_hour": 15, "start_minute": 0,
-            #     "end_hour": 16, "end_minute": 30
-            # }   # 3:00-4:30 PM
+            {
+                "start_hour": 15, "start_minute": 0,
+                "end_hour": 16, "end_minute": 30
+            }   # 3:00-4:30 PM
         ],
         "Food & Beverage Director": [
             {
                 "start_hour": 9, "start_minute": 30,
                 "end_hour": 11, "end_minute": 30
             },  # 9:30-11:30 AM
-            # {
-            #     "start_hour": 15, "start_minute": 0,
-            #     "end_hour": 16, "end_minute": 30
-            # }   # 3:00-4:30 PM
-        ],
-        "Golf Professional": [
             {
-                "start_hour": 8, "start_minute": 0,
-                "end_hour": 10, "end_minute": 0
-            }   # 8:00-10:00 AM
+                "start_hour": 15, "start_minute": 0,
+                "end_hour": 16, "end_minute": 30
+            }   # 3:00-4:30 PM
         ]
+        # "Golf Professional": [
+        #     {
+        #         "start_hour": 8, "start_minute": 0,
+        #         "end_hour": 10, "end_minute": 0
+        #     }   # 8:00-10:00 AM
+        # ]
     }
     
     # Convert persona to title case to handle different formats
@@ -185,19 +189,22 @@ def calculate_send_date(geography: str, persona: str, state: str, season_data: d
     preferred_time = outreach_window["Best Time"]
     preferred_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
     
-    # Find the next preferred day of week
+    # Get current time and adjust it for target state's timezone first
     now = datetime.now()
-    today_weekday = now.weekday()
+    state_now = adjust_send_time(now, state)
+    today_weekday = state_now.weekday()
     
-    # Only use today if it's a preferred day
-    if today_weekday in preferred_days:
+    # Check if we can use today (must be preferred day AND before end time in STATE's timezone)
+    end_hour = int(preferred_time["end"])
+    if (today_weekday in preferred_days and 
+        state_now.hour < end_hour):  # Compare state's local time to end hour
         target_date = now
-        logger.debug(f"Using today ({target_date}) as it's a preferred day (weekday: {today_weekday})")
+        logger.debug(f"Using today ({target_date}) as it's a preferred day (weekday: {today_weekday}) and before end time ({end_hour})")
     else:
         days_ahead = [(day - today_weekday) % 7 for day in preferred_days]
         next_preferred_day = min(days_ahead)
         target_date = now + timedelta(days=next_preferred_day)
-        logger.debug(f"Using future date ({target_date}) as today isn't a preferred day (weekday: {today_weekday})")
+        logger.debug(f"Using future date ({target_date}) as today isn't valid (weekday: {today_weekday} or after {end_hour})")
     
     # Apply preferred time
     start_hour = int(preferred_time["start"])
@@ -205,7 +212,7 @@ def calculate_send_date(geography: str, persona: str, state: str, season_data: d
     target_date = target_date.replace(hour=start_hour, minute=start_minutes)
     logger.debug(f"Applied preferred time: {target_date}")
     
-    # Adjust for state timezone
+    # Final timezone adjustment
     final_date = adjust_send_time(target_date, state)
     logger.debug(f"Final scheduled date after timezone adjustment: {final_date}")
     

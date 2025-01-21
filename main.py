@@ -80,20 +80,19 @@ def get_company_filters_with_conditions(
     #     "operator": "LT",
     #     "value": "3"  # Only include companies contacted less than 3 times
     # })
+    # # Add minimum associated contacts filter
+    # base_filters.append({
+    #     "propertyName": "num_associated_contacts",
+    #     "operator": "GTE",
+    #     "value": "1"  # Only include companies with at least 1 contact
+    # })
 
-    # Add minimum associated contacts filter
-    base_filters.append({
-        "propertyName": "num_associated_contacts",
-        "operator": "GTE",
-        "value": "1"  # Only include companies with at least 1 contact
-    })
-
-    # Add minimum annual revenue filter
-    base_filters.append({
-        "propertyName": "annualrevenue",
-        "operator": "GTE",
-        "value": "10000000"  # 10 million minimum annual revenue
-    })
+    # # Add minimum annual revenue filter
+    # base_filters.append({
+    #     "propertyName": "annualrevenue",
+    #     "operator": "GTE",
+    #     "value": "10000000"  # 10 million minimum annual revenue
+    # })
 
     # Add company ID filter if specified
     if company_id:
@@ -141,10 +140,36 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],
-    has_pool=None,              # Must have a pool
-    company_id=None             # Example placeholder, or set a specific ID
+    states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", 
+           "PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", 
+           "IN", "IL", "IA", "WA", "OR"],
+    has_pool=None,
+    company_id=None
 )
+# -----------------------------------------------------------------------------
+# EXAMPLE STATE GROUPINGS BY SEASON TYPE
+# -----------------------------------------------------------------------------
+# Year-round golf states
+# states=["AZ", "FL", "HI", "CA", "TX", "GA", "NV", "AL", "MS", "LA"],
+
+# Standard season states (Mar-Nov)
+# states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM"],
+
+# Short summer season states (May-Oct)
+# states=["MI", "WI", "MN", "ND", "SD", "MT", "ID", "WY", "ME", "VT", "NH"],
+
+# Mid-Atlantic & Northeast states (Apr-Oct)
+# states=["PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", "IN", "IL", "IA"],
+
+# Pacific Northwest states (Apr-Oct)
+# states=["WA", "OR"]
+# COMPANY_FILTERS = get_company_filters_with_conditions(
+#     states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", 
+#            "PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", 
+#            "IN", "IL", "IA", "WA", "OR"],
+#     has_pool=None,
+#     company_id=None
+
 
 # -----------------------------------------------------------------------------
 # LEAD FILTERS
@@ -157,7 +182,7 @@ LEAD_FILTERS = [
     },
     {
         "propertyName": "lead_score",
-        "operator": "GT",
+        "operator": "GTE",
         "value": ""
     },
     {
@@ -177,7 +202,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 100
+LEADS_TO_PROCESS = 200  # Changed from 100 to 200
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -240,7 +265,9 @@ def get_country_club_companies(hubspot: HubspotService, states: List[str] = None
     try:
         url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
         
-        # Use the globally defined COMPANY_FILTERS created above
+        # Add debug logging for filter structure
+        logger.debug(f"State filter groups: {json.dumps(COMPANY_FILTERS, indent=2)}")
+        
         payload = {
             "filterGroups": COMPANY_FILTERS["filterGroups"],
             "properties": [
@@ -263,11 +290,16 @@ def get_country_club_companies(hubspot: HubspotService, states: List[str] = None
                 "domain",
                 "competitor"
             ],
-            "limit": 100
+            "limit": 200
         }
         
-        logger.debug(f"Searching companies with payload: {json.dumps(payload, indent=2)}")
+        logger.debug(f"Full HubSpot search payload: {json.dumps(payload, indent=2)}")
         response = hubspot._make_hubspot_post(url, payload)
+        
+        # Add debug logging for response
+        if response.get("results"):
+            states_found = set(r.get("properties", {}).get("state") for r in response.get("results", []))
+            logger.debug(f"States found in results: {states_found}")
         
         if not response.get("results"):
             logger.warning(f"No results found. Response: {json.dumps(response, indent=2)}")
@@ -675,7 +707,11 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         best_days = outreach_window.get("Best Day", [1,2,3])  # Mon-Fri default
         
         now = datetime.now()
-        target_date = now + timedelta(days=1)
+        target_date = now  # Start with today instead of tomorrow
+        
+        # If current time is past the best window end time, move to next day
+        if now.hour >= int(best_time["end"]):
+            target_date = now + timedelta(days=1)
         
         # Shift to a "best month"
         while target_date.month not in best_months:
@@ -689,13 +725,23 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
             target_date += timedelta(days=1)
         
         # Ensure we're using integers for hour and minute
-        send_hour = int(best_time["start"])  # Convert to int
+        send_hour = int(best_time["start"])
         send_minute = random.randint(0, 59)
         
-        # Randomly adjust hour within window
-        if random.random() < 0.5:
-            send_hour = min(send_hour + 1, int(best_time["end"]))  # Convert to int
-            
+        # If it's today and current time is before best window start, use best window start
+        if target_date.date() == now.date() and now.hour < send_hour:
+            send_hour = int(best_time["start"])
+        # If it's today and current time is within window, use current hour + small delay
+        elif target_date.date() == now.date() and now.hour >= send_hour and now.hour < int(best_time["end"]):
+            send_hour = now.hour
+            send_minute = now.minute + random.randint(2, 15)  # Add 2-15 minutes delay
+            if send_minute >= 60:
+                send_hour += 1
+                send_minute -= 60
+                if send_hour >= int(best_time["end"]):
+                    target_date += timedelta(days=1)
+                    send_hour = int(best_time["start"])
+        
         send_date = target_date.replace(
             hour=send_hour,
             minute=send_minute,
@@ -1255,23 +1301,43 @@ def main_companies_first():
 def main_leads_first():
     """
     1) Get leads first
-    2) Retrieve each lead's associated company
-    3) Check if that company passes the workflow filters
-    4) Build and store the outreach email
+    2) If USE_RANDOM_LEAD is True, randomly select one lead; otherwise process all leads
+    3) Retrieve associated company(ies)
+    4) Check if company(ies) pass the workflow filters
+    5) Build and store the outreach email(s)
     """
     try:
+        # Initialize counter at the start of the function
+        leads_processed = 0
+        
         workflow_context = {'correlation_id': str(uuid.uuid4())}
         hubspot = HubspotService(HUBSPOT_API_KEY)
         company_enricher = CompanyEnrichmentService()
         data_gatherer = DataGathererService()
         conversation_analyzer = ConversationAnalysisService()
-        leads_processed = 0
         
         with workflow_step("1", "Initialize and get leads", workflow_context):
             # Pull high-scoring leads first
             leads = get_leads(hubspot, min_score=0)
             logger.info(f"Found {len(leads)} total leads (score > 0)")
-        
+            
+            # Check if we should randomly select one lead
+            use_random = os.getenv('USE_RANDOM_LEAD', 'false').lower() == 'true'
+            logger.info(f"USE_RANDOM_LEAD setting: {use_random}")
+            
+            if not leads:
+                logger.warning("No leads found to process")
+                return
+                
+            if use_random:
+                selected_lead = random.choice(leads)
+                leads = [selected_lead]  # Replace leads list with just the selected lead
+                logger.info(f"Randomly selected lead: {selected_lead.get('properties', {}).get('email')} for processing")
+            else:
+                # Shuffle the leads list to randomize processing order
+                random.shuffle(leads)
+                logger.info(f"Processing all {len(leads)} leads in random order")
+
         with workflow_step("2", "Process each lead's associated company", workflow_context):
             for lead in leads:
                 lead_id = lead.get("id")
@@ -1293,6 +1359,11 @@ def main_leads_first():
                     logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
                     continue
                 
+                # Add state validation
+                if company_props.get("state") not in COMPANY_FILTERS["filterGroups"][0]["filters"][0]["values"]:
+                    logger.info(f"Skipping company {company_id} - State {company_props.get('state')} not in target states")
+                    continue
+                
                 # 2) Enrich the company data
                 enrichment_result = company_enricher.enrich_company(company_id)
                 if not enrichment_result.get("success", False):
@@ -1304,20 +1375,20 @@ def main_leads_first():
                 club_type = company_props.get("club_type", "")
                 last_contacted = company_props.get("notes_last_contacted")
                 
-                # Check if club type is valid (must be Country Club or not specified)
-                if club_type and club_type != "Country Club":
-                    logger.info(f"Skipping company {company_id} - Club type is {club_type}")
-                    continue
+                # # Check if club type is valid (must be Country Club or not specified)
+                # if club_type and club_type != "Country Club":
+                #     logger.info(f"Skipping company {company_id} - Club type is {club_type}")
+                #     continue
                     
                 # Check if we've contacted them recently
                 if last_contacted and last_contacted > "2025-01-01T00:00:00Z":
                     logger.info(f"Skipping company {company_id} - Last contacted on {last_contacted}")
                     continue
                 
-                # 4) Check if the current month is in the "best" time for outreach
-                if not is_company_in_best_state(company_props):
-                    logger.info(f"Company {company_id} not in best outreach window, skipping lead {lead_id}.")
-                    continue
+                # # 4) Check if the current month is in the "best" time for outreach
+                # if not is_company_in_best_state(company_props):
+                #     logger.info(f"Company {company_id} not in best outreach window, skipping lead {lead_id}.")
+                #     continue
                 
                 # 5) Now process the lead
                 with workflow_step("3", f"Processing lead {lead_id}", workflow_context):
