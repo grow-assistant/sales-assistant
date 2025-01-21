@@ -474,9 +474,9 @@ def main():
             season_text = pick_season_snippet(season_key)
 
             placeholders = {
-                "FirstName": first_name,
+                "firstname": first_name,
                 "LastName": last_name,
-                "ClubName": club_name or "Your Club",
+                "clubname": club_name or "Your Club",
                 "DeadlineDate": "Oct 15th",
                 "Role": lead_data.get("jobtitle", "General Manager"),
                 "Task": "Staff Onboarding",

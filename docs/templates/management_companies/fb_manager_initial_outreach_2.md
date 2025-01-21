@@ -1,4 +1,4 @@
-Hey [FirstName],
+Hey [firstname],
 
 [ICEBREAKER]
 
@@ -6,4 +6,4 @@ Hey [FirstName],
 
 We’re looking for a management group to join us at no cost for 2025, to ensure we perfectly address the needs of top-tier properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-Let's discuss how Swoop could enhance operations and revenue potential across your properties. Would you have time to explore this opportunity for [ClubName]?
+Let's discuss how Swoop could enhance operations and revenue potential across your properties. Would you have time to explore this opportunity for [company_short_name]?

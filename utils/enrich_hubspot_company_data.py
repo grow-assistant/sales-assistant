@@ -30,17 +30,18 @@ TEST_COMPANY_ID = "15537469970"  # Set this to a specific company ID to test jus
 
 
 def get_facility_info(company_id: str) -> tuple[
-    str, str, str, str, str, str, str, str, str, str, str, int, str, str, str
+    str, str, str, str, str, str, str, str, str, str, str, int, str, str, str, str
 ]:
     """
     Fetches the company's properties from HubSpot.
-    Returns a tuple of company properties including club_info.
+    Returns a tuple of company properties including club_info and company_short_name.
     """
     try:
         hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         company_data = hubspot.get_company_data(company_id)
 
         name = company_data.get("name", "")
+        company_short_name = company_data.get("company_short_name", "")
         city = company_data.get("city", "")
         state = company_data.get("state", "")
         annual_revenue = company_data.get("annualrevenue", "")
@@ -58,6 +59,7 @@ def get_facility_info(company_id: str) -> tuple[
 
         return (
             name,
+            company_short_name,
             city,
             state,
             annual_revenue,
@@ -76,7 +78,7 @@ def get_facility_info(company_id: str) -> tuple[
 
     except HubSpotError as e:
         print(f"Error fetching company data: {e}")
-        return ("", "", "", "", "", "", "", "", "", "No", "No", 0, "", "", "")
+        return ("", "", "", "", "", "", "", "", "", "No", "No", 0, "", "", "", "")
 
 
 def determine_facility_type(company_name: str, location: str) -> dict:
@@ -92,11 +94,15 @@ def determine_facility_type(company_name: str, location: str) -> dict:
     # Get summary for additional context
     club_summary = get_club_summary(company_name, location)
 
-    # Extract name from segmentation info
+    # Extract name and generate short name from segmentation info
     official_name = segmentation_info.get("name") or company_name
+    # Generate short name by removing common words and limiting length
+    short_name = official_name.replace("Country Club", "").replace("Golf Club", "").strip()
+    short_name = short_name[:100]  # Ensure it fits HubSpot field limit
 
     full_info = {
         "name": official_name,
+        "company_short_name": short_name,
         "club_type": segmentation_info.get("club_type", "Unknown"),
         "facility_complexity": segmentation_info.get("facility_complexity", "Unknown"),
         "geographic_seasonality": segmentation_info.get("geographic_seasonality", "Unknown"),
@@ -301,6 +307,7 @@ def process_company(company_id: str):
 
     (
         name,
+        company_short_name,
         city,
         state,
         annual_revenue,
@@ -331,7 +338,8 @@ def process_company(company_id: str):
 
         # Update with explicit string comparisons for boolean fields
         confirmed_updates.update({
-            "name": club_info.get("name", name),  # Always include name in updates
+            "name": club_info.get("name", name),
+            "company_short_name": club_info.get("company_short_name", company_short_name),
             "club_type": club_info.get("club_type", "Unknown"),
             "facility_complexity": club_info.get("facility_complexity", "Unknown"),
             "geographic_seasonality": club_info.get("geographic_seasonality", "Unknown"),
@@ -397,9 +405,10 @@ def _search_companies_with_filters(hubspot: HubspotService, batch_size=25) -> Li
             payload = {
                 "limit": min(batch_size, TEST_LIMIT) if TEST_MODE else batch_size,
                 "properties": [
-                    "name", 
-                    "city", 
-                    "state", 
+                    "name",
+                    "company_short_name",
+                    "city",
+                    "state",
                     "club_type",
                     "annualrevenue",
                     "facility_complexity",

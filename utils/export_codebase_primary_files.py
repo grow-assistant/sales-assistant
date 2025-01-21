@@ -4,20 +4,19 @@ from pathlib import Path
 
 def should_include_file(filepath):
     """Determine if a file should be included in the export."""
-    # Normalize path separators
+    # Normalize path separators 
     filepath = filepath.replace('\\', '/')
-    # List of primary files to include based on most frequently referenced
+    
+    # List of primary files focused on email template building and placeholder replacement
     primary_files = [
-        'main.py',
-        'scripts/golf_outreach_strategy.py',
-        'scheduling/database.py',
-        'scheduling/extended_lead_storage.py', 
-        'scheduling/followup_scheduler.py',
-        'scheduling/followup_generation.py',
-        'utils/gmail_integration.py',
-        'utils/xai_integration.py',
-        'scripts/build_template.py'
+        'scripts/build_template.py',  # Core template building and placeholder logic
+        'main.py',                    # Shows where placeholder replacement is invoked
+        'utils/xai_integration.py',   # Helper functions for placeholder validation
+        'services/hubspot_service.py', # HubSpot API integration
+        'scheduling/extended_lead_storage.py', # Lead storage and scheduling
+        'docs/templates/country_club/general_manager_initial_outreach_1.md' # Email template
     ]
+    
     # Check if file is in primary files list
     for primary_file in primary_files:
         if filepath.endswith(primary_file):
@@ -32,11 +31,6 @@ def get_file_content(filepath):
         with open(filepath, 'r', encoding='utf-8') as f:
             content = f.read()
             
-            # For leads_list.csv, only include top 10 records
-            if filepath.endswith('leads_list.csv'):
-                lines = content.splitlines()
-                content = '\n'.join(lines[:11]) # Header + 10 records
-                
     except UnicodeDecodeError:
         try:
             # Fallback to cp1252 if UTF-8 fails

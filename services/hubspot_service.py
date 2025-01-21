@@ -37,6 +37,7 @@ class HubspotService:
         # Property mappings
         self.hubspot_property_mapping = {
             "name": "name",
+            "company_short_name": "company_short_name",
             "club_type": "club_type",
             "facility_complexity": "facility_complexity",
             "geographic_seasonality": "geographic_seasonality",
@@ -99,8 +100,8 @@ class HubspotService:
             payload = {
                 "limit": batch_size,
                 "properties": [
-                    "name", "city", "state", "club_type",
-                    "facility_complexity", "geographic_seasonality",
+                    "name", "company_short_name", "city", "state",
+                    "club_type", "facility_complexity", "geographic_seasonality",
                     "has_pool", "has_tennis_courts", "number_of_holes",
                     "public_private_flag", "club_info",
                     "peak_season_start_month", "peak_season_end_month",
@@ -180,6 +181,9 @@ class HubspotService:
                     elif internal_key == "club_info":
                         logger.debug(f"Truncating club_info from length {len(str(value))}")
                         value = str(value)[:5000]
+                    elif internal_key == "company_short_name":
+                        logger.debug(f"Processing company_short_name: {value}")
+                        value = str(value)[:100]
 
                 except Exception as e:
                     logger.error(f"Error transforming {internal_key}: {str(e)}", exc_info=True)
@@ -365,6 +369,7 @@ class HubspotService:
         url = (
             f"{self.companies_endpoint}/{company_id}?"
             "properties=name"
+            "&properties=company_short_name"
             "&properties=city"
             "&properties=state"
             "&properties=annualrevenue"
@@ -378,13 +383,13 @@ class HubspotService:
             "&properties=number_of_holes"
             "&properties=geographic_seasonality"
             "&properties=public_private_flag"
-            "&properties=club_info",
-            "&properties=peak_season_start_month",
-            "&properties=peak_season_end_month",
-            "&properties=start_month",
-            "&properties=end_month",
-            "&properties=notes_last_contacted",
-            "&properties=num_contacted_notes",
+            "&properties=club_info"
+            "&properties=peak_season_start_month"
+            "&properties=peak_season_end_month"
+            "&properties=start_month"
+            "&properties=end_month"
+            "&properties=notes_last_contacted"
+            "&properties=num_contacted_notes"
             "&properties=num_associated_contacts"
         )
         try:

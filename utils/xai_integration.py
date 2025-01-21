@@ -500,6 +500,7 @@ def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any
       - has_tennis_courts
       - number_of_holes
       - analysis_text
+      - company_short_name
     """
     if "club_segmentation" not in _cache:
         _cache["club_segmentation"] = {}
@@ -515,20 +516,25 @@ def xai_club_segmentation_search(club_name: str, location: str) -> Dict[str, Any
 Classify {club_name} in {location} with precision:
 
 0. **OFFICIAL NAME**: What is the correct, official name of this facility?
-1. **CLUB TYPE**: Is it Private, Public - High Daily Fee, Public - Low Daily Fee, Municipal, Resort, Country Club, or Unknown?
-2. **FACILITY COMPLEXITY**: Single-Course, Multi-Course, or Unknown?
-3. **GEOGRAPHIC SEASONALITY**: Year-Round or Seasonal?
-4. **POOL**: ONLY answer 'Yes' if you find clear, direct evidence of a pool.
-5. **TENNIS COURTS**: ONLY answer 'Yes' if there's explicit evidence.
-6. **GOLF HOLES**: Verify from official sources or consistent user mentions.
+1. **SHORT NAME**: Create a brief, memorable name by removing common terms like "Country Club", "Golf Club", "Golf Course", etc. Keep it under 100 characters.
+2. **CLUB TYPE**: Is it Private, Public - High Daily Fee, Public - Low Daily Fee, Municipal, Resort, Country Club, or Unknown?
+3. **FACILITY COMPLEXITY**: Single-Course, Multi-Course, or Unknown?
+4. **GEOGRAPHIC SEASONALITY**: Year-Round or Seasonal?
+5. **POOL**: ONLY answer 'Yes' if you find clear, direct evidence of a pool.
+6. **TENNIS COURTS**: ONLY answer 'Yes' if there's explicit evidence.
+7. **GOLF HOLES**: Verify from official sources or consistent user mentions.
 
 CRITICAL RULES:
 - **Do not assume amenities based on the type or perceived status of the club.**
 - **Confirm amenities only with solid evidence; otherwise, use 'Unknown'.**
 - **Use specific references for each answer where possible.**
+- **For SHORT NAME: Keep it professional and recognizable while being concise.**
 
 Format your response with these exact headings:
 OFFICIAL NAME:
+[Answer]
+
+SHORT NAME:
 [Answer]
 
 CLUB TYPE:
@@ -585,6 +591,7 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
 
     result = {
         'name': '',
+        'company_short_name': '',
         'club_type': 'Unknown',
         'facility_complexity': 'Unknown',
         'geographic_seasonality': 'Unknown',
@@ -594,10 +601,14 @@ def _parse_segmentation_response(response: str) -> Dict[str, Any]:
         'analysis_text': ''
     }
     
-    # Add name detection pattern
+    # Add name and short name detection patterns
     name_match = re.search(r'(?:OFFICIAL NAME|NAME):\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    short_name_match = re.search(r'SHORT NAME:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+    
     if name_match:
         result['name'] = clean_value(name_match.group(1))
+    if short_name_match:
+        result['company_short_name'] = clean_value(short_name_match.group(1))
     
     logger.debug(f"Raw segmentation response:\n{response}")
     
@@ -798,18 +809,30 @@ def build_context_block(interaction_history=None, objection_handling=None, origi
         context["objection_handling"] = objection_handling
         
     if original_email:
-        # Handle both tuple and dict inputs
-        if isinstance(original_email, tuple):
-            subject, body = original_email
-            context["original_email"] = {
-                "subject": subject,
-                "body": body
-            }
-        else:
-            context["original_email"] = original_email
+        context["original_email"] = original_email if isinstance(original_email, dict) else {
+            "subject": original_email[0],
+            "body": original_email[1]
+        }
     
     if company_data:
-        context["company_data"] = company_data
+        # Use short name from segmentation if it exists, otherwise use full name
+        short_name = company_data.get("company_short_name") or company_data.get("name", "")
+        logger.debug(f"Using company_short_name: {short_name}")
+        
+        context["company_data"] = {
+            "name": company_data.get("name", ""),
+            "company_short_name": short_name,
+            "city": company_data.get("city", ""),
+            "state": company_data.get("state", ""),
+            "has_pool": company_data.get("has_pool", "No"),
+            "club_type": company_data.get("club_type", ""),
+            "club_info": company_data.get("club_info", "")
+        }
+        
+        # Debug logging for company data
+        logger.debug(f"Building context block with company data:")
+        logger.debug(f"Input company_data: {json.dumps(company_data, indent=2)}")
+        logger.debug(f"Processed context: {json.dumps(context['company_data'], indent=2)}")
     
     return context
 

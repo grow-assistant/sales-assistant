@@ -1,4 +1,4 @@
-Hey [FirstName],
+Hey [firstname],
 
 [ICEBREAKER]
 
@@ -6,4 +6,4 @@ Hey [FirstName],
 
 We're inviting 2-3 courses to join us at no cost for 2025, to help us perfect our offering for busy public courses. At similar courses, this model has reduced average order times by 40%, improving player satisfaction and keeping pace of play moving.
 
-Swoop will help increase F&B revenue while making it easier for your players to get what they need. Let's chat about how this might work for [ClubName]?
+Swoop will help increase F&B revenue while making it easier for your players to get what they need. Let's chat about how this might work for [company_short_name]?

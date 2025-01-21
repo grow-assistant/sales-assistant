@@ -81,7 +81,7 @@ class CompanyEnrichmentService:
                 "geographic_seasonality", "public_private_flag",
                 "club_info", "peak_season_start_month",
                 "peak_season_end_month", "start_month", "end_month",
-                "competitor", "domain"
+                "competitor", "domain", "company_short_name"
             ]
             
             company_data = self.hubspot.get_company_by_id(company_id, properties)
@@ -155,6 +155,7 @@ class CompanyEnrichmentService:
             
             return {
                 'name': company_data.get('properties', {}).get('name', ''),
+                'company_short_name': company_data.get('properties', {}).get('company_short_name', ''),
                 'city': company_data.get('properties', {}).get('city', ''),
                 'state': company_data.get('properties', {}).get('state', ''),
                 'annual_revenue': company_data.get('properties', {}).get('annualrevenue', ''),
@@ -192,6 +193,7 @@ class CompanyEnrichmentService:
 
         return {
             "name": official_name,
+            "company_short_name": segmentation_info.get("company_short_name", ""),
             "club_type": club_type,
             "facility_complexity": segmentation_info.get("facility_complexity", "Unknown"),
             "geographic_seasonality": segmentation_info.get("geographic_seasonality", "Unknown"),
@@ -266,6 +268,7 @@ class CompanyEnrichmentService:
             # Initialize updates with default values for required fields
             updates = {
                 "name": new_info.get("name", current_info.get("name", "")),
+                "company_short_name": new_info.get("company_short_name", ""),  # Don't fall back to current_info yet
                 "club_type": new_info.get("club_type", current_info.get("club_type", "Unknown")),
                 "facility_complexity": new_info.get("facility_complexity", current_info.get("facility_complexity", "Unknown")),
                 "geographic_seasonality": new_info.get("geographic_seasonality", current_info.get("geographic_seasonality", "Unknown")),
@@ -280,6 +283,21 @@ class CompanyEnrichmentService:
                 "competitor": competitor,
                 "club_info": new_info.get("club_info", current_info.get("club_info", ""))
             }
+
+            # Handle company_short_name with proper fallback logic
+            if not updates["company_short_name"]:
+                # Try current_info short name first
+                updates["company_short_name"] = current_info.get("company_short_name", "")
+                
+                # If still empty, use full name
+                if not updates["company_short_name"]:
+                    updates["company_short_name"] = updates["name"]
+                    logger.debug(f"Using full name as company_short_name: {updates['company_short_name']}")
+
+            # Ensure company_short_name is not truncated inappropriately
+            if updates["company_short_name"]:
+                updates["company_short_name"] = str(updates["company_short_name"])[:100]
+                logger.debug(f"Final company_short_name: {updates['company_short_name']}")
 
             # Handle pool information
             club_info = new_info.get("club_info", "").lower()
@@ -400,6 +418,8 @@ class CompanyEnrichmentService:
                     value = "Yes" if str(value).lower() in ["yes", "true"] else "No"
                 elif key == "club_info":
                     value = str(value)[:5000]
+                elif key == "company_short_name":
+                    value = str(value)[:100]
 
                 mapped_updates[key] = value
 

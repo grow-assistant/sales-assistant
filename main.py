@@ -134,7 +134,7 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["SC"],  # Must be in these states
+    states=["KS"],  # Must be in these states
     #states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],  Early Season States
     has_pool=None,              # Must have a pool
     company_id=None             # Example placeholder, or set a specific ID
@@ -682,10 +682,13 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         while target_date.weekday() not in best_days:
             target_date += timedelta(days=1)
         
-        send_hour = best_time["start"]
+        # Ensure we're using integers for hour and minute
+        send_hour = int(best_time["start"])  # Convert to int
         send_minute = random.randint(0, 59)
+        
+        # Randomly adjust hour within window
         if random.random() < 0.5:
-            send_hour = min(send_hour + 1, best_time["end"])
+            send_hour = min(send_hour + 1, int(best_time["end"]))  # Convert to int
             
         send_date = target_date.replace(
             hour=send_hour,
@@ -699,6 +702,7 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         
     except Exception as e:
         logger.error(f"Error calculating send date: {str(e)}", exc_info=True)
+        # Fallback to next business day at 10am
         return datetime.now() + timedelta(days=1, hours=10)
 
 def get_next_month_first_day(current_date):
@@ -895,11 +899,11 @@ def replace_placeholders(text: str, lead_data: dict) -> str:
     """Replace placeholders in text with actual values."""
     text = clean_company_name(text)  # Clean any old references
     replacements = {
-        "[FirstName]": lead_data["lead_data"].get("firstname", ""),
+        "[firstname]": lead_data["lead_data"].get("firstname", ""),
         "[LastName]": lead_data["lead_data"].get("lastname", ""),
-        "[ClubName]": lead_data["company_data"].get("name", ""),
+        "[clubname]": lead_data["company_data"].get("name", ""),
         "[JobTitle]": lead_data["lead_data"].get("jobtitle", ""),
-        "[CompanyName]": lead_data["company_data"].get("name", ""),
+        "[companyname]": lead_data["company_data"].get("name", ""),
         "[City]": lead_data["company_data"].get("city", ""),
         "[State]": lead_data["company_data"].get("state", "")
     }
@@ -1134,14 +1138,15 @@ def main_companies_first():
                             template_path=template_path,
                             profile_type=lead_data_full["lead_data"]["jobtitle"],
                             placeholders={
-                                "company_name": lead_data_full["company_data"]["name"],
-                                "first_name": lead_data_full["lead_data"]["firstname"],
-                                "last_name": lead_data_full["lead_data"]["lastname"],
-                                "job_title": lead_data_full["lead_data"]["jobtitle"],
+                                "firstname": lead_data_full["lead_data"]["firstname"],
+                                "LastName": lead_data_full["lead_data"]["lastname"],
+                                "companyname": lead_data_full["company_data"]["name"],
+                                "company_short_name": lead_data_full["company_data"].get("company_short_name", ""),
+                                "JobTitle": lead_data_full["lead_data"]["jobtitle"],
                                 "company_info": lead_data_full["company_data"].get("club_info", ""),
                                 "has_news": personalization.get("has_news", False),
                                 "news_text": personalization.get("news_text", ""),
-                                "ClubName": lead_data_full["company_data"]["name"]
+                                "clubname": lead_data_full["company_data"]["name"]
                             },
                             current_month=datetime.now().month,
                             start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
@@ -1160,8 +1165,23 @@ def main_companies_first():
                             # Create context block with placeholder-replaced content
                             context = build_context_block(
                                 interaction_history=conversation_summary,
-                                original_email={"subject": subject, "body": body}
+                                original_email={"subject": subject, "body": body},
+                                company_data={
+                                    "name": lead_data_full["company_data"]["name"],
+                                    "company_short_name": (
+                                        lead_data_full["company_data"].get("company_short_name") or
+                                        lead_data_full.get("company_short_name") or  # Try alternate location
+                                        lead_data_full["company_data"]["name"].split(" ")[0]  # Fallback
+                                    ),
+                                    "city": lead_data_full["company_data"].get("city", ""),
+                                    "state": lead_data_full["company_data"].get("state", ""),
+                                    "club_type": lead_data_full["company_data"]["club_type"],
+                                    "club_info": lead_data_full["company_data"].get("club_info", "")
+                                }
                             )
+                            
+                            # Add debug logging
+                            logger.debug(f"Building context with company_short_name: {lead_data_full['company_data'].get('company_short_name', '')}")
                             
                             # Finally, personalize with xAI using the placeholder-replaced content
                             personalized_content = personalize_email_with_xai(
@@ -1341,14 +1361,15 @@ def main_leads_first():
                             template_path=template_path,
                             profile_type=lead_data_full["lead_data"]["jobtitle"],
                             placeholders={
-                                "company_name": lead_data_full["company_data"]["name"],
-                                "first_name": lead_data_full["lead_data"]["firstname"],
-                                "last_name": lead_data_full["lead_data"]["lastname"],
-                                "job_title": lead_data_full["lead_data"]["jobtitle"],
+                                "firstname": lead_data_full["lead_data"]["firstname"],
+                                "LastName": lead_data_full["lead_data"]["lastname"],
+                                "companyname": lead_data_full["company_data"]["name"],
+                                "company_short_name": lead_data_full["company_data"].get("company_short_name", ""),
+                                "JobTitle": lead_data_full["lead_data"]["jobtitle"],
                                 "company_info": lead_data_full["company_data"].get("club_info", ""),
                                 "has_news": personalization.get("has_news", False),
                                 "news_text": personalization.get("news_text", ""),
-                                "ClubName": lead_data_full["company_data"]["name"]
+                                "clubname": lead_data_full["company_data"]["name"]
                             },
                             current_month=datetime.now().month,
                             start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
@@ -1363,8 +1384,23 @@ def main_leads_first():
                             
                             context = build_context_block(
                                 interaction_history=conversation_summary,
-                                original_email={"subject": subject, "body": body}
+                                original_email={"subject": subject, "body": body},
+                                company_data={
+                                    "name": lead_data_full["company_data"]["name"],
+                                    "company_short_name": (
+                                        lead_data_full["company_data"].get("company_short_name") or
+                                        lead_data_full.get("company_short_name") or  # Try alternate location
+                                        lead_data_full["company_data"]["name"].split(" ")[0]  # Fallback
+                                    ),
+                                    "city": lead_data_full["company_data"].get("city", ""),
+                                    "state": lead_data_full["company_data"].get("state", ""),
+                                    "club_type": lead_data_full["company_data"]["club_type"],
+                                    "club_info": lead_data_full["company_data"].get("club_info", "")
+                                }
                             )
+                            
+                            # Add debug logging
+                            logger.debug(f"Building context with company_short_name: {lead_data_full['company_data'].get('company_short_name', '')}")
                             
                             personalized_content = personalize_email_with_xai(
                                 lead_sheet=lead_data_full,

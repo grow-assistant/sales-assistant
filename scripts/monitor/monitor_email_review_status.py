@@ -99,7 +99,7 @@ def get_draft_body(message: dict) -> str:
         logger.debug(f"Retrieved draft body preview: {preview}")
         
         # Check for template placeholders
-        if "[FirstName]" in body or "{{" in body or "}}" in body:
+        if "[firstname]" in body or "{{" in body or "}}" in body:
             logger.warning("Found template placeholders in draft body - draft may not be properly personalized")
             
         return body

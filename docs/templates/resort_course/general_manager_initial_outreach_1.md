@@ -1,4 +1,4 @@
-Hey [FirstName],
+Hey [firstname],
 
 [ICEBREAKER]
 
@@ -6,4 +6,4 @@ Hey [FirstName],
 
 We're inviting 2-3 premier resorts to join us at no cost for 2025, to ensure we perfectly address the needs of luxury hospitality properties. At Pinetree Country Club, this model reduced average order times by 40%, keeping members impressed and pace of play consistent.
 
-Swoop will help streamline your guest services while maintaining the premium experience they expect. Let's chat about how this might work for [ClubName]?
+Swoop will help streamline your guest services while maintaining the premium experience they expect. Let's chat about how this might work for [company_short_name]?

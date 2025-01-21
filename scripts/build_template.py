@@ -14,6 +14,8 @@ from utils.xai_integration import (
 from scripts.job_title_categories import categorize_job_title
 from datetime import datetime
 import re
+from typing import Dict, Any
+import json
 
 ###############################################################################
 # 1) ROLE-BASED SUBJECT-LINE DICTIONARY
@@ -35,9 +37,10 @@ def pick_subject_line_based_on_lead(profile_type: str, placeholders: dict) -> st
 
         # Normalize placeholder keys to match template format exactly
         normalized_placeholders = {
-            "FirstName": placeholders.get("firstname", ""),  # Match exact case
+            "firstname": placeholders.get("firstname", ""),  # Match exact case
             "LastName": placeholders.get("lastname", ""),
-            "CompanyName": placeholders.get("company_name", ""),
+            "companyname": placeholders.get("company_name", ""),
+            "company_short_name": placeholders.get("company_short_name", ""),
             # Add other placeholders as needed
         }
         
@@ -141,7 +144,6 @@ def generate_icebreaker(has_news: bool, club_name: str, news_text: str = None) -
 def build_outreach_email(
     template_path: str = None,
     profile_type: str = None,
-    last_interaction_days: int = None,
     placeholders: dict = None,
     current_month: int = 9,
     start_peak_month: int = 5,
@@ -158,6 +160,20 @@ def build_outreach_email(
             with open(template_path, 'r', encoding='utf-8') as f:
                 body = f.read().strip()
             
+            # 1. Replace standard placeholders first
+            standard_replacements = {
+                "[firstname]": placeholders.get("firstname", ""),
+                "[LastName]": placeholders.get("LastName", ""),
+                "[companyname]": placeholders.get("companyname", ""),
+                "[company_short_name]": placeholders.get("company_short_name", ""),
+                "[JobTitle]": placeholders.get("JobTitle", ""),
+                "[clubname]": placeholders.get("companyname", "")
+            }
+            
+            for key, value in standard_replacements.items():
+                if value:
+                    body = body.replace(key, str(value))
+
             # 1. Handle season variation first
             if "[SEASON_VARIATION]" in body:
                 season_key = get_season_variation_key(
@@ -172,7 +188,7 @@ def build_outreach_email(
             try:
                 has_news = placeholders.get('has_news', False)
                 news_result = placeholders.get('news_text', '')
-                club_name = placeholders.get('ClubName', '')
+                club_name = placeholders.get('clubname', '')
                 
                 if has_news and news_result and "has not been in the news" not in news_result.lower():
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
@@ -230,9 +246,9 @@ def get_fallback_template() -> str:
     """Returns a basic fallback template if all other templates fail."""
     return """Connecting About Club Services
 ---
-Hi [FirstName],
+Hi [firstname],
 
-I wanted to reach out about how we're helping clubs like [ClubName] enhance their member experience through our comprehensive platform.
+I wanted to reach out about how we're helping clubs like [clubname] enhance their member experience through our comprehensive platform.
 
 Would you be open to a brief conversation to explore if our solution might be a good fit for your needs?
 
@@ -349,19 +365,15 @@ def build_email(template_path, parameters):
         # Get the body text
         body = template_data['body']
         
-        # Replace parameters in body
-        for key, value in parameters.items():
-            if value:  # Only replace if value is not None/empty
-                body = body.replace(f'[{key}]', str(value))
-                # Handle season variation differently since it uses curly braces
-                if key == 'SEASON_VARIATION':
-                    body = body.replace('{SEASON_VARIATION}', str(value))
+        # Add this line to call replace_placeholders
+        body = replace_placeholders(body, parameters)
+        logger.debug(f"After placeholder replacement - Preview: {body[:200]}")
         
-        return body  # Return just the body text, not a dictionary
+        return body
         
     except Exception as e:
         logger.error(f"Error building email: {str(e)}")
-        return ""  # Return empty string on error
+        return ""
 
 def extract_template_body(template_content: str) -> str:
     """Extract body from template content."""
@@ -444,3 +456,64 @@ def get_template_path(club_type: str, role: str) -> str:
             "country_club",
             f"general_manager_initial_outreach_{sequence_num}.md"
         )
+
+def replace_placeholders(text: str, data: Dict[str, Any]) -> str:
+    """Replace placeholders in template with actual values."""
+    try:
+        # Log incoming data structure
+        logger.debug(f"replace_placeholders received data structure: {json.dumps(data, indent=2)}")
+        
+        # Normalize data structure to handle both nested and flat dictionaries
+        lead_data = data.get("lead_data", {}) if isinstance(data.get("lead_data"), dict) else data
+        company_data = data.get("company_data", {}) if isinstance(data.get("company_data"), dict) else data
+        
+        # Get company short name with explicit logging
+        company_short_name = company_data.get("company_short_name", "")
+        company_full_name = company_data.get("name", "")
+        logger.debug(f"Found company_short_name: '{company_short_name}'")
+        logger.debug(f"Found company_full_name: '{company_full_name}'")
+        
+        # Build replacements dict with flexible data structure handling
+        replacements = {
+            "[firstname]": (lead_data.get("firstname", "") or 
+                          lead_data.get("first_name", "") or 
+                          data.get("firstname", "")),
+            
+            "[LastName]": (lead_data.get("lastname", "") or 
+                          lead_data.get("last_name", "") or 
+                          data.get("lastname", "")),
+            
+            "[companyname]": (company_data.get("name", "") or 
+                             data.get("company_name", "") or 
+                             company_full_name),
+            
+            "[company_short_name]": (company_short_name or 
+                                  data.get("company_short_name", "") or 
+                                  company_full_name),
+            
+            "[City]": company_data.get("city", ""),
+            "[State]": company_data.get("state", "")
+        }
+        
+        logger.debug(f"Built replacements dictionary: {json.dumps(replacements, indent=2)}")
+        
+        # Do the replacements with logging
+        result = text
+        for placeholder, value in replacements.items():
+            if placeholder in result:
+                logger.debug(f"Replacing '{placeholder}' with '{value}'")
+                result = result.replace(placeholder, value)
+            else:
+                logger.debug(f"Placeholder '{placeholder}' not found in text")
+        
+        # Check for any remaining placeholders
+        remaining = re.findall(r'\[([^\]]+)\]', result)
+        if remaining:
+            logger.warning(f"Unreplaced placeholders found: {remaining}")
+        
+        logger.debug(f"Final text preview: {result[:200]}...")
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error in replace_placeholders: {str(e)}")
+        return text
