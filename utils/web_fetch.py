@@ -4,6 +4,9 @@ from utils.logging_setup import logger
 import urllib3
 import random
 from urllib.parse import urlparse, urlunparse
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+import logging
 
 # Disable SSL verification warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -24,76 +27,69 @@ def sanitize_url(url: str) -> str:
         parsed = parsed._replace(netloc=f"www.{parsed.netloc}")
     return urlunparse(parsed)
 
-def fetch_website_html(url: str) -> Optional[str]:
-    """Fetch HTML content from a website with proper headers and error handling."""
-    if not url:
-        logger.error("No URL provided")
-        return None
-        
-    # Clean up the URL
-    url = url.strip().lower()
-    logger.debug(f"Original URL: {url}")
+def fetch_website_html(url: str, timeout: int = 10, retries: int = 3) -> str:
+    """
+    Fetch HTML content from a website with retries and better error handling.
     
-    # Generate URL variations
-    parsed_url = urlparse(url)
-    base_domain = parsed_url.netloc.replace('www.', '')
+    Args:
+        url: The URL to fetch
+        timeout: Timeout in seconds for each attempt
+        retries: Number of retry attempts
+    """
+    logger = logging.getLogger(__name__)
     
-    urls_to_try = [
-        f"https://www.{base_domain}{parsed_url.path}",
-        f"https://{base_domain}{parsed_url.path}",
-        f"http://www.{base_domain}{parsed_url.path}",
-        f"http://{base_domain}{parsed_url.path}"
-    ]
-    
-    logger.debug(f"Will try URLs: {urls_to_try}")
-    
-    # Setup headers with additional browser-like headers
-    headers = {
-        'User-Agent': random.choice(USER_AGENTS),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.5',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Sec-Fetch-User': '?1',
-        'Cache-Control': 'max-age=0',
-        'DNT': '1',  # Do Not Track
-        'Pragma': 'no-cache'
-    }
+    # Add scheme if missing
+    if not url.startswith(('http://', 'https://')):
+        url = f'https://{url}'
     
     session = requests.Session()
+    session.headers.update({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+    })
+
+    # Configure retry strategy
+    retry_strategy = Retry(
+        total=retries,
+        backoff_factor=1,
+        status_forcelist=[429, 500, 502, 503, 504],
+    )
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+
+    try:
+        response = session.get(
+            url,
+            timeout=timeout,
+            verify=False,  # Skip SSL verification
+            allow_redirects=True
+        )
+        response.raise_for_status()
+        return response.text
     
-    for attempt_url in urls_to_try:
+    except requests.exceptions.ConnectTimeout:
+        logger.warning(f"Connection timed out for {url} - skipping website fetch")
+        return ""
+    except requests.exceptions.ReadTimeout:
+        logger.warning(f"Read timed out for {url} - skipping website fetch")
+        return ""
+    except requests.exceptions.SSLError:
+        # Try again without SSL
+        logger.warning(f"SSL error for {url} - attempting without SSL verification")
         try:
-            logger.debug(f"Trying to fetch: {attempt_url}")
-            
             response = session.get(
-                attempt_url,
-                headers=headers,
-                timeout=10,
-                verify=False,  # Still keeping verify=False for testing
+                url.replace('https://', 'http://'),
+                timeout=timeout,
+                verify=False,
                 allow_redirects=True
             )
-            
-            logger.debug(f"Response code: {response.status_code} for URL: {attempt_url}")
-            logger.debug(f"Response headers: {dict(response.headers)}")
-            
-            # Check if we got a successful response
-            if response.status_code == 200:
-                content = response.text
-                logger.debug(f"Content preview: {content[:200]}")
-                return content
-            else:
-                logger.debug(f"Failed with status code {response.status_code}")
-                if response.text:
-                    logger.debug(f"Error response preview: {response.text[:200]}")
-                
-        except requests.RequestException as e:
-            logger.error(f"Error fetching {attempt_url}: {str(e)}", exc_info=True)
-            continue
-            
-    logger.error(f"Failed to fetch website content after trying multiple URLs for {url}")
-    return None
+            response.raise_for_status()
+            return response.text
+        except Exception as e:
+            logger.error(f"Error fetching {url} without SSL: {str(e)}")
+            return ""
+    except Exception as e:
+        logger.error(f"Error fetching {url}: {str(e)}")
+        return ""
+    finally:
+        session.close()

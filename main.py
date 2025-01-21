@@ -88,6 +88,13 @@ def get_company_filters_with_conditions(
         "value": "1"  # Only include companies with at least 1 contact
     })
 
+    # Add minimum annual revenue filter
+    base_filters.append({
+        "propertyName": "annualrevenue",
+        "operator": "GTE",
+        "value": "10000000"  # 10 million minimum annual revenue
+    })
+
     # Add company ID filter if specified
     if company_id:
         base_filters.append({
@@ -134,8 +141,7 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["KS"],  # Must be in these states
-    #states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],  Early Season States
+    states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],
     has_pool=None,              # Must have a pool
     company_id=None             # Example placeholder, or set a specific ID
 )

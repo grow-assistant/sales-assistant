@@ -4,46 +4,67 @@ from datetime import datetime, timedelta
 from utils.logging_setup import logger
 from scheduling.database import get_db_connection, store_email_draft
 
-def find_next_available_timeslot(desired_send_date: datetime) -> datetime:
+def find_next_available_timeslot(desired_send_date: datetime, preferred_window: dict = None) -> datetime:
     """
-    Moves 'desired_send_date' forward if needed so that:
-      1) It's at least 2 minutes after the last scheduled email
-      2) We never exceed 15 emails in any rolling 3-minute window
+    Finds the next available timeslot using 30-minute windows.
+    Within each window, attempts to schedule with 2-minute increments.
+    If a window is full, moves to the next 30-minute window.
+    
+    Args:
+        desired_send_date: The target date/time
+        preferred_window: Optional dict with start/end times to constrain scheduling
     """
+    logger.debug(f"Finding next available timeslot starting from: {desired_send_date}")
+    
     with get_db_connection() as conn:
         cursor = conn.cursor()
 
+        # Round to nearest 30-minute window
+        minutes = desired_send_date.minute
+        rounded_minutes = (minutes // 30) * 30
+        current_window_start = desired_send_date.replace(
+            minute=rounded_minutes,
+            second=0,
+            microsecond=0
+        )
+        
         while True:
-            # 1) Ensure at least 2 minutes from the last scheduled email
-            cursor.execute("""
-                SELECT TOP 1 scheduled_send_date
-                FROM emails
-                WHERE scheduled_send_date IS NOT NULL
-                ORDER BY scheduled_send_date DESC
-            """)
-            row = cursor.fetchone()
-            if row:
-                last_scheduled = row[0]
-                min_allowed = last_scheduled + timedelta(minutes=2)
-                if desired_send_date < min_allowed:
-                    desired_send_date = min_allowed
-
-            # 2) Check how many are scheduled in the 3-minute window prior to 'desired_send_date'
-            window_start = desired_send_date - timedelta(minutes=3)
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM emails
-                WHERE scheduled_send_date BETWEEN ? AND ?
-            """, (window_start, desired_send_date))
-            count_in_3min = cursor.fetchone()[0]
-
-            # If we already have 15 or more in that window, push out by 2 more minutes and repeat
-            if count_in_3min >= 15:
-                desired_send_date += timedelta(minutes=2)
-            else:
-                break
-
-        return desired_send_date
+            # Check if we're still within preferred window
+            if preferred_window:
+                current_time = current_window_start.hour + current_window_start.minute / 60
+                if current_time > preferred_window["end"]:
+                    # Move to next day at start of preferred window
+                    next_day = current_window_start + timedelta(days=1)
+                    current_window_start = next_day.replace(
+                        hour=int(preferred_window["start"]),
+                        minute=int((preferred_window["start"] % 1) * 60)
+                    )
+                    logger.debug(f"Outside preferred window, moving to next day: {current_window_start}")
+                    continue
+            
+            # Try each 2-minute slot within the current 30-minute window
+            for minutes_offset in range(0, 30, 2):
+                proposed_time = current_window_start + timedelta(minutes=minutes_offset)
+                logger.debug(f"Checking availability for timeslot: {proposed_time}")
+                
+                # Check if this specific timeslot is available
+                cursor.execute("""
+                    SELECT COUNT(*)
+                    FROM emails
+                    WHERE scheduled_send_date = ?
+                """, (proposed_time,))
+                
+                count = cursor.fetchone()[0]
+                logger.debug(f"Found {count} existing emails at timeslot {proposed_time}")
+                
+                if count == 0:
+                    logger.debug(f"Selected available timeslot at {proposed_time}")
+                    return proposed_time
+            
+            # If we get here, the current 30-minute window is full
+            # Move to the next 30-minute window
+            current_window_start += timedelta(minutes=30)
+            logger.debug(f"Current window full, moving to next window starting at {current_window_start}")
 
 
 def store_lead_email_info(

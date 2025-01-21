@@ -23,6 +23,7 @@ def load_state_offsets():
                 'dst': int(row['daylight_savings']),
                 'std': int(row['standard_time'])
             }
+    logger.debug(f"Loaded timezone offsets for {len(offsets)} states")
     return offsets
 
 STATE_OFFSETS = load_state_offsets()
@@ -44,7 +45,7 @@ def adjust_send_time(send_time: datetime, state_code: str) -> datetime:
     
     # Apply offset
     adjusted_time = send_time + timedelta(hours=offset_hours)
-    logger.debug(f"Adjusted time from {send_time} to {adjusted_time} for state {state_code} (offset: {offset_hours}h)")
+    logger.debug(f"Adjusted time from {send_time} to {adjusted_time} for state {state_code} (offset: {offset_hours}h, DST: {is_dst})")
     return adjusted_time
 
 def get_best_month(geography: str, club_type: str = None, season_data: dict = None) -> list:
@@ -52,11 +53,13 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
     Determine best outreach months based on geography/season and club type.
     """
     current_month = datetime.now().month
+    logger.debug(f"Determining best month for geography: {geography}, club_type: {club_type}, current month: {current_month}")
     
     # If we have season data, use it as primary decision factor
     if season_data:
         peak_start = season_data.get('peak_season_start', '')
         peak_end = season_data.get('peak_season_end', '')
+        logger.debug(f"Using season data - peak start: {peak_start}, peak end: {peak_end}")
         
         if peak_start and peak_end:
             peak_start_month = int(peak_start.split('-')[0])
@@ -67,18 +70,19 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
             # For winter peak season (crossing year boundary)
             if peak_start_month > peak_end_month:
                 if current_month >= peak_start_month or current_month <= peak_end_month:
-                    # We're in peak season, target shoulder season
+                    logger.debug("In winter peak season, targeting September shoulder season")
                     return [9]  # September (before peak starts)
                 else:
-                    # We're in shoulder season
+                    logger.debug("In winter shoulder season, targeting January")
                     return [1]  # January
             # For summer peak season
             else:
                 if peak_start_month <= current_month <= peak_end_month:
-                    # We're in peak season, target shoulder season
-                    return [peak_start_month - 1] if peak_start_month > 1 else [12]
+                    target = [peak_start_month - 1] if peak_start_month > 1 else [12]
+                    logger.debug(f"In summer peak season, targeting month {target}")
+                    return target
                 else:
-                    # We're in shoulder season
+                    logger.debug("In summer shoulder season, targeting January")
                     return [1]  # January
     
     # Fallback to geography-based matrix
@@ -90,57 +94,59 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
         "Shoulder Season Focus": [2, 10]  # February or October
     }
     
-    return month_matrix.get(geography, [1, 9])
+    result = month_matrix.get(geography, [1, 9])
+    logger.debug(f"Using geography matrix fallback for {geography}, selected months: {result}")
+    return result
 
 def get_best_time(persona: str) -> dict:
     """
     Determine best time of day based on persona.
     Returns a dict with start and end hours/minutes in 24-hour format.
-    Randomly selects between morning and afternoon windows.
+    Times are aligned to 30-minute windows.
     """
+    logger.debug(f"Getting best time for persona: {persona}")
+    
     time_windows = {
         "General Manager": [
             {
                 "start_hour": 8, "start_minute": 30,
                 "end_hour": 10, "end_minute": 30
             },  # 8:30-10:30 AM
-            {
-                "start_hour": 15, "start_minute": 0,
-                "end_hour": 16, "end_minute": 30
-            }   # 3:00-4:30 PM
+            # {
+            #     "start_hour": 15, "start_minute": 0,
+            #     "end_hour": 16, "end_minute": 30
+            # }   # 3:00-4:30 PM
         ],
         "Food & Beverage Director": [
             {
                 "start_hour": 9, "start_minute": 30,
                 "end_hour": 11, "end_minute": 30
             },  # 9:30-11:30 AM
-            {
-                "start_hour": 15, "start_minute": 0,
-                "end_hour": 16, "end_minute": 30
-            }   # 3:00-4:30 PM
+            # {
+            #     "start_hour": 15, "start_minute": 0,
+            #     "end_hour": 16, "end_minute": 30
+            # }   # 3:00-4:30 PM
         ],
         "Golf Professional": [
             {
                 "start_hour": 8, "start_minute": 0,
                 "end_hour": 10, "end_minute": 0
             }   # 8:00-10:00 AM
-        ],
-        "Membership Director": [
-            {
-                "start_hour": 13, "start_minute": 0,
-                "end_hour": 15, "end_minute": 0
-            }   # 1:00-3:00 PM
         ]
     }
     
     # Convert persona to title case to handle different formats
     persona = " ".join(word.capitalize() for word in persona.split("_"))
+    logger.debug(f"Normalized persona: {persona}")
     
     # Get time windows for the persona, defaulting to GM times if not found
     windows = time_windows.get(persona, time_windows["General Manager"])
+    if persona not in time_windows:
+        logger.debug(f"No specific time window for {persona}, using General Manager defaults")
     
     # Randomly select between morning and afternoon windows if multiple exist
     selected_window = random.choice(windows)
+    logger.debug(f"Selected time window: {selected_window['start_hour']}:{selected_window['start_minute']} - {selected_window['end_hour']}:{selected_window['end_minute']}")
     
     # Update calculate_send_date function expects start/end format
     return {
@@ -150,6 +156,8 @@ def get_best_time(persona: str) -> dict:
 
 def get_best_outreach_window(persona: str, geography: str, club_type: str = None, season_data: dict = None) -> Dict[str, Any]:
     """Get the optimal outreach window based on persona and geography."""
+    logger.debug(f"Getting outreach window for persona: {persona}, geography: {geography}, club_type: {club_type}")
+    
     best_months = get_best_month(geography, club_type, season_data)
     best_time = get_best_time(persona)
     best_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday (0 = Monday, 6 = Sunday)
@@ -170,29 +178,35 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
 
 def calculate_send_date(geography: str, persona: str, state: str, season_data: dict = None) -> datetime:
     """Calculate the next appropriate send date based on outreach window."""
+    logger.debug(f"Calculating send date for: geography={geography}, persona={persona}, state={state}")
+    
     outreach_window = get_best_outreach_window(geography, persona, season_data=season_data)
     best_months = outreach_window["Best Month"]
     preferred_time = outreach_window["Best Time"]
     preferred_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
     
     # Find the next preferred day of week
-    today = datetime.now().date()
-    days_ahead = [(day - today.weekday()) % 7 for day in preferred_days]
-    next_preferred_day = min(days_ahead)
+    now = datetime.now()
+    today_weekday = now.weekday()
     
-    # Adjust to next month if needed
-    if today.month not in best_months:
-        target_month = min(best_months)
-        if today.month > target_month:
-            target_year = today.year + 1
-        else:
-            target_year = today.year
-        target_date = datetime(target_year, target_month, 1)
+    # Only use today if it's a preferred day
+    if today_weekday in preferred_days:
+        target_date = now
+        logger.debug(f"Using today ({target_date}) as it's a preferred day (weekday: {today_weekday})")
     else:
-        target_date = today + timedelta(days=next_preferred_day)
+        days_ahead = [(day - today_weekday) % 7 for day in preferred_days]
+        next_preferred_day = min(days_ahead)
+        target_date = now + timedelta(days=next_preferred_day)
+        logger.debug(f"Using future date ({target_date}) as today isn't a preferred day (weekday: {today_weekday})")
     
     # Apply preferred time
-    target_date = target_date.replace(hour=preferred_time["start"])
+    start_hour = int(preferred_time["start"])
+    start_minutes = int((preferred_time["start"] % 1) * 60)
+    target_date = target_date.replace(hour=start_hour, minute=start_minutes)
+    logger.debug(f"Applied preferred time: {target_date}")
     
     # Adjust for state timezone
-    return adjust_send_time(target_date, state)
+    final_date = adjust_send_time(target_date, state)
+    logger.debug(f"Final scheduled date after timezone adjustment: {final_date}")
+    
+    return final_date

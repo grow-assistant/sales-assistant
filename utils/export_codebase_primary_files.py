@@ -9,14 +9,10 @@ def should_include_file(filepath):
     
     # List of primary files focused on email template building and placeholder replacement
     primary_files = [
-        'scripts/build_template.py',  # Core template building and placeholder logic
         'main.py',                    # Shows where placeholder replacement is invoked
-        'utils/xai_integration.py',   # Helper functions for placeholder validation
-        'services/hubspot_service.py', # HubSpot API integration
         'scheduling/extended_lead_storage.py', # Lead storage and scheduling
-        'docs/templates/country_club/general_manager_initial_outreach_1.md' # Email template
+        'scripts/golf_outreach_strategy.py'
     ]
-    
     # Check if file is in primary files list
     for primary_file in primary_files:
         if filepath.endswith(primary_file):
