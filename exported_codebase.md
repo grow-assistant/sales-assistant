@@ -83,13 +83,19 @@ def get_company_filters_with_conditions(
     #     "operator": "LT",
     #     "value": "3"  # Only include companies contacted less than 3 times
     # })
+    # # Add minimum associated contacts filter
+    # base_filters.append({
+    #     "propertyName": "num_associated_contacts",
+    #     "operator": "GTE",
+    #     "value": "1"  # Only include companies with at least 1 contact
+    # })
 
-    # Add minimum associated contacts filter
-    base_filters.append({
-        "propertyName": "num_associated_contacts",
-        "operator": "GTE",
-        "value": "1"  # Only include companies with at least 1 contact
-    })
+    # # Add minimum annual revenue filter
+    # base_filters.append({
+    #     "propertyName": "annualrevenue",
+    #     "operator": "GTE",
+    #     "value": "10000000"  # 10 million minimum annual revenue
+    # })
 
     # Add company ID filter if specified
     if company_id:
@@ -137,11 +143,36 @@ def get_company_filters_with_conditions(
 # (Uncomment or customize as needed)
 # -----------------------------------------------------------------------------
 COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["KS"],  # Must be in these states
-    #states=["KY", "NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", "FA"],  Early Season States
-    has_pool=None,              # Must have a pool
-    company_id=None             # Example placeholder, or set a specific ID
+    states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", 
+           "PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", 
+           "IN", "IL", "IA", "WA", "OR"],
+    has_pool=None,
+    company_id=None
 )
+# -----------------------------------------------------------------------------
+# EXAMPLE STATE GROUPINGS BY SEASON TYPE
+# -----------------------------------------------------------------------------
+# Year-round golf states
+# states=["AZ", "FL", "HI", "CA", "TX", "GA", "NV", "AL", "MS", "LA"],
+
+# Standard season states (Mar-Nov)
+# states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM"],
+
+# Short summer season states (May-Oct)
+# states=["MI", "WI", "MN", "ND", "SD", "MT", "ID", "WY", "ME", "VT", "NH"],
+
+# Mid-Atlantic & Northeast states (Apr-Oct)
+# states=["PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", "IN", "IL", "IA"],
+
+# Pacific Northwest states (Apr-Oct)
+# states=["WA", "OR"]
+# COMPANY_FILTERS = get_company_filters_with_conditions(
+#     states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", 
+#            "PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", 
+#            "IN", "IL", "IA", "WA", "OR"],
+#     has_pool=None,
+#     company_id=None
+
 
 # -----------------------------------------------------------------------------
 # LEAD FILTERS
@@ -154,7 +185,7 @@ LEAD_FILTERS = [
     },
     {
         "propertyName": "lead_score",
-        "operator": "GT",
+        "operator": "GTE",
         "value": ""
     },
     {
@@ -174,7 +205,7 @@ LEAD_FILTERS = [
     }
 ]
 
-LEADS_TO_PROCESS = 100
+LEADS_TO_PROCESS = 200  # Changed from 100 to 200
 
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
@@ -237,7 +268,9 @@ def get_country_club_companies(hubspot: HubspotService, states: List[str] = None
     try:
         url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
         
-        # Use the globally defined COMPANY_FILTERS created above
+        # Add debug logging for filter structure
+        logger.debug(f"State filter groups: {json.dumps(COMPANY_FILTERS, indent=2)}")
+        
         payload = {
             "filterGroups": COMPANY_FILTERS["filterGroups"],
             "properties": [
@@ -260,11 +293,16 @@ def get_country_club_companies(hubspot: HubspotService, states: List[str] = None
                 "domain",
                 "competitor"
             ],
-            "limit": 100
+            "limit": 200
         }
         
-        logger.debug(f"Searching companies with payload: {json.dumps(payload, indent=2)}")
+        logger.debug(f"Full HubSpot search payload: {json.dumps(payload, indent=2)}")
         response = hubspot._make_hubspot_post(url, payload)
+        
+        # Add debug logging for response
+        if response.get("results"):
+            states_found = set(r.get("properties", {}).get("state") for r in response.get("results", []))
+            logger.debug(f"States found in results: {states_found}")
         
         if not response.get("results"):
             logger.warning(f"No results found. Response: {json.dumps(response, indent=2)}")
@@ -672,7 +710,11 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
         best_days = outreach_window.get("Best Day", [1,2,3])  # Mon-Fri default
         
         now = datetime.now()
-        target_date = now + timedelta(days=1)
+        target_date = now  # Start with today instead of tomorrow
+        
+        # If current time is past the best window end time, move to next day
+        if now.hour >= int(best_time["end"]):
+            target_date = now + timedelta(days=1)
         
         # Shift to a "best month"
         while target_date.month not in best_months:
@@ -686,13 +728,23 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
             target_date += timedelta(days=1)
         
         # Ensure we're using integers for hour and minute
-        send_hour = int(best_time["start"])  # Convert to int
+        send_hour = int(best_time["start"])
         send_minute = random.randint(0, 59)
         
-        # Randomly adjust hour within window
-        if random.random() < 0.5:
-            send_hour = min(send_hour + 1, int(best_time["end"]))  # Convert to int
-            
+        # If it's today and current time is before best window start, use best window start
+        if target_date.date() == now.date() and now.hour < send_hour:
+            send_hour = int(best_time["start"])
+        # If it's today and current time is within window, use current hour + small delay
+        elif target_date.date() == now.date() and now.hour >= send_hour and now.hour < int(best_time["end"]):
+            send_hour = now.hour
+            send_minute = now.minute + random.randint(2, 15)  # Add 2-15 minutes delay
+            if send_minute >= 60:
+                send_hour += 1
+                send_minute -= 60
+                if send_hour >= int(best_time["end"]):
+                    target_date += timedelta(days=1)
+                    send_hour = int(best_time["start"])
+        
         send_date = target_date.replace(
             hour=send_hour,
             minute=send_minute,
@@ -1252,23 +1304,43 @@ def main_companies_first():
 def main_leads_first():
     """
     1) Get leads first
-    2) Retrieve each lead's associated company
-    3) Check if that company passes the workflow filters
-    4) Build and store the outreach email
+    2) If USE_RANDOM_LEAD is True, randomly select one lead; otherwise process all leads
+    3) Retrieve associated company(ies)
+    4) Check if company(ies) pass the workflow filters
+    5) Build and store the outreach email(s)
     """
     try:
+        # Initialize counter at the start of the function
+        leads_processed = 0
+        
         workflow_context = {'correlation_id': str(uuid.uuid4())}
         hubspot = HubspotService(HUBSPOT_API_KEY)
         company_enricher = CompanyEnrichmentService()
         data_gatherer = DataGathererService()
         conversation_analyzer = ConversationAnalysisService()
-        leads_processed = 0
         
         with workflow_step("1", "Initialize and get leads", workflow_context):
             # Pull high-scoring leads first
             leads = get_leads(hubspot, min_score=0)
             logger.info(f"Found {len(leads)} total leads (score > 0)")
-        
+            
+            # Check if we should randomly select one lead
+            use_random = os.getenv('USE_RANDOM_LEAD', 'false').lower() == 'true'
+            logger.info(f"USE_RANDOM_LEAD setting: {use_random}")
+            
+            if not leads:
+                logger.warning("No leads found to process")
+                return
+                
+            if use_random:
+                selected_lead = random.choice(leads)
+                leads = [selected_lead]  # Replace leads list with just the selected lead
+                logger.info(f"Randomly selected lead: {selected_lead.get('properties', {}).get('email')} for processing")
+            else:
+                # Shuffle the leads list to randomize processing order
+                random.shuffle(leads)
+                logger.info(f"Processing all {len(leads)} leads in random order")
+
         with workflow_step("2", "Process each lead's associated company", workflow_context):
             for lead in leads:
                 lead_id = lead.get("id")
@@ -1290,6 +1362,11 @@ def main_leads_first():
                     logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
                     continue
                 
+                # Add state validation
+                if company_props.get("state") not in COMPANY_FILTERS["filterGroups"][0]["filters"][0]["values"]:
+                    logger.info(f"Skipping company {company_id} - State {company_props.get('state')} not in target states")
+                    continue
+                
                 # 2) Enrich the company data
                 enrichment_result = company_enricher.enrich_company(company_id)
                 if not enrichment_result.get("success", False):
@@ -1301,20 +1378,20 @@ def main_leads_first():
                 club_type = company_props.get("club_type", "")
                 last_contacted = company_props.get("notes_last_contacted")
                 
-                # Check if club type is valid (must be Country Club or not specified)
-                if club_type and club_type != "Country Club":
-                    logger.info(f"Skipping company {company_id} - Club type is {club_type}")
-                    continue
+                # # Check if club type is valid (must be Country Club or not specified)
+                # if club_type and club_type != "Country Club":
+                #     logger.info(f"Skipping company {company_id} - Club type is {club_type}")
+                #     continue
                     
                 # Check if we've contacted them recently
                 if last_contacted and last_contacted > "2025-01-01T00:00:00Z":
                     logger.info(f"Skipping company {company_id} - Last contacted on {last_contacted}")
                     continue
                 
-                # 4) Check if the current month is in the "best" time for outreach
-                if not is_company_in_best_state(company_props):
-                    logger.info(f"Company {company_id} not in best outreach window, skipping lead {lead_id}.")
-                    continue
+                # # 4) Check if the current month is in the "best" time for outreach
+                # if not is_company_in_best_state(company_props):
+                #     logger.info(f"Company {company_id} not in best outreach window, skipping lead {lead_id}.")
+                #     continue
                 
                 # 5) Now process the lead
                 with workflow_step("3", f"Processing lead {lead_id}", workflow_context):
@@ -1495,327 +1572,350 @@ if __name__ == "__main__":
 
 
 
-## scheduling\extended_lead_storage.py
+## test_hubspot_data_pull.py
 
-# scheduling/extended_lead_storage.py
-
+import json
+import re
 from datetime import datetime, timedelta
+from typing import List, Dict, Optional, Any
+
+import openai
+from dateutil.parser import parse as parse_date
+import pytz
+
+from services.data_gatherer_service import DataGathererService
+from config.settings import HUBSPOT_API_KEY, OPENAI_API_KEY
 from utils.logging_setup import logger
-from scheduling.database import get_db_connection, store_email_draft
+from services.gmail_service import GmailService
+from utils.conversation_summary import get_latest_email_date, summarize_lead_interactions
 
-def find_next_available_timeslot(desired_send_date: datetime) -> datetime:
+
+def clean_email_body(body_text: Optional[str]) -> Optional[str]:
     """
-    Moves 'desired_send_date' forward if needed so that:
-      1) It's at least 2 minutes after the last scheduled email
-      2) We never exceed 15 emails in any rolling 3-minute window
+    Clean up email body text by removing signatures, footers, and formatting.
+
+    :param body_text: The raw email body text.
+    :return: A cleaned version of the email body or None if the input is None.
     """
-    with get_db_connection() as conn:
-        cursor = conn.cursor()
+    if body_text is None:
+        return None
 
-        while True:
-            # 1) Ensure at least 2 minutes from the last scheduled email
-            cursor.execute("""
-                SELECT TOP 1 scheduled_send_date
-                FROM emails
-                WHERE scheduled_send_date IS NOT NULL
-                ORDER BY scheduled_send_date DESC
-            """)
-            row = cursor.fetchone()
-            if row:
-                last_scheduled = row[0]
-                min_allowed = last_scheduled + timedelta(minutes=2)
-                if desired_send_date < min_allowed:
-                    desired_send_date = min_allowed
+    # Split on common email reply markers (signatures, footers, etc.)
+    splits = re.split(
+        r'(?:\r\n|\r|\n)*(?:From:|On .* wrote:|_{3,}|Get Outlook|Sent from|<http)',
+        body_text
+    )
 
-            # 2) Check how many are scheduled in the 3-minute window prior to 'desired_send_date'
-            window_start = desired_send_date - timedelta(minutes=3)
-            cursor.execute("""
-                SELECT COUNT(*)
-                FROM emails
-                WHERE scheduled_send_date BETWEEN ? AND ?
-            """, (window_start, desired_send_date))
-            count_in_3min = cursor.fetchone()[0]
+    # Take the first part (assumed to be the main message)
+    message = splits[0].strip()
 
-            # If we already have 15 or more in that window, push out by 2 more minutes and repeat
-            if count_in_3min >= 15:
-                desired_send_date += timedelta(minutes=2)
-            else:
-                break
+    # Remove extra whitespace
+    message = re.sub(r'\s+', ' ', message)
+    # Remove [cid:...] references
+    message = re.sub(r'\[cid:[^\]]+\]', '', message)
+    # Remove HTML tags
+    message = re.sub(r'<[^>]+>', '', message)
 
-        return desired_send_date
+    return message.strip()
 
 
-def store_lead_email_info(
-    lead_sheet: dict, 
-    draft_id: str = None,
-    scheduled_date: datetime = None,
-    body: str = None,
-    sequence_num: int = None,
-    correlation_id: str = None
-) -> None:
-    """
-    Store all email-related information for a lead in the 'emails' table.
+def summarize_conversation(emails: List[Dict[str, Any]]) -> str:
+    """Use OpenAI to summarize the conversation thread."""
+    if not emails:
+        return "No conversation found."
 
-    New logic enforces:
-      - No more than 15 emails in any rolling 3-minute window
-      - Each new email at least 2 minutes after the previously scheduled one
-    """
-    if correlation_id is None:
-        correlation_id = f"store_{lead_sheet.get('lead_data', {}).get('email', 'unknown')}"
+    # Sort emails by timestamp in ascending order
+    sorted_emails = sorted(
+        (e for e in emails if e.get('timestamp')),
+        key=lambda x: parse_date(x['timestamp'])
+    )
+
+    # Find the latest incoming message
+    latest_incoming = None
+    for email in reversed(sorted_emails):
+        if email.get('direction') == 'INCOMING_EMAIL':
+            latest_incoming = email
+            break
+
+    # Prepare conversation text for OpenAI
+    conversation_text = "Full conversation:\n\n"
+    for email in sorted_emails:
+        date = parse_date(email['timestamp']).strftime('%Y-%m-%d %H:%M')
+        direction = "OUTBOUND" if email.get('direction') in ['EMAIL', 'NOTE'] else "INBOUND"
+        message = clean_email_body(email.get('body_text')) or f"[Email with subject: {email.get('subject', 'No subject')}]"
+        conversation_text += f"{date} ({direction}): {message}\n\n"
+
+    # Add specific information about latest incoming message
+    if latest_incoming:
+        latest_date = parse_date(latest_incoming['timestamp']).strftime('%Y-%m-%d %H:%M')
+        conversation_text += f"\nLatest incoming message was at {latest_date}\n"
 
     try:
-        # Default to 'now + 10 minutes' if no scheduled_date was provided
-        if scheduled_date is None:
-            scheduled_date = datetime.now() + timedelta(minutes=10)
-
-        # ---- Enforce our scheduling constraints ----
-        scheduled_date = find_next_available_timeslot(scheduled_date)
-
-        conn = get_db_connection()
-        cursor = conn.cursor()
-
-        # Extract basic lead info
-        lead_data = lead_sheet.get("lead_data", {})
-        lead_props = lead_data.get("properties", {})
-
-        lead_id = lead_props.get("hs_object_id")
-        name = f"{lead_props.get('firstname', '')} {lead_props.get('lastname', '')}".strip()
-        email_address = lead_data.get("email")
-
-        # Insert into emails table with the adjusted 'scheduled_date'
-        email_id = store_email_draft(
-            cursor,
-            lead_id=lead_id,
-            name=name,
-            email_address=email_address,
-            sequence_num=sequence_num,
-            body=body,
-            scheduled_send_date=scheduled_date,
-            draft_id=draft_id,
-            status='draft'
+        today = datetime.now().date()
+        openai.api_key = OPENAI_API_KEY
+        response = openai.ChatCompletion.create(
+            model="gpt-4",
+            temperature=0.2,  # Add moderate temperature for consistent but natural responses
+            messages=[
+                {
+                    "role": "system", 
+                    "content": (
+                        "You are a sales assistant analyzing email conversations. "
+                        "Please provide: "
+                        "1) A brief summary of the conversation thread, "
+                        "2) The latest INCOMING response only (ignore outbound messages from Ryan Donovan or Ty Hayes), including the date and who it was from, "
+                        f"3) Whether we responded to the latest incoming message, and if so, what was our response (include the full email text) and how many days ago was it sent relative to {today}."
+                    )
+                },
+                {"role": "user", "content": conversation_text}
+            ]
         )
+        return response.choices[0].message.content
+    except Exception as e:
+        logger.error(f"Error in OpenAI summarization: {str(e)}")
+        return f"Error generating summary: {str(e)}"
 
-        conn.commit()
-        logger.info(
-            f"[store_lead_email_info] Scheduled email for lead_id={lead_id}, email={email_address}, "
-            f"draft_id={draft_id} at {scheduled_date}",
-            extra={"correlation_id": correlation_id}
-        )
+
+def print_conversation_thread(emails: List[Dict[str, Any]], notes: List[Dict[str, Any]], gmail_emails: Dict[str, Any]) -> None:
+    """
+    Print emails as a conversation thread and provide an AI summary.
+    """
+    if not emails and not notes and not gmail_emails["inbound"] and not gmail_emails["outbound"]:
+        print("\nNo conversation found!")
+        return
+
+    # print("\nConversation Thread:")
+    # print("=" * 50)
+
+    # Convert notes to email format
+    email_notes = []
+    for note in notes:
+        if note.get("timestamp") and "email" in note.get("body", "").lower():
+            # Ensure timestamp is timezone-aware
+            timestamp = parse_date(note["timestamp"])
+            if timestamp.tzinfo is None:
+                timestamp = pytz.UTC.localize(timestamp)
+                
+            email_notes.append({
+                "timestamp": timestamp.isoformat(),
+                "body_text": note.get("body"),
+                "direction": "NOTE",
+                "subject": "Email Note"
+            })
+
+    # Add Gmail messages if they exist
+    gmail_messages = []
+    for direction, msg in gmail_emails.items():
+        if msg and msg.get("timestamp"):
+            # Ensure timestamp is timezone-aware
+            timestamp = parse_date(msg["timestamp"])
+            if timestamp.tzinfo is None:
+                timestamp = pytz.UTC.localize(timestamp)
+                
+            gmail_messages.append({
+                "timestamp": timestamp.isoformat(),
+                "body_text": msg["body_text"],
+                "direction": msg["direction"],
+                "subject": msg.get("subject", "No subject"),
+                "source": "Gmail",
+                "gmail_id": msg.get("gmail_id")
+            })
+
+    # Process HubSpot emails
+    hubspot_messages = []
+    for email in emails:
+        if email.get("timestamp"):
+            # Ensure timestamp is timezone-aware
+            timestamp = parse_date(email["timestamp"])
+            if timestamp.tzinfo is None:
+                timestamp = pytz.UTC.localize(timestamp)
+                
+            hubspot_messages.append({
+                "timestamp": timestamp.isoformat(),
+                "body_text": email.get("body_text"),
+                "direction": email.get("direction"),
+                "subject": email.get("subject", "No subject"),
+                "source": "HubSpot"
+            })
+
+    # Combine all messages
+    all_messages = hubspot_messages + email_notes + gmail_messages
+
+    # Sort all messages by timestamp in descending order
+    sorted_messages = sorted(
+        all_messages,
+        key=lambda x: parse_date(x["timestamp"]),
+        reverse=True
+    )
+
+    # for message in sorted_messages:
+    #     try:
+    #         date_obj = parse_date(message["timestamp"])
+            
+    #         # Determine message source and direction
+    #         source = message.get("source", "HubSpot")
+    #         if message.get("direction") == "NOTE":
+    #             direction_arrow = "📝"
+    #         else:
+    #             direction_arrow = "→" if message.get("direction") == "EMAIL" else "←"
+            
+    #         print(f"\n{date_obj.strftime('%Y-%m-%d %H:%M')} {direction_arrow} [{source}] ", end="")
+
+    #         body_text = clean_email_body(message.get("body_text"))
+    #         if body_text:
+    #             print(body_text)
+    #         else:
+    #             subject = message.get("subject", "No subject")
+    #             print(f"[Email with subject: {subject}]")
+
+    #     except Exception as e:
+    #         logger.error(f"Error processing message: {str(e)}")
+    #         continue
+
+    # Print AI-generated summary
+    print("\nAI Analysis:")
+    print("=" * 50)
+    summary = summarize_conversation(sorted_messages)
+    print(summary)
+
+
+def get_contacts_from_list(list_id: str) -> List[Dict[str, Any]]:
+    """Get all contacts from a specified HubSpot list."""
+    try:
+        data_gatherer = DataGathererService()
+        logger.debug(f"Initializing contact pull from list {list_id}")
+        
+        # First get list memberships
+        url = f"https://api.hubapi.com/crm/v3/lists/{list_id}/memberships"
+        logger.debug(f"Fetching list memberships from: {url}")
+        memberships = data_gatherer.hubspot._make_hubspot_get(url)
+        
+        # Extract record IDs
+        record_ids = []
+        if isinstance(memberships, dict) and "results" in memberships:
+            record_ids = [result["recordId"] for result in memberships.get("results", [])]
+        
+        logger.debug(f"Found {len(record_ids)} records in list")
+        
+        # Now fetch full contact details for each ID (limit to first 25)
+        contacts = []
+        for record_id in record_ids[:25]:  # Limit to first 25
+            try:
+                # Get full contact details using v3 API
+                contact_url = f"https://api.hubapi.com/crm/v3/objects/contacts/{record_id}"
+                params = {
+                    "properties": ["email", "firstname", "lastname", "company"]
+                }
+                contact_data = data_gatherer.hubspot._make_hubspot_get(contact_url, params)
+                if contact_data:
+                    contacts.append(contact_data)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to fetch details for contact {record_id}: {str(e)}")
+                continue
+        
+        logger.info(f"Successfully retrieved {len(contacts)} contacts with details")
+        return contacts
+        
+    except Exception as e:
+        logger.error(f"Error getting contacts from list: {str(e)}", exc_info=True)
+        return []
+
+
+def process_list_contacts(list_id: str) -> None:
+    """Process all contacts from a specified HubSpot list."""
+    try:
+        logger.debug(f"Starting to process list ID: {list_id}")
+        
+        # Get contacts from list
+        contacts = get_contacts_from_list(list_id)
+        
+        if not contacts:
+            print(f"No contacts found in list {list_id}")
+            return
+
+        print("\nFirst 25 email addresses from list:")
+        print("=" * 50)
+        
+        # Process each contact
+        for i, contact in enumerate(contacts, 1):
+            # Get email from properties
+            properties = contact.get("properties", {})
+            email = properties.get("email")
+            
+            if email:
+                print(f"{i}. {email}")
+            else:
+                print(f"{i}. [No email found]")
 
     except Exception as e:
-        logger.error(f"Error storing lead email info: {str(e)}", extra={
-            "correlation_id": correlation_id
-        })
-        if 'conn' in locals():
-            conn.rollback()
-        raise
-    finally:
-        if 'cursor' in locals():
-            cursor.close()
-        if 'conn' in locals():
-            conn.close()
+        print(f"Error processing list contacts: {str(e)}")
+        logger.error(f"Error in process_list_contacts: {str(e)}", exc_info=True)
 
 
+def test_email_pull(email_address: str) -> None:
+    """Test function to pull and display HubSpot data for a specific email address."""
+    try:
+        data_gatherer = DataGathererService()
+        gmail_service = GmailService()
 
+        # Get contact data
+        contact_data = data_gatherer.hubspot.get_contact_by_email(email_address)
+        if not contact_data:
+            print(f"No contact found for email: {email_address}")
+            return
 
-## scripts\golf_outreach_strategy.py
+        contact_id = contact_data["id"]
 
-"""
-Scripts for determining optimal outreach timing based on club and contact attributes.
-"""
-from typing import Dict, Any
-import csv
-import logging
-from datetime import datetime, timedelta
-import os
-import random
-
-logger = logging.getLogger(__name__)
-
-def load_state_offsets():
-    """Load state hour offsets from CSV file."""
-    offsets = {}
-    csv_path = os.path.join('docs', 'data', 'state_timezones.csv')
-    
-    with open(csv_path, 'r') as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            state = row['state_code']
-            offsets[state] = {
-                'dst': int(row['daylight_savings']),
-                'std': int(row['standard_time'])
-            }
-    return offsets
-
-STATE_OFFSETS = load_state_offsets()
-
-def adjust_send_time(send_time: datetime, state_code: str) -> datetime:
-    """Adjust send time based on state's hour offset."""
-    if not state_code:
-        logger.warning("No state code provided, using original time")
-        return send_time
-        
-    offsets = STATE_OFFSETS.get(state_code.upper())
-    if not offsets:
-        logger.warning(f"No offset data for state {state_code}, using original time")
-        return send_time
-    
-    # Determine if we're in DST
-    is_dst = datetime.now().astimezone().dst() != timedelta(0)
-    offset_hours = offsets['dst'] if is_dst else offsets['std']
-    
-    # Apply offset
-    adjusted_time = send_time + timedelta(hours=offset_hours)
-    logger.debug(f"Adjusted time from {send_time} to {adjusted_time} for state {state_code} (offset: {offset_hours}h)")
-    return adjusted_time
-
-def get_best_month(geography: str, club_type: str = None, season_data: dict = None) -> list:
-    """
-    Determine best outreach months based on geography/season and club type.
-    """
-    current_month = datetime.now().month
-    
-    # If we have season data, use it as primary decision factor
-    if season_data:
-        peak_start = season_data.get('peak_season_start', '')
-        peak_end = season_data.get('peak_season_end', '')
-        
-        if peak_start and peak_end:
-            peak_start_month = int(peak_start.split('-')[0])
-            peak_end_month = int(peak_end.split('-')[0])
+        # Get all emails and notes from HubSpot
+        try:
+            all_emails = data_gatherer.hubspot.get_all_emails_for_contact(contact_id)
+            all_notes = data_gatherer.hubspot.get_all_notes_for_contact(contact_id)
             
-            logger.debug(f"Peak season: {peak_start_month} to {peak_end_month}")
+            # Get latest Gmail messages
+            gmail_emails = gmail_service.get_latest_emails_for_contact(email_address)
             
-            # For winter peak season (crossing year boundary)
-            if peak_start_month > peak_end_month:
-                if current_month >= peak_start_month or current_month <= peak_end_month:
-                    # We're in peak season, target shoulder season
-                    return [9]  # September (before peak starts)
-                else:
-                    # We're in shoulder season
-                    return [1]  # January
-            # For summer peak season
+            # Get latest email date
+            latest_date = get_latest_email_date(all_emails)
+            if latest_date:
+                print(f"\nLatest Email Date: {latest_date.strftime('%Y-%m-%d %H:%M:%S')}")
             else:
-                if peak_start_month <= current_month <= peak_end_month:
-                    # We're in peak season, target shoulder season
-                    return [peak_start_month - 1] if peak_start_month > 1 else [12]
-                else:
-                    # We're in shoulder season
-                    return [1]  # January
-    
-    # Fallback to geography-based matrix
-    month_matrix = {
-        "Year-Round Golf": [1, 9],      # January or September
-        "Peak Winter Season": [9],       # September
-        "Peak Summer Season": [2],       # February
-        "Short Summer Season": [1],      # January
-        "Shoulder Season Focus": [2, 10]  # February or October
-    }
-    
-    return month_matrix.get(geography, [1, 9])
+                print("\nNo emails found")
+            
+            print_conversation_thread(all_emails, all_notes, gmail_emails)
+            
+        except Exception as e:
+            print(f"Error fetching messages: {str(e)}")
+            all_emails = []
+            all_notes = []
+            gmail_emails = {"inbound": None, "outbound": None}
 
-def get_best_time(persona: str) -> dict:
-    """
-    Determine best time of day based on persona.
-    Returns a dict with start and end hours/minutes in 24-hour format.
-    Randomly selects between morning and afternoon windows.
-    """
-    time_windows = {
-        "General Manager": [
-            {
-                "start_hour": 8, "start_minute": 30,
-                "end_hour": 10, "end_minute": 30
-            },  # 8:30-10:30 AM
-            {
-                "start_hour": 15, "start_minute": 0,
-                "end_hour": 16, "end_minute": 30
-            }   # 3:00-4:30 PM
-        ],
-        "Food & Beverage Director": [
-            {
-                "start_hour": 9, "start_minute": 30,
-                "end_hour": 11, "end_minute": 30
-            },  # 9:30-11:30 AM
-            {
-                "start_hour": 15, "start_minute": 0,
-                "end_hour": 16, "end_minute": 30
-            }   # 3:00-4:30 PM
-        ],
-        "Golf Professional": [
-            {
-                "start_hour": 8, "start_minute": 0,
-                "end_hour": 10, "end_minute": 0
-            }   # 8:00-10:00 AM
-        ],
-        "Membership Director": [
-            {
-                "start_hour": 13, "start_minute": 0,
-                "end_hour": 15, "end_minute": 0
-            }   # 1:00-3:00 PM
-        ]
-    }
-    
-    # Convert persona to title case to handle different formats
-    persona = " ".join(word.capitalize() for word in persona.split("_"))
-    
-    # Get time windows for the persona, defaulting to GM times if not found
-    windows = time_windows.get(persona, time_windows["General Manager"])
-    
-    # Randomly select between morning and afternoon windows if multiple exist
-    selected_window = random.choice(windows)
-    
-    # Update calculate_send_date function expects start/end format
-    return {
-        "start": selected_window["start_hour"] + selected_window["start_minute"] / 60,
-        "end": selected_window["end_hour"] + selected_window["end_minute"] / 60
-    }
+        # Save raw data to file
+        output_data = {
+            "contact_id": contact_id,
+            "emails": all_emails,
+            "notes": all_notes,
+            "gmail_emails": gmail_emails
+        }
 
-def get_best_outreach_window(persona: str, geography: str, club_type: str = None, season_data: dict = None) -> Dict[str, Any]:
-    """Get the optimal outreach window based on persona and geography."""
-    best_months = get_best_month(geography, club_type, season_data)
-    best_time = get_best_time(persona)
-    best_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday (0 = Monday, 6 = Sunday)
-    
-    logger.debug(f"Calculated base outreach window", extra={
-        "persona": persona,
-        "geography": geography,
-        "best_months": best_months,
-        "best_time": best_time,
-        "best_days": best_days
-    })
-    
-    return {
-        "Best Month": best_months,
-        "Best Time": best_time,
-        "Best Day": best_days
-    }
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"hubspot_data_{timestamp}.json"
+        with open(filename, 'w') as f:
+            json.dump(output_data, f, indent=2)
+        print(f"\nFull response saved to: {filename}")
 
-def calculate_send_date(geography: str, persona: str, state: str, season_data: dict = None) -> datetime:
-    """Calculate the next appropriate send date based on outreach window."""
-    outreach_window = get_best_outreach_window(geography, persona, season_data=season_data)
-    best_months = outreach_window["Best Month"]
-    preferred_time = outreach_window["Best Time"]
-    preferred_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
+    except Exception as e:
+        print(f"Error occurred: {str(e)}")
+        logger.error(f"Error in test_email_pull: {str(e)}", exc_info=True)
+
+
+if __name__ == "__main__":
+    # Enable debug logging
+    logger.setLevel("DEBUG")
     
-    # Find the next preferred day of week
-    today = datetime.now().date()
-    days_ahead = [(day - today.weekday()) % 7 for day in preferred_days]
-    next_preferred_day = min(days_ahead)
+    # Replace this with your actual HubSpot list ID
+    TEST_LIST_ID = "221"  # <-- Put your actual HubSpot list ID here
     
-    # Adjust to next month if needed
-    if today.month not in best_months:
-        target_month = min(best_months)
-        if today.month > target_month:
-            target_year = today.year + 1
-        else:
-            target_year = today.year
-        target_date = datetime(target_year, target_month, 1)
-    else:
-        target_date = today + timedelta(days=next_preferred_day)
-    
-    # Apply preferred time
-    target_date = target_date.replace(hour=preferred_time["start"])
-    
-    # Adjust for state timezone
-    return adjust_send_time(target_date, state)
+    print(f"\nStarting contact pull from HubSpot list: {TEST_LIST_ID}")
+    process_list_contacts(TEST_LIST_ID)
 

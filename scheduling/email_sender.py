@@ -18,12 +18,11 @@ def send_scheduled_emails():
 
     with get_db_connection() as conn:
         cursor = conn.cursor()
-        
         # Find emails that should be sent (both draft and reviewed status)
         cursor.execute("""
             SELECT email_id, draft_id, email_address, scheduled_send_date, status
             FROM emails 
-            WHERE status IN ('draft', 'reviewed')
+            WHERE status IN ('reviewed')
             AND scheduled_send_date <= GETDATE()
             AND actual_send_date IS NULL
             ORDER BY scheduled_send_date ASC

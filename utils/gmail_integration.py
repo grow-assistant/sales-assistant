@@ -153,7 +153,7 @@ def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
 
         # Get Gmail service and template
         service = get_gmail_service()
-        template = get_gmail_template(service, "sales")
+        template = get_gmail_template(service, "salesv2")
         
         if not template:
             logger.error("Failed to get Gmail template, using plain text")

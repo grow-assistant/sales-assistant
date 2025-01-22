@@ -119,7 +119,7 @@ def get_pending_emails(lead_id: int) -> list:
                        gmail_id
                   FROM emails
                  WHERE lead_id = ?
-                   AND status IN ('pending','draft','sent') 
+                   AND status IN ('reviewed','draft','sent') 
             """, (lead_id,))
             rows = cursor.fetchall()
 
@@ -336,7 +336,7 @@ def get_draft_emails(email_id: int = None) -> list:
                            gmail_id
                       FROM emails 
                      WHERE email_id = ?
-                       AND status IN ('draft','sent')
+                       AND status IN ('draft','reviewed')
                 """, (email_id,))
             else:
                 cursor.execute("""
@@ -353,7 +353,7 @@ def get_draft_emails(email_id: int = None) -> list:
                            draft_id,
                            gmail_id
                       FROM emails 
-                     WHERE status = 'draft'
+                     WHERE status IN ('draft','reviewed')
                   ORDER BY email_id DESC
                 """)
             
