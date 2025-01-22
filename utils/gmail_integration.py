@@ -461,3 +461,82 @@ def search_inbound_messages_for_email(email_address: str, max_results: int = 1) 
             logger.error(f"Error fetching message {m['id']} from {email_address}: {e}")
 
     return snippets
+
+def create_followup_draft(
+    sender: str,
+    to: str,
+    subject: str,
+    message_text: str,
+    lead_id: str = None,
+    sequence_num: int = None,
+    original_html: str = None,
+    in_reply_to: str = None
+) -> Dict[str, Any]:
+    try:
+        service = get_gmail_service()
+        if not service:
+            logger.error("Failed to get Gmail service")
+            return {"status": "error", "error": "No Gmail service"}
+
+        # Create message container
+        message = MIMEMultipart('alternative')
+        message["to"] = to
+        message["subject"] = subject
+        message["bcc"] = "20057893@bcc.hubspot.com"
+
+        # Add threading headers
+        if in_reply_to:
+            message["In-Reply-To"] = in_reply_to
+            message["References"] = in_reply_to
+
+        # Split the message text to remove the original content
+        new_content = message_text.split("On ", 1)[0].strip()
+        
+        # Create the HTML parts separately to avoid f-string backslash issues
+        html_start = '<div dir="ltr" style="font-family:Arial, sans-serif;">'
+        html_content = new_content.replace("\n", "<br>")
+        html_quote_start = '<br><br><div class="gmail_quote"><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">'
+        html_quote_content = original_html if original_html else ""
+        html_end = '</blockquote></div></div>'
+
+        # Combine HTML parts
+        html = html_start + html_content + html_quote_start + html_quote_content + html_end
+
+        # Create both plain text and HTML versions
+        text_part = MIMEText(new_content, 'plain')  # Only include new content in plain text
+        html_part = MIMEText(html, 'html')
+
+        # Add both parts to the message
+        message.attach(text_part)
+        message.attach(html_part)
+
+        # Encode and create the draft
+        raw_message = base64.urlsafe_b64encode(message.as_string().encode("utf-8")).decode("utf-8")
+        draft = service.users().drafts().create(
+            userId="me",
+            body={"message": {"raw": raw_message}}
+        ).execute()
+
+        if "id" not in draft:
+            return {"status": "error", "error": "No draft ID returned"}
+
+        draft_id = draft["id"]
+        
+        # Add 'to_review' label
+        label_id = get_or_create_label(service, "to_review")
+        if label_id:
+            service.users().messages().modify(
+                userId="me",
+                id=draft["message"]["id"],
+                body={"addLabelIds": [label_id]},
+            ).execute()
+
+        return {
+            "status": "ok",
+            "draft_id": draft_id,
+            "sequence_num": sequence_num,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in create_followup_draft: {str(e)}", exc_info=True)
+        return {"status": "error", "error": str(e)}

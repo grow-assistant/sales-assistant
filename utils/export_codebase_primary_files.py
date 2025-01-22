@@ -9,8 +9,10 @@ def should_include_file(filepath):
     
     # List of primary files focused on email template building and placeholder replacement
     primary_files = [
-        'main.py',                    # Shows where placeholder replacement is invoked
-        'test_hubspot_data_pull.py'
+        'test_followup_generation.py',
+        'gmail_integration.py',
+        'followup_generation.py',
+        'database.py'
     ]
     # Check if file is in primary files list
     for primary_file in primary_files:

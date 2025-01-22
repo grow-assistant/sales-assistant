@@ -1,614 +1,229 @@
 
-## main.py
+## test_followup_generation.py
 
-#!/usr/bin/env python3
-# main.py
-# -----------------------------------------------------------------------------
-# EXAMPLE FULL WORKING FILE
-# -----------------------------------------------------------------------------
-
-import logging
-import random
-from typing import List, Dict, Any
-from datetime import datetime, timedelta
-import openai
-import os
-import shutil
-import uuid
-import threading
-from contextlib import contextmanager
-from pathlib import Path
-from utils.xai_integration import (
-    personalize_email_with_xai,
-    build_context_block
-)
-from utils.gmail_integration import search_messages
-import json
-
-# -----------------------------------------------------------------------------
-# PROJECT IMPORTS (Adjust paths/names as needed)
-# -----------------------------------------------------------------------------
-from services.hubspot_service import HubspotService
-from services.company_enrichment_service import CompanyEnrichmentService
-from services.data_gatherer_service import DataGathererService
-from scripts.golf_outreach_strategy import (
-    get_best_outreach_window, 
-    get_best_month, 
-    adjust_send_time
-)
-from scripts.build_template import build_outreach_email
-from scheduling.database import get_db_connection
-from scheduling.extended_lead_storage import store_lead_email_info
 from scheduling.followup_generation import generate_followup_email_xai
-from scheduling.followup_scheduler import start_scheduler
-from config.settings import (
-    HUBSPOT_API_KEY, 
-    OPENAI_API_KEY, 
-    MODEL_FOR_GENERAL, 
-    PROJECT_ROOT, 
-    CLEAR_LOGS_ON_START
-)
-from utils.exceptions import LeadContextError
-from utils.gmail_integration import create_draft, store_draft_info
-from utils.logging_setup import logger, setup_logging
-from services.conversation_analysis_service import ConversationAnalysisService
+from scheduling.database import get_db_connection
+from utils.logging_setup import logger
+from utils.gmail_integration import create_draft, create_followup_draft
+from scheduling.extended_lead_storage import store_lead_email_info
 
-# -----------------------------------------------------------------------------
-# GLOBAL WORKFLOW MODE VARIABLE
-# -----------------------------------------------------------------------------
-# Choose "companies" if you want to filter for companies first.
-# Choose "leads" if you want to filter for leads first.
-WORKFLOW_MODE = "companies"
-
-# -----------------------------------------------------------------------------
-# FILTER-BUILDING FUNCTION (allowing both AND and OR groups)
-# -----------------------------------------------------------------------------
-def get_company_filters_with_conditions(
-    contact_conditions: List[Dict] = None,
-    club_type_conditions: List[Dict] = None,
-    states: List[str] = None,
-    has_pool: bool = None,
-    company_id: str = None
-) -> Dict:
-    """
-    Generate company filters with complex OR conditions.
-    Each condition group uses OR logic within itself and AND logic with other groups.
-    """
-    # Build base filters (these will be applied to all groups)
-    base_filters = []
-    
-    # # Add contact count filter
-    # base_filters.append({
-    #     "propertyName": "num_contacted_notes",
-    #     "operator": "LT",
-    #     "value": "3"  # Only include companies contacted less than 3 times
-    # })
-    # # Add minimum associated contacts filter
-    # base_filters.append({
-    #     "propertyName": "num_associated_contacts",
-    #     "operator": "GTE",
-    #     "value": "1"  # Only include companies with at least 1 contact
-    # })
-
-    # # Add minimum annual revenue filter
-    # base_filters.append({
-    #     "propertyName": "annualrevenue",
-    #     "operator": "GTE",
-    #     "value": "10000000"  # 10 million minimum annual revenue
-    # })
-
-    # Add company ID filter if specified
-    if company_id:
-        base_filters.append({
-            "propertyName": "hs_object_id",
-            "operator": "EQ",
-            "value": company_id
-        })
-        logger.debug(f"Added company ID filter: {company_id}")
-
-    # Add state filter if specified
-    if states:
-        # Ensure states are uppercase and stripped of whitespace
-        formatted_states = [state.strip().lower() for state in states]
-        state_filter = {
-            "propertyName": "state",
-            "operator": "IN",
-            "values": formatted_states
-        }
-        base_filters.append(state_filter)
-        logger.debug(f"Added states filter: {json.dumps(state_filter, indent=2)}")
-    
-    # Add pool filter if specified
-    if has_pool is not None:
-        base_filters.append({
-            "propertyName": "has_pool",
-            "operator": "EQ",
-            "value": has_pool
-        })
-        logger.debug(f"Added pool filter: {has_pool}")
-
-    # Initialize filter groups with base filters
-    filter_groups = []
-    
-    # If no conditions were specified, just use base filters
-    if not filter_groups and base_filters:
-        filter_groups.append({"filters": base_filters})
-        logger.debug("Created group with only base filters")
-
-    logger.debug(f"Final filter structure: {json.dumps({'filterGroups': filter_groups}, indent=2)}")
-    return {"filterGroups": filter_groups}
-
-# -----------------------------------------------------------------------------
-# EXAMPLE USAGE OF get_company_filters_with_conditions
-# (Uncomment or customize as needed)
-# -----------------------------------------------------------------------------
-COMPANY_FILTERS = get_company_filters_with_conditions(
-    states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", 
-           "PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", 
-           "IN", "IL", "IA", "WA", "OR"],
-    has_pool=None,
-    company_id=None
-)
-# -----------------------------------------------------------------------------
-# EXAMPLE STATE GROUPINGS BY SEASON TYPE
-# -----------------------------------------------------------------------------
-# Year-round golf states
-# states=["AZ", "FL", "HI", "CA", "TX", "GA", "NV", "AL", "MS", "LA"],
-
-# Standard season states (Mar-Nov)
-# states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM"],
-
-# Short summer season states (May-Oct)
-# states=["MI", "WI", "MN", "ND", "SD", "MT", "ID", "WY", "ME", "VT", "NH"],
-
-# Mid-Atlantic & Northeast states (Apr-Oct)
-# states=["PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", "IN", "IL", "IA"],
-
-# Pacific Northwest states (Apr-Oct)
-# states=["WA", "OR"]
-# COMPANY_FILTERS = get_company_filters_with_conditions(
-#     states=["NC", "SC", "VA", "TN", "KY", "MO", "KS", "OK", "AR", "NM", 
-#            "PA", "NY", "NJ", "CT", "MA", "RI", "MD", "DE", "WV", "OH", 
-#            "IN", "IL", "IA", "WA", "OR"],
-#     has_pool=None,
-#     company_id=None
-
-
-# -----------------------------------------------------------------------------
-# LEAD FILTERS
-# -----------------------------------------------------------------------------
-LEAD_FILTERS = [
-    {
-        "propertyName": "associatedcompanyid",
-        "operator": "EQ",
-        "value": ""  # Will be set per company
-    },
-    {
-        "propertyName": "lead_score",
-        "operator": "GTE",
-        "value": ""
-    },
-    {
-        "propertyName": "hs_sales_email_last_replied",
-        "operator": "GTE",
-        "value": ""
-    },
-    {
-        "propertyName": "email",
-        "operator": "EQ",
-        "value": ""
-    },
-    {
-        "propertyName": "email_domain",
-        "operator": "CONTAINS",
-        "value": ""
-    }
-]
-
-LEADS_TO_PROCESS = 200  # Changed from 100 to 200
-
-# -----------------------------------------------------------------------------
-# INIT SERVICES & LOGGING
-# -----------------------------------------------------------------------------
-setup_logging()
-data_gatherer = DataGathererService()
-conversation_analyzer = ConversationAnalysisService()
-
-# -----------------------------------------------------------------------------
-# CONTEXT MANAGER FOR WORKFLOW STEPS
-# -----------------------------------------------------------------------------
-@contextmanager
-def workflow_step(step_name: str, step_description: str, logger_context: dict = None):
-    """Context manager for logging workflow steps."""
-    logger_context = logger_context or {}
-    logger_context.update({
-        'step_number': step_name,
-        'step_description': step_description
-    })
-    logger.info(f"Starting {step_description}", extra=logger_context)
+def test_followup_generation():
+    """Test generating a follow-up email from an existing email in the database"""
     try:
-        yield
-    except Exception as e:
-        logger.error(f"Error in {step_description}: {str(e)}", extra=logger_context)
-        raise
-    else:
-        logger.info(f"Completed {step_description}", extra=logger_context)
-
-# -----------------------------------------------------------------------------
-# UTILITY FUNCTIONS
-# -----------------------------------------------------------------------------
-def clear_files_on_start():
-    """Clear log files and temp directories on startup."""
-    try:
-        logs_dir = Path(PROJECT_ROOT) / "logs"
-        if logs_dir.exists():
-            for file in logs_dir.glob("*"):
-                if file.is_file():
-                    try:
-                        file.unlink()
-                    except PermissionError:
-                        logger.debug(f"Skipping locked file: {file}")
-                        continue
-            logger.debug("Cleared logs directory")
-
-        temp_dir = Path(PROJECT_ROOT) / "temp"
-        if temp_dir.exists():
-            try:
-                shutil.rmtree(temp_dir)
-                temp_dir.mkdir()
-                logger.debug("Cleared temp directory")
-            except PermissionError:
-                logger.debug("Skipping locked temp directory")
-
-    except Exception as e:
-        logger.error(f"Error clearing files: {str(e)}")
-
-def get_country_club_companies(hubspot: HubspotService, states: List[str] = None) -> List[Dict[str, Any]]:
-    """Get all country club companies using HubspotService and our filter groups."""
-    try:
-        url = f"{hubspot.base_url}/crm/v3/objects/companies/search"
-        
-        # Add debug logging for filter structure
-        logger.debug(f"State filter groups: {json.dumps(COMPANY_FILTERS, indent=2)}")
-        
-        payload = {
-            "filterGroups": COMPANY_FILTERS["filterGroups"],
-            "properties": [
-                "name",
-                "city",
-                "state",
-                "club_type",
-                "facility_complexity",
-                "geographic_seasonality",
-                "has_pool",
-                "has_tennis_courts",
-                "number_of_holes",
-                "public_private_flag",
-                "club_info",
-                "peak_season_start_month",
-                "peak_season_end_month",
-                "start_month",
-                "end_month",
-                "notes_last_contacted",
-                "domain",
-                "competitor"
-            ],
-            "limit": 200
-        }
-        
-        logger.debug(f"Full HubSpot search payload: {json.dumps(payload, indent=2)}")
-        response = hubspot._make_hubspot_post(url, payload)
-        
-        # Add debug logging for response
-        if response.get("results"):
-            states_found = set(r.get("properties", {}).get("state") for r in response.get("results", []))
-            logger.debug(f"States found in results: {states_found}")
-        
-        if not response.get("results"):
-            logger.warning(f"No results found. Response: {json.dumps(response, indent=2)}")
-            
-        results = response.get("results", [])
-        logger.info(f"Found {len(results)} companies matching filters")
-        
-        return results
-        
-    except Exception as e:
-        logger.error(f"Error getting country club companies: {str(e)}", exc_info=True)
-        return []
-
-def get_leads_for_company(hubspot: HubspotService, company_id: str) -> List[Dict]:
-    """Get all leads/contacts associated with a company with score > 0."""
-    try:
-        # Filter out any LEAD_FILTERS that are empty
-        active_filters = [f for f in LEAD_FILTERS if f.get("value") not in [None, "", []]]
-        # Force company ID for this search
-        company_filter = {
-            "propertyName": "associatedcompanyid",
-            "operator": "EQ",
-            "value": company_id
-        }
-        # Make sure we have a unique entry for the company
-        active_filters.append(company_filter)
-        
-        url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
-        payload = {
-            "filterGroups": [{"filters": active_filters}],
-            "properties": [
-                "email", 
-                "firstname", 
-                "lastname", 
-                "jobtitle", 
-                "lead_score", 
-                "hs_object_id",
-                "recent_interaction",
-                "last_email_date"
-            ],
-            "sorts": [
-                {
-                    "propertyName": "lead_score",
-                    "direction": "DESCENDING"
-                }
-            ],
-            "limit": 1  # Changed from 100 to 1 to only get the first lead
-        }
-        
-        logger.debug(f"Searching leads with filters: {active_filters}")
-        response = hubspot._make_hubspot_post(url, payload)
-        results = response.get("results", [])
-        
-        logger.info(f"Found {len(results)} leads for company {company_id}")
-        return results[:1]  # Extra safety to ensure only one lead is returned
-        
-    except Exception as e:
-        logger.error(f"Error getting leads for company {company_id}: {str(e)}", exc_info=True)
-        return []
-
-def extract_lead_data(company_props: Dict, lead_props: Dict) -> Dict:
-    """Extract and organize lead and company data."""
-    return {
-        "company_data": {
-            "name": company_props.get("name", ""),
-            "city": company_props.get("city", ""),
-            "state": company_props.get("state", ""),
-            "club_type": company_props.get("club_type", ""),
-            "facility_complexity": company_props.get("facility_complexity", ""),
-            "has_pool": company_props.get("has_pool", ""),
-            "has_tennis_courts": company_props.get("has_tennis_courts", ""),
-            "number_of_holes": company_props.get("number_of_holes", ""),
-            "public_private_flag": company_props.get("public_private_flag", ""),
-            "geographic_seasonality": company_props.get("geographic_seasonality", ""),
-            "club_info": company_props.get("club_info", ""),
-            "peak_season_start_month": company_props.get("peak_season_start_month", ""),
-            "peak_season_end_month": company_props.get("peak_season_end_month", ""),
-            "start_month": company_props.get("start_month", ""),
-            "end_month": company_props.get("end_month", "")
-        },
-        "lead_data": {
-            "firstname": lead_props.get("firstname", ""),
-            "lastname": lead_props.get("lastname", ""),
-            "email": lead_props.get("email", ""),
-            "jobtitle": lead_props.get("jobtitle", "")
-        }
-    }
-
-def gather_personalization_data(company_name: str, city: str, state: str) -> Dict:
-    """Gather additional personalization data for the company."""
-    try:
-        news_result = data_gatherer.gather_club_news(company_name)
-        
-        has_news = False
-        news_text = ""
-        if news_result:
-            if isinstance(news_result, tuple):
-                news_text = news_result[0]
-            else:
-                news_text = str(news_result)
-            has_news = "has not been" not in news_text.lower()
-        
-        return {
-            "has_news": has_news,
-            "news_text": news_text if has_news else None
-        }
-        
-    except Exception as e:
-        logger.error(f"Error gathering personalization data: {str(e)}")
-        return {
-            "has_news": False,
-            "news_text": None
-        }
-
-def clean_company_name(text: str) -> str:
-    """Replace old company name references with current name."""
-    if not text:
-        return text
-        
-    replacements = {
-        "Byrdi": "Swoop",
-        "byrdi": "swoop",
-        "BYRDI": "SWOOP"
-    }
-    
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-    
-    return text
-
-def summarize_lead_interactions(lead_sheet: dict) -> str:
-    """Collects all prior emails and notes from the lead_sheet."""
-    try:
-        lead_data = lead_sheet.get("lead_data", {})
-        emails = lead_data.get("emails", [])
-        notes = lead_data.get("notes", [])
-        
-        logger.debug(f"Found {len(emails)} emails and {len(notes)} notes to summarize")
-        
-        interactions = []
-        
-        # Collect emails
-        for email in sorted(emails, key=lambda x: x.get('timestamp', ''), reverse=True):
-            if isinstance(email, dict):
-                date = email.get('timestamp', '').split('T')[0]
-                subject = clean_company_name(email.get('subject', '').encode('utf-8', errors='ignore').decode('utf-8'))
-                body = clean_company_name(email.get('body_text', '').encode('utf-8', errors='ignore').decode('utf-8'))
-                direction = email.get('direction', '')
-                body = body.split('On ')[0].strip()
-                email_type = "from the lead" if direction == "INCOMING_EMAIL" else "to the lead"
-                
-                logger.debug(f"Processing email from {date}: {subject[:50]}...")
-                
-                interaction = {
-                    'date': date,
-                    'type': f'email {email_type}',
-                    'direction': direction,
-                    'subject': subject,
-                    'notes': body[:1000]
-                }
-                interactions.append(interaction)
-        
-        # Collect notes
-        for note in sorted(notes, key=lambda x: x.get('timestamp', ''), reverse=True):
-            if isinstance(note, dict):
-                date = note.get('timestamp', '').split('T')[0]
-                content = clean_company_name(note.get('body', '').encode('utf-8', errors='ignore').decode('utf-8'))
-                
-                interaction = {
-                    'date': date,
-                    'type': 'note',
-                    'direction': 'internal',
-                    'subject': 'Internal Note',
-                    'notes': content[:1000]
-                }
-                interactions.append(interaction)
-        
-        if not interactions:
-            return "No prior interactions found."
-
-        interactions.sort(key=lambda x: x['date'], reverse=True)
-        recent_interactions = interactions[:10]
-        
-        prompt = (
-            "Please summarize these interactions, focusing on:\n"
-            "1. Most recent email FROM THE LEAD if there is one\n"
-            "2. Key points of interest or next steps discussed\n"
-            "3. Overall progression of the conversation\n\n"
-            "Recent Interactions:\n"
-        )
-        
-        for interaction in recent_interactions:
-            prompt += f"\nDate: {interaction['date']}\n"
-            prompt += f"Type: {interaction['type']}\n"
-            prompt += f"Direction: {interaction['direction']}\n"
-            prompt += f"Subject: {interaction['subject']}\n"
-            prompt += f"Content: {interaction['notes']}\n"
-            prompt += "-" * 50 + "\n"
-        
-        try:
-            openai.api_key = OPENAI_API_KEY
-            response = openai.ChatCompletion.create(
-                model=MODEL_FOR_GENERAL,
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": (
-                            "You are a helpful assistant that summarizes business interactions. "
-                            "Anything from Ty or Ryan is from Swoop."
-                        )
-                    },
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.0
-            )
-            
-            summary = response.choices[0].message.content.strip()
-            return summary
-            
-        except Exception as e:
-            logger.error(f"Error getting summary from OpenAI: {str(e)}")
-            return "Error summarizing interactions."
-            
-    except Exception as e:
-        logger.error(f"Error in summarize_lead_interactions: {str(e)}")
-        return "Error processing interactions."
-
-def schedule_followup(lead_id: int, email_id: int):
-    """Schedule a follow-up email."""
-    try:
+        # Get a sample email from the database
         conn = get_db_connection()
         cursor = conn.cursor()
         
+        # Get the most recent sent email
         cursor.execute("""
-            SELECT 
-                e.subject, e.body, e.created_at,
-                l.email, l.first_name,
-                c.name, c.state
-            FROM emails e
-            JOIN leads l ON e.lead_id = l.lead_id
-            LEFT JOIN companies c ON l.company_id = c.company_id
-            WHERE e.email_id = ? AND e.lead_id = ?
-        """, (email_id, lead_id))
+            SELECT TOP 1
+                lead_id,
+                email_address,
+                name,
+                gmail_id,
+                scheduled_send_date
+            FROM emails
+            WHERE gmail_id IS NOT NULL
+            AND sequence_num = 1
+            ORDER BY created_at DESC
+        """)
         
-        result = cursor.fetchone()
-        if not result:
-            logger.error(f"No email found for email_id={email_id}")
+        row = cursor.fetchone()
+        if not row:
+            logger.error("No sent emails found in database")
             return
             
-        orig_subject, orig_body, created_at, email, first_name, company_name, state = result
+        lead_id, email, name, gmail_id, scheduled_date = row
+        logger.info(f"Found original email to {email} (Lead ID: {lead_id})")
         
-        original_email = {
-            'email': email,
-            'first_name': first_name,
-            'name': company_name,
-            'state': state,
-            'subject': orig_subject,
-            'body': orig_body,
-            'created_at': created_at
-        }
-        
+        # Generate follow-up email
         followup = generate_followup_email_xai(
             lead_id=lead_id,
-            email_id=email_id,
-            sequence_num=2,
-            original_email=original_email
+            original_email={
+                'email': email,
+                'name': name,
+                'gmail_id': gmail_id,
+                'scheduled_send_date': scheduled_date
+            }
         )
         
-        if followup:
-            draft_result = create_draft(
-                sender="me",
-                to=followup.get('email'),
-                subject=followup.get('subject'),
-                message_text=followup.get('body')
-            )
+        if not followup:
+            logger.error("Failed to generate follow-up email")
+            return
             
-            if draft_result["status"] == "ok":
-                store_draft_info(
-                    lead_id=lead_id,
-                    draft_id=draft_result["draft_id"],
-                    scheduled_date=followup.get('scheduled_send_date'),
-                    subject=followup.get('subject'),
-                    body=followup.get('body'),
-                    sequence_num=followup.get('sequence_num', 2)
-                )
-                logger.info(f"Follow-up email scheduled with draft_id {draft_result.get('draft_id')}")
-            else:
-                logger.error("Failed to create Gmail draft for follow-up")
+        # Create draft in Gmail using the new follow-up function
+        draft_result = create_followup_draft(
+            sender="me",
+            to=followup['email'],
+            subject=followup['subject'],
+            message_text=followup['body'],
+            lead_id=followup['lead_id'],
+            sequence_num=followup['sequence_num']
+        )
+        
+        if draft_result["status"] == "ok":
+            logger.info(f"Created follow-up draft for {email}")
+            logger.info(f"Draft ID: {draft_result['draft_id']}")
+            logger.info(f"Scheduled send date: {followup['scheduled_send_date']}")
+            
+            # Store the follow-up in database
+            store_lead_email_info(
+                lead_sheet={
+                    "lead_data": {
+                        "properties": {
+                            "hs_object_id": followup['lead_id'],
+                            "firstname": name.split()[0] if name else "",
+                            "lastname": name.split()[1] if name and len(name.split()) > 1 else ""
+                        }
+                    },
+                    "company_data": {
+                        "name": name
+                    }
+                },
+                draft_id=draft_result['draft_id'],
+                scheduled_date=followup['scheduled_send_date'],
+                body=followup['body'],
+                sequence_num=followup['sequence_num']
+            )
+            logger.info("Stored follow-up in database")
         else:
-            logger.error("Failed to generate follow-up email content")
+            logger.error(f"Failed to create Gmail draft: {draft_result.get('error', 'Unknown error')}")
             
     except Exception as e:
-        logger.error(f"Error scheduling follow-up: {str(e)}", exc_info=True)
-        if 'conn' in locals():
-            conn.rollback()
+        logger.error(f"Error in test_followup_generation: {str(e)}", exc_info=True)
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
 
-def store_draft_info(lead_id, name, email_address, sequence_num, body, scheduled_date, draft_id):
+if __name__ == "__main__":
+    logger.setLevel("DEBUG")
+    print("\nStarting follow-up generation test...")
+    test_followup_generation() 
+
+
+
+## scheduling\database.py
+
+# scheduling/database.py
+
+import sys
+from pathlib import Path
+import pyodbc
+from datetime import datetime
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+
+from utils.logging_setup import logger
+from config.settings import DB_SERVER, DB_NAME, DB_USER, DB_PASSWORD
+
+SERVER = DB_SERVER
+DATABASE = DB_NAME
+UID = DB_USER
+PWD = DB_PASSWORD
+
+def get_db_connection():
+    """Get database connection."""
+    logger.debug("Connecting to SQL Server", extra={
+        "database": DATABASE,
+        "server": SERVER,
+        "masked_credentials": True
+    })
+    conn_str = (
+        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
+        f"SERVER={SERVER};"
+        f"DATABASE={DATABASE};"
+        f"UID={UID};"
+        f"PWD={PWD}"
+    )
+    try:
+        conn = pyodbc.connect(conn_str)
+        logger.debug("SQL connection established successfully.")
+        return conn
+    except pyodbc.Error as ex:
+        logger.error("Error connecting to SQL Server", extra={
+            "error": str(ex),
+            "error_type": type(ex).__name__,
+            "database": DATABASE,
+            "server": SERVER
+        }, exc_info=True)
+        raise
+
+def init_db():
+    """Initialize database tables."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        logger.info("Starting init_db...")
+
+        # Create emails table if it doesn't exist
+        cursor.execute("""
+            IF NOT EXISTS (SELECT * FROM sys.objects 
+                         WHERE object_id = OBJECT_ID(N'[dbo].[emails]') 
+                         AND type in (N'U'))
+            BEGIN
+                CREATE TABLE dbo.emails (
+                    email_id            INT IDENTITY(1,1) PRIMARY KEY,
+                    lead_id            INT NOT NULL,
+                    name               VARCHAR(100),
+                    email_address      VARCHAR(255),
+                    sequence_num       INT NULL,
+                    body               VARCHAR(MAX),
+                    scheduled_send_date DATETIME NULL,
+                    actual_send_date   DATETIME NULL,
+                    created_at         DATETIME DEFAULT GETDATE(),
+                    status             VARCHAR(50) DEFAULT 'pending',
+                    draft_id           VARCHAR(100) NULL,
+                    gmail_id           VARCHAR(100)
+                )
+            END
+        """)
+        conn.commit()
+        logger.info("init_db completed successfully. Emails table created if it didn't exist.")
+        
+    except Exception as e:
+        logger.error("Error in init_db", extra={
+            "error": str(e),
+            "error_type": type(e).__name__,
+            "database": DATABASE
+        }, exc_info=True)
+        conn.rollback()
+        raise
+    finally:
+        cursor.close()
+        conn.close()
+
+def clear_tables():
+    """Clear the emails table in the database."""
+    try:
+        with get_db_connection() as conn:
+            logger.debug("Clearing emails table")
+            
+            query = "DELETE FROM dbo.emails"
+            logger.debug(f"Executing: {query}")
+            conn.execute(query)
+                
+            logger.info("Successfully cleared emails table")
+
+    except Exception as e:
+        logger.exception(f"Failed to clear emails table: {str(e)}")
+        raise e
+
+def store_email_draft(cursor, lead_id: int, name: str = None,
+                     email_address: str = None,
+                     sequence_num: int = None,
+                     body: str = None,
+                     scheduled_send_date: datetime = None,
+                     draft_id: str = None,
+                     status: str = 'pending') -> int:
     """
-    Persists the draft info to the 'emails' table.
+    Store email draft in database. Returns email_id.
     
-    Fields ordered as per schema:
+    Table schema:
     - email_id (auto-generated)
     - lead_id
     - name
@@ -622,1300 +237,795 @@ def store_draft_info(lead_id, name, email_address, sequence_num, body, scheduled
     - draft_id
     - gmail_id (managed elsewhere)
     """
-    try:
-        logger.debug(f"[store_draft_info] Attempting to store draft info for lead_id={lead_id}, scheduled_date={scheduled_date}")
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        
-        cursor.execute(
-            """
-            UPDATE emails
-            SET name = ?, 
-                email_address = ?, 
+    # First check if this draft_id already exists
+    cursor.execute("""
+        SELECT email_id FROM emails 
+        WHERE draft_id = ? AND lead_id = ?
+    """, (draft_id, lead_id))
+    
+    existing = cursor.fetchone()
+    if existing:
+        # Update existing record instead of creating new one
+        cursor.execute("""
+            UPDATE emails 
+            SET name = ?,
+                email_address = ?,
                 sequence_num = ?,
                 body = ?,
                 scheduled_send_date = ?,
-                draft_id = ?
-            WHERE lead_id = ? AND sequence_num = ?
-            
-            IF @@ROWCOUNT = 0
-            BEGIN
-                INSERT INTO emails (
-                    lead_id,
-                    name,
-                    email_address,
-                    sequence_num,
-                    body,
-                    scheduled_send_date,
-                    status,
-                    draft_id
-                ) VALUES (
-                    ?, ?, ?, ?, ?, ?, 'draft', ?
-                )
-            END
-            """,
-            (
-                # UPDATE parameters
-                name,
-                email_address,
-                sequence_num,
-                body,
-                scheduled_date,
-                draft_id,
-                lead_id,
-                sequence_num,
-                
-                # INSERT parameters
+                status = ?
+            WHERE draft_id = ? AND lead_id = ?
+        """, (
+            name,
+            email_address,
+            sequence_num,
+            body,
+            scheduled_send_date,
+            status,
+            draft_id,
+            lead_id
+        ))
+        return existing[0]
+    else:
+        # Insert new record
+        cursor.execute("""
+            INSERT INTO emails (
                 lead_id,
                 name,
                 email_address,
                 sequence_num,
                 body,
-                scheduled_date,
+                scheduled_send_date,
+                status,
                 draft_id
+            ) VALUES (
+                ?, ?, ?, ?,
+                ?, ?, ?, ?
             )
+        """, (
+            lead_id,
+            name,
+            email_address,
+            sequence_num,
+            body,
+            scheduled_send_date,
+            status,
+            draft_id
+        ))
+        cursor.execute("SELECT SCOPE_IDENTITY()")
+        return cursor.fetchone()[0]
+
+if __name__ == "__main__":
+    init_db()
+    logger.info("Database table created.")
+
+
+
+
+## scheduling\followup_generation.py
+
+# followup_generation.py
+
+from scheduling.database import get_db_connection
+from utils.gmail_integration import create_draft, get_gmail_service
+from utils.logging_setup import logger
+from scripts.golf_outreach_strategy import (
+    get_best_outreach_window,
+    adjust_send_time,
+    calculate_send_date
+)
+from datetime import datetime, timedelta
+import random
+import base64
+
+
+def generate_followup_email_xai(
+    lead_id: int, 
+    email_id: int = None,
+    sequence_num: int = None,
+    original_email: dict = None
+) -> dict:
+    """Generate a follow-up email using xAI and original Gmail message"""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Get the most recent email if not provided
+        if not original_email:
+            cursor.execute("""
+                SELECT TOP 1
+                    email_address,
+                    name,
+                    body,
+                    gmail_id,
+                    scheduled_send_date,
+                    draft_id
+                FROM emails
+                WHERE lead_id = ?
+                AND sequence_num = 1
+                AND gmail_id IS NOT NULL
+                ORDER BY created_at DESC
+            """, (lead_id,))
+            
+            row = cursor.fetchone()
+            if not row:
+                logger.error(f"No original email found for lead_id={lead_id}")
+                return None
+
+            email_address, name, body, gmail_id, scheduled_date, draft_id = row
+            original_email = {
+                'email': email_address,
+                'name': name,
+                'body': body,
+                'gmail_id': gmail_id,
+                'scheduled_send_date': scheduled_date,
+                'draft_id': draft_id
+            }
+
+        # Get the Gmail service
+        gmail_service = get_gmail_service()
+        
+        # Get the original message from Gmail
+        try:
+            message = gmail_service.users().messages().get(
+                userId='me',
+                id=original_email['gmail_id'],
+                format='full'
+            ).execute()
+            
+            # Get the original HTML content
+            original_html = None
+            if 'parts' in message['payload']:
+                for part in message['payload']['parts']:
+                    if part['mimeType'] == 'text/html':
+                        original_html = base64.urlsafe_b64decode(
+                            part['body']['data']
+                        ).decode('utf-8')
+                        break
+            elif message['payload']['mimeType'] == 'text/html':
+                original_html = base64.urlsafe_b64decode(
+                    message['payload']['body']['data']
+                ).decode('utf-8')
+            
+            # Extract subject and original message content
+            headers = message.get('payload', {}).get('headers', [])
+            orig_subject = next(
+                (header['value'] for header in headers if header['name'].lower() == 'subject'),
+                'No Subject'
+            )
+            
+            # Get the original sender (me) and timestamp
+            from_header = next(
+                (header['value'] for header in headers if header['name'].lower() == 'from'),
+                'me'
+            )
+            date_header = next(
+                (header['value'] for header in headers if header['name'].lower() == 'date'),
+                ''
+            )
+            
+            # Get original message body
+            if 'parts' in message['payload']:
+                orig_body = ''
+                for part in message['payload']['parts']:
+                    if part['mimeType'] == 'text/plain':
+                        orig_body = base64.urlsafe_b64decode(
+                            part['body']['data']
+                        ).decode('utf-8')
+                        break
+            else:
+                orig_body = base64.urlsafe_b64decode(
+                    message['payload']['body']['data']
+                ).decode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"Error fetching Gmail message: {str(e)}", exc_info=True)
+            return None
+
+        # Format the follow-up email with the original included
+        name = original_email.get('name', 'your club')
+        subject = f"Re: {orig_subject}"
+        
+        body = (
+            f"Following up about improving operations at {name}. "
+            f"Would you have 10 minutes this week for a brief call?\n\n"
+            f"Best regards,\n"
+            f"Ty\n\n"
+            f"On {date_header}, {from_header} wrote:\n"
+            f"{orig_body}"
         )
-        
-        conn.commit()
-        logger.debug(f"[store_draft_info] Successfully wrote scheduled_date={scheduled_date} for lead_id={lead_id}, draft_id={draft_id}")
-        
+
+        # Calculate send date using golf_outreach_strategy logic
+        send_date = calculate_send_date(
+            geography="Year-Round Golf",
+            persona="General Manager",
+            state="AZ",
+            season_data=None
+        )
+
+        # Ensure minimum 3-day gap from original send date
+        orig_scheduled_date = original_email.get('scheduled_send_date', datetime.now())
+        while send_date < (orig_scheduled_date + timedelta(days=3)):
+            send_date += timedelta(days=1)
+
+        return {
+            'email': original_email.get('email'),
+            'subject': subject,
+            'body': body,
+            'scheduled_send_date': send_date,
+            'sequence_num': sequence_num or 2,
+            'lead_id': lead_id,
+            'name': name,
+            'in_reply_to': original_email['gmail_id'],
+            'original_html': original_html
+        }
+
     except Exception as e:
-        logger.error(f"[store_draft_info] Failed to store draft info: {str(e)}")
-        if 'conn' in locals():
-            conn.rollback()
-        raise
+        logger.error(f"Error generating follow-up: {str(e)}", exc_info=True)
+        return None
     finally:
         if 'cursor' in locals():
             cursor.close()
         if 'conn' in locals():
             conn.close()
 
-def calculate_send_date(geography, persona, state_code, season_data=None):
-    """Calculate optimal send date based on geography and persona."""
+
+
+
+## utils\gmail_integration.py
+
+import os
+import base64
+import os.path
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+
+from googleapiclient.discovery import build
+from google_auth_oauthlib.flow import InstalledAppFlow
+from google.auth.transport.requests import Request
+from google.auth.exceptions import RefreshError
+from google.oauth2.credentials import Credentials
+
+from utils.logging_setup import logger
+from datetime import datetime
+from scheduling.database import get_db_connection
+from typing import Dict, Any
+from config import settings
+from pathlib import Path
+from config.settings import PROJECT_ROOT
+from scheduling.extended_lead_storage import store_lead_email_info
+
+# If modifying these scopes, delete the file token.json.
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+
+def get_gmail_service():
+    """Get Gmail API service."""
+    creds = None
+    
+    # Use absolute paths from PROJECT_ROOT
+    credentials_path = Path(PROJECT_ROOT) / 'credentials' / 'credentials.json'
+    token_path = Path(PROJECT_ROOT) / 'credentials' / 'token.json'
+    
+    # Ensure credentials directory exists
+    credentials_path.parent.mkdir(parents=True, exist_ok=True)
+    
     try:
-        if season_data:
-            season_data = {
-                "peak_season_start": str(season_data.get("peak_season_start", "")),
-                "peak_season_end": str(season_data.get("peak_season_end", ""))
-            }
-        
-        outreach_window = get_best_outreach_window(
-            persona=persona,
-            geography=geography,
-            season_data=season_data
-        )
-        
-        best_months = outreach_window.get("Best Month", [])
-        best_time = outreach_window.get("Best Time", {"start": 9, "end": 11})
-        best_days = outreach_window.get("Best Day", [1,2,3])  # Mon-Fri default
-        
-        now = datetime.now()
-        target_date = now  # Start with today instead of tomorrow
-        
-        # If current time is past the best window end time, move to next day
-        if now.hour >= int(best_time["end"]):
-            target_date = now + timedelta(days=1)
-        
-        # Shift to a "best month"
-        while target_date.month not in best_months:
-            if target_date.month == 12:
-                target_date = target_date.replace(year=target_date.year + 1, month=1, day=1)
-            else:
-                target_date = target_date.replace(month=target_date.month + 1, day=1)
-        
-        # Shift to a "best day"
-        while target_date.weekday() not in best_days:
-            target_date += timedelta(days=1)
-        
-        # Ensure we're using integers for hour and minute
-        send_hour = int(best_time["start"])
-        send_minute = random.randint(0, 59)
-        
-        # If it's today and current time is before best window start, use best window start
-        if target_date.date() == now.date() and now.hour < send_hour:
-            send_hour = int(best_time["start"])
-        # If it's today and current time is within window, use current hour + small delay
-        elif target_date.date() == now.date() and now.hour >= send_hour and now.hour < int(best_time["end"]):
-            send_hour = now.hour
-            send_minute = now.minute + random.randint(2, 15)  # Add 2-15 minutes delay
-            if send_minute >= 60:
-                send_hour += 1
-                send_minute -= 60
-                if send_hour >= int(best_time["end"]):
-                    target_date += timedelta(days=1)
-                    send_hour = int(best_time["start"])
-        
-        send_date = target_date.replace(
-            hour=send_hour,
-            minute=send_minute,
-            second=0,
-            microsecond=0
-        )
-        
-        final_send_date = adjust_send_time(send_date, state_code)
-        return final_send_date
-        
-    except Exception as e:
-        logger.error(f"Error calculating send date: {str(e)}", exc_info=True)
-        # Fallback to next business day at 10am
-        return datetime.now() + timedelta(days=1, hours=10)
-
-def get_next_month_first_day(current_date):
-    if current_date.month == 12:
-        return current_date.replace(year=current_date.year + 1, month=1, day=1)
-    return current_date.replace(month=current_date.month + 1, day=1)
-
-def get_template_path(club_type: str, role: str) -> str:
-    """
-    Get the appropriate template path based on club type and role.
-    """
-    logger.info(f"[TARGET] Selecting template for club_type={club_type}, role={role}")
-    
-    club_type_map = {
-        "Country Club": "country_club",
-        "Private Course": "private_course",
-        "Private Club": "private_course",
-        "Resort Course": "resort_course",
-        "Resort": "resort_course",
-        "Public Course": "public_high_daily_fee",
-        "Public - High Daily Fee": "public_high_daily_fee",
-        "Public - Low Daily Fee": "public_low_daily_fee",
-        "Public": "public_high_daily_fee",
-        "Semi-Private": "public_high_daily_fee",
-        "Semi Private": "public_high_daily_fee",
-        "Municipal": "public_low_daily_fee",
-        "Municipal Course": "public_low_daily_fee",
-        "Management Company": "management_companies",
-        "Unknown": "country_club",
-    }
-    
-    role_map = {
-        "General Manager": "general_manager",
-        "GM": "general_manager",
-        "Club Manager": "general_manager",
-        "Golf Professional": "golf_ops",
-        "Head Golf Professional": "golf_ops",
-        "Director of Golf": "golf_ops",
-        "Golf Operations": "golf_ops",
-        "Golf Operations Manager": "golf_ops",
-        "F&B Manager": "fb_manager",
-        "Food & Beverage Manager": "fb_manager",
-        "Food and Beverage Manager": "fb_manager",
-        "F&B Director": "fb_manager",
-        "Food & Beverage Director": "fb_manager",
-        "Food and Beverage Director": "fb_manager",
-        "Restaurant Manager": "fb_manager",
-    }
-    
-    normalized_club_type = club_type_map.get(club_type, "country_club")
-    normalized_role = role_map.get(role, "general_manager")
-    
-    # Randomly select template variation
-    sequence_num = random.randint(1, 2)
-    logger.info(f"[VARIANT] Selected template variation {sequence_num}")
-    
-    template_path = Path(PROJECT_ROOT) / "docs" / "templates" / normalized_club_type / f"{normalized_role}_initial_outreach_{sequence_num}.md"
-    logger.info(f"[PATH] Using template path: {template_path}")
-    
-    if not template_path.exists():
-        fallback_path = Path(PROJECT_ROOT) / "docs" / "templates" / normalized_club_type / f"fallback_{sequence_num}.md"
-        logger.warning(f"❌ Specific template not found at {template_path}, falling back to {fallback_path}")
-        template_path = fallback_path
-    
-    return str(template_path)
-
-def clear_logs():
-    try:
-        if os.path.exists('logs/app.log'):
-            with open('logs/app.log', 'w') as f:
-                f.truncate(0)
-    except PermissionError:
-        logger.warning("Could not clear log file - file is in use")
-    except Exception as e:
-        logger.error(f"Error clearing log file: {e}")
-
-def get_leads(hubspot: HubspotService, min_score: float = 0) -> List[Dict]:
-    """Get all leads with scores above minimum threshold."""
-    try:
-        url = f"{hubspot.base_url}/crm/v3/objects/contacts/search"
-        
-        # Use LEAD_FILTERS for the leads-first approach
-        active_filters = []
-        for filter_def in LEAD_FILTERS:
-            if filter_def["propertyName"] == "lead_score":
-                filter_def["value"] = str(min_score)
-            if filter_def.get("value"):
-                active_filters.append(filter_def)
-        
-        payload = {
-            "filterGroups": [{"filters": active_filters}],
-            "properties": [
-                "email", 
-                "firstname", 
-                "lastname", 
-                "jobtitle", 
-                "lead_score",
-                "hs_sales_email_last_replied",
-                "recent_interaction",
-                "associatedcompanyid"
-            ],
-            "limit": 100,
-            "sorts": [
-                {
-                    "propertyName": "lead_score",
-                    "direction": "ASCENDING"
-                }
-            ]
-        }
-        response = hubspot._make_hubspot_post(url, payload)
-        
-        leads = response.get("results", [])
-        logger.info(f"Found {len(leads)} leads after applying filters")
-        for lead in leads:
-            logger.debug(
-                f"Lead {lead.get('id')}: "
-                f"Score = {lead.get('properties', {}).get('lead_score')}, "
-                f"Last reply = {lead.get('properties', {}).get('hs_sales_email_last_replied')}"
+        # Check if credentials exist
+        if not credentials_path.exists():
+            logger.error(f"Missing credentials file at {credentials_path}")
+            raise FileNotFoundError(
+                f"credentials.json is missing. Please place it in: {credentials_path}"
             )
+            
+        # The file token.json stores the user's access and refresh tokens
+        if token_path.exists():
+            creds = Credentials.from_authorized_user_file(str(token_path), SCOPES)
+            
+        # If there are no (valid) credentials available, let the user log in
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    str(credentials_path), 
+                    SCOPES
+                )
+                creds = flow.run_local_server(port=0)
+                
+            # Save the credentials for the next run
+            with open(token_path, 'w') as token:
+                token.write(creds.to_json())
+                
+        return build('gmail', 'v1', credentials=creds)
         
-        return leads
     except Exception as e:
-        logger.error(f"Error getting high scoring leads: {e}")
-        return []
+        logger.error(f"Error setting up Gmail service: {str(e)}")
+        raise
 
-def get_company_by_id(hubspot: HubspotService, company_id: str) -> Dict:
-    """Get company details by ID."""
+def get_gmail_template(service, template_name: str = "sales") -> str:
+    """Fetch HTML email template from Gmail drafts."""
     try:
-        url = f"{hubspot.base_url}/crm/v3/objects/companies/{company_id}"
-        params = {
-            "properties": [
-                "name", 
-                "city", 
-                "state", 
-                "club_type",
-                "facility_complexity",
-                "geographic_seasonality",
-                "has_pool",
-                "has_tennis_courts",
-                "number_of_holes",
-                "public_private_flag",
-                "club_info",
-                "peak_season_start_month",
-                "peak_season_end_month",
-                "start_month",
-                "end_month"
-            ]
-        }
-        response = hubspot._make_hubspot_get(url, params)
-        return response
+        # First try to list all drafts
+        drafts = service.users().drafts().list(userId='me').execute()
+        if not drafts.get('drafts'):
+            logger.error("No drafts found in Gmail account")
+            return ""
+
+        # Log all available drafts for debugging
+        draft_subjects = []
+        template_html = ""
+        
+        for draft in drafts.get('drafts', []):
+            msg = service.users().messages().get(
+                userId='me',
+                id=draft['message']['id'],
+                format='full'
+            ).execute()
+            
+            # Get subject from headers
+            headers = msg['payload']['headers']
+            subject = next(
+                (h['value'] for h in headers if h['name'].lower() == 'subject'),
+                ''
+            ).lower()
+            draft_subjects.append(subject)
+            
+            # If this is our template
+            if template_name.lower() in subject:
+                logger.debug(f"Found template draft with subject: {subject}")
+                
+                # Extract HTML content
+                if 'parts' in msg['payload']:
+                    for part in msg['payload']['parts']:
+                        if part['mimeType'] == 'text/html':
+                            template_html = base64.urlsafe_b64decode(
+                                part['body']['data']
+                            ).decode('utf-8')
+                            break
+                elif msg['payload']['mimeType'] == 'text/html':
+                    template_html = base64.urlsafe_b64decode(
+                        msg['payload']['body']['data']
+                    ).decode('utf-8')
+                
+                if template_html:
+                    return template_html
+
+        if not template_html:
+            logger.error(
+                f"No template found with name: {template_name}. "
+                f"Available draft subjects: {draft_subjects}"
+            )
+        return template_html
+
     except Exception as e:
-        logger.error(f"Error getting company {company_id}: {e}")
+        logger.error(f"Error fetching Gmail template: {str(e)}", exc_info=True)
+        return ""
+
+def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
+    """Create an HTML-formatted email message using Gmail template."""
+    try:
+        # Validate inputs
+        if not all([to, subject, body]):
+            logger.error("Missing required email fields")
+            return {}
+
+        # Ensure all inputs are strings
+        to = str(to).strip()
+        subject = str(subject).strip()
+        body = str(body).strip()
+
+        logger.debug("Creating HTML email message")
+
+        # Create the MIME Multipart message
+        message = MIMEMultipart('alternative')
+        message["to"] = to
+        message["subject"] = subject
+        message["bcc"] = "20057893@bcc.hubspot.com"
+
+        # Format the body text with paragraphs
+        div_start = "<div style='margin-bottom: 20px;'>"
+        div_end = "</div>"
+        formatted_body = div_start + body.replace('\n\n', div_end + div_start) + div_end
+
+        # Get Gmail service and template
+        service = get_gmail_service()
+        template = get_gmail_template(service, "salesv2")
+        
+        if not template:
+            logger.error("Failed to get Gmail template, using plain text")
+            html_body = formatted_body
+        else:
+            # Look for common content placeholders in the template
+            placeholders = ['{{content}}', '{content}', '[content]', '{{body}}', '{body}', '[body]']
+            template_with_content = template
+            
+            # Try each placeholder until one works
+            for placeholder in placeholders:
+                if placeholder in template:
+                    template_with_content = template.replace(placeholder, formatted_body)
+                    logger.debug(f"Found and replaced placeholder: {placeholder}")
+                    break
+            
+            if template_with_content == template:
+                # No placeholder found, try to insert before the first signature or calendar section
+                signature_markers = ['</signature>', 'calendar-section', 'signature-section']
+                inserted = False
+                
+                for marker in signature_markers:
+                    if marker in template.lower():
+                        parts = template.lower().split(marker, 1)
+                        template_with_content = parts[0] + formatted_body + marker + parts[1]
+                        inserted = True
+                        logger.debug(f"Inserted content before marker: {marker}")
+                        break
+                
+                if not inserted:
+                    # If no markers found, prepend content to template
+                    template_with_content = formatted_body + template
+                    logger.debug("No markers found, prepended content to template")
+            
+            html_body = template_with_content
+
+        # Create both plain text and HTML versions
+        text_part = MIMEText(body, 'plain')
+        html_part = MIMEText(html_body, 'html')
+
+        # Add both parts to the message
+        message.attach(text_part)  # Fallback plain text version
+        message.attach(html_part)  # Primary HTML version
+
+        # Encode the message
+        raw_message = message.as_string()
+        encoded_message = base64.urlsafe_b64encode(raw_message.encode("utf-8")).decode("utf-8")
+        
+        logger.debug(f"Created message with HTML length: {len(html_body)}")
+        return {"raw": encoded_message}
+
+    except Exception as e:
+        logger.exception(f"Error creating email message: {str(e)}")
         return {}
 
-def is_company_in_best_state(company_props: Dict) -> bool:
+def get_or_create_label(service, label_name: str = "to_review") -> str:
     """
-    Determine if the current month is within the 'best months' 
-    for the company's geographic seasonality.
+    Retrieve or create a Gmail label and return its labelId.
     """
     try:
-        geography = company_props.get("geographic_seasonality", "") or "Year-Round Golf"
-        club_type = company_props.get("club_type", "")
+        user_id = 'me'
+        # 1) List existing labels and log them
+        labels_response = service.users().labels().list(userId=user_id).execute()
+        existing_labels = labels_response.get('labels', [])
         
-        season_data = {}
-        peak_start = company_props.get("peak_season_start_month")
-        peak_end = company_props.get("peak_season_end_month")
-        
-        if peak_start and peak_end:
-            season_data = {
-                "peak_season_start": f"{peak_start}-01",
-                "peak_season_end": f"{peak_end}-01"
-            }
-        
-        best_months = get_best_month(geography, club_type, season_data)
-        current_month = datetime.now().month
-        
-        is_best = current_month in best_months
+        logger.debug(f"Found {len(existing_labels)} existing labels:")
+        for lbl in existing_labels:
+            logger.debug(f"  - '{lbl['name']}' (id: {lbl['id']})")
+
+        # 2) Case-insensitive search for existing label
+        label_name_lower = label_name.lower()
+        for lbl in existing_labels:
+            if lbl['name'].lower() == label_name_lower:
+                logger.debug(f"Found existing label '{lbl['name']}' with id={lbl['id']}")
+                return lbl['id']
+
+        # 3) Create new label if not found
+        logger.debug(f"No existing label found for '{label_name}', creating new one...")
+        label_body = {
+            'name': label_name,  # Use original case for creation
+            'labelListVisibility': 'labelShow',
+            'messageListVisibility': 'show',
+        }
+        created_label = service.users().labels().create(
+            userId=user_id, body=label_body
+        ).execute()
+
+        logger.debug(f"Created new label '{label_name}' with id={created_label['id']}")
+        return created_label["id"]
+
+    except Exception as e:
+        logger.error(f"Error in get_or_create_label: {str(e)}", exc_info=True)
+        return ""
+
+def create_draft(
+    sender: str,
+    to: str,
+    subject: str,
+    message_text: str,
+    lead_id: str = None,
+    sequence_num: int = None,
+) -> Dict[str, Any]:
+    """
+    Create a Gmail draft email, add the 'to_review' label, and optionally store in DB.
+    """
+    try:
         logger.debug(
-            f"Company seasonality check: {company_props.get('name', 'Unknown')} "
-            f"({geography}) - Current month {current_month} "
-            f"{'is' if is_best else 'is not'} in best months {best_months}"
+            f"Creating draft with subject='{subject}', body length={len(message_text)}"
         )
-        
-        return is_best
-        
-    except Exception as e:
-        logger.error(
-            f"Error checking company best state for {company_props.get('name', 'Unknown')}: {str(e)}", 
-            exc_info=True
+
+        service = get_gmail_service()
+        if not service:
+            logger.error("Failed to get Gmail service")
+            return {"status": "error", "error": "No Gmail service"}
+
+        # 1) Create the MIME email message
+        message = create_message(to=to, subject=subject, body=message_text)
+        if not message:
+            logger.error("Failed to create message")
+            return {"status": "error", "error": "Failed to create message"}
+
+        # 2) Create the actual draft
+        draft = (
+            service.users()
+            .drafts()
+            .create(userId="me", body={"message": message})
+            .execute()
         )
-        return False
 
-def replace_placeholders(text: str, lead_data: dict) -> str:
-    """Replace placeholders in text with actual values."""
-    text = clean_company_name(text)  # Clean any old references
-    replacements = {
-        "[firstname]": lead_data["lead_data"].get("firstname", ""),
-        "[LastName]": lead_data["lead_data"].get("lastname", ""),
-        "[clubname]": lead_data["company_data"].get("name", ""),
-        "[JobTitle]": lead_data["lead_data"].get("jobtitle", ""),
-        "[companyname]": lead_data["company_data"].get("name", ""),
-        "[City]": lead_data["company_data"].get("city", ""),
-        "[State]": lead_data["company_data"].get("state", "")
-    }
-    
-    result = text
-    for placeholder, value in replacements.items():
-        if value:
-            result = result.replace(placeholder, value)
-    return result
+        if "id" not in draft:
+            logger.error("Draft creation returned no ID")
+            return {"status": "error", "error": "No draft ID returned"}
 
-def check_lead_filters(lead_data: dict) -> bool:
-    """
-    (Optional) Add custom logic to check if lead meets your internal filter criteria.
-    Example:
-      if lead_data["email"].endswith("@spamdomain.com"): return False
-    """
-    return True
+        draft_id = draft["id"]
+        draft_message_id = draft["message"]["id"]
+        logger.debug(f"Created draft with id={draft_id}, message_id={draft_message_id}")
 
-def has_recent_email(email_address: str, months: int = 2) -> bool:
-    """Check if we've sent an email to this address in the last X months."""
-    try:
-        cutoff_date = (datetime.now() - timedelta(days=30 * months)).strftime('%Y/%m/%d')
-        query = f"to:{email_address} after:{cutoff_date}"
-        messages = search_messages(query=query)
-        
-        if messages:
-            logger.info(f"Found previous email to {email_address} within last {months} months")
-            return True
-        return False
-        
-    except Exception as e:
-        logger.error(f"Error checking recent emails for {email_address}: {str(e)}")
-        return False
-
-def check_company_conditions(company_props: Dict, contact_conditions: List[Dict] = None, club_type_conditions: List[Dict] = None) -> bool:
-    """
-    Test if a company meets the contact and club type conditions.
-    Returns True if company passes all checks, False otherwise.
-    """
-    logger.debug(
-        f"\nChecking conditions for {company_props.get('name', 'Unknown Company')}:\n"
-        f"Contact conditions: {contact_conditions}\n"
-        f"Club type conditions: {club_type_conditions}"
-    )
-
-    # Check contact conditions (OR logic)
-    if contact_conditions:
-        contact_passed = False
-        last_contacted = company_props.get("notes_last_contacted")
-        logger.debug(f"Checking contact conditions - Last contacted: {last_contacted}")
-        
-        for condition in contact_conditions:
-            operator = condition["operator"]
-            value = condition.get("value")
-            
-            logger.debug(f"Testing contact condition: operator={operator}, value={value}")
-            
-            if operator == "NOT_HAS_PROPERTY" and not last_contacted:
-                contact_passed = True
-                logger.debug("PASSED: No contact history found")
-                break
-            elif operator == "LTE" and last_contacted and last_contacted <= value:
-                contact_passed = True
-                logger.debug(f"PASSED: Last contact ({last_contacted}) is before {value}")
-                break
-            # Add other operators as needed
-        
-        if not contact_passed:
-            logger.info(
-                f"Company failed contact conditions:\n"
-                f"Last contacted: {last_contacted}\n"
-                f"Required conditions: {contact_conditions}"
+        # 3) Store draft info in the DB if lead_id is provided
+        if settings.CREATE_FOLLOWUP_DRAFT and lead_id:
+            store_draft_info(
+                lead_id=lead_id,
+                draft_id=draft_id,
+                scheduled_date=None,
+                subject=subject,
+                body=message_text,
+                sequence_num=sequence_num,
             )
-            return False
+        else:
+            logger.info("Follow-up draft creation is disabled via CREATE_FOLLOWUP_DRAFT setting")
 
-    # Check club type conditions (OR logic)
-    if club_type_conditions:
-        club_type_passed = False
-        club_type = company_props.get("club_type")
-        logger.debug(f"Checking club type conditions - Club type: {club_type}")
-        
-        for condition in club_type_conditions:
-            operator = condition["operator"]
-            value = condition.get("value")
-            
-            logger.debug(f"Testing club type condition: operator={operator}, value={value}")
-            
-            if operator == "NOT_HAS_PROPERTY" and not club_type:
-                club_type_passed = True
-                logger.debug("PASSED: No club type specified")
-                break
-            elif operator == "EQ" and club_type == value:
-                club_type_passed = True
-                logger.debug(f"PASSED: Club type matches {value}")
-                break
-            # Add other operators as needed
-            
-        if not club_type_passed:
-            logger.info(
-                f"Company failed club type conditions:\n"
-                f"Current club type: {club_type}\n"
-                f"Required conditions: {club_type_conditions}"
-            )
-            return False
-
-    logger.debug("Company passed all conditions")
-    return True
-
-# -----------------------------------------------------------------------------
-# COMPANIES-FIRST WORKFLOW
-# -----------------------------------------------------------------------------
-def main_companies_first():
-    """
-    1) Get companies first
-    2) For each company, get its leads
-    3) Process each lead
-    """
-    try:
-        workflow_context = {'correlation_id': str(uuid.uuid4())}
-        hubspot = HubspotService(HUBSPOT_API_KEY)
-        company_enricher = CompanyEnrichmentService()
-        data_gatherer = DataGathererService()
-        conversation_analyzer = ConversationAnalysisService()
-        leads_processed = 0
-        
-        with workflow_step("1", "Get Country Club companies", workflow_context):
-            # Get companies
-            companies = get_country_club_companies(hubspot)
-            logger.info(f"Found {len(companies)} companies to process")
-            
-            # Randomize the order
-            random.shuffle(companies)
-            
-        with workflow_step("2", "Process each company & its leads", workflow_context):
-            # Process each company
-            for company in companies:
-                company_id = company.get("id")
-                company_props = company.get("properties", {})
-                
-                # Check for competitor info first
-                website = company_props.get("website")
-                if website:
-                    competitor_info = data_gatherer.check_competitor_on_website(website)
-                    if competitor_info["status"] == "success" and competitor_info["competitor"]:
-                        competitor = competitor_info["competitor"]
-                        logger.debug(f"Found competitor {competitor} for company {company_id}")
-                        
-                        # Update company with competitor info
-                        try:
-                            hubspot._update_company_properties(
-                                company_id, 
-                                {"competitor": competitor}
-                            )
-                            logger.debug(f"Updated company {company_id} with competitor: {competitor}")
-                        except Exception as e:
-                            logger.error(f"Failed to update competitor for company {company_id}: {e}")
-                
-                # Continue with regular enrichment
-                enrichment_result = company_enricher.enrich_company(company_id)
-                
-                if not enrichment_result.get("success", False):
-                    logger.warning(f"Enrichment failed for company {company_id}, skipping.")
-                    continue
-                
-                # Update company properties all at once
-                company_props.update(enrichment_result.get("data", {}))
-                
-                # Simple direct checks
-                club_type = company_props.get("club_type", "")
-                last_contacted = company_props.get("notes_last_contacted")
-                
-                # # Check if club type is valid (must be Country Club or not specified)
-                # if club_type and club_type != "Country Club":
-                #     logger.info(f"Skipping company {company_id} - Club type is {club_type}")
-                #     continue
-                    
-                # Check if we've contacted them recently
-                if last_contacted and last_contacted > "2025-01-01T00:00:00Z":
-                    logger.info(f"Skipping company {company_id} - Last contacted on {last_contacted}")
-                    continue
-                
-                # Get the leads for this company
-                leads = get_leads_for_company(hubspot, company_id)
-                if not leads:
-                    logger.info(f"No leads found for company {company_id}")
-                    continue
-                
-                for lead in leads:
-                    lead_id = lead.get("id")
-                    lead_props = lead.get("properties", {})
-                    logger.info(f"Processing lead: {lead_props.get('email')} (ID: {lead_id})")
-                    
-                    # Check for recent emails early
-                    email_address = lead_props["email"]
-                    if has_recent_email(email_address):
-                        logger.info(f"Skipping {email_address} - email sent in last 2 months")
-                        continue
-                    
-                    try:
-                        # Build your email (similar steps as main_leads_first)
-                        lead_data_full = extract_lead_data(company_props, lead_props)
-                        if not check_lead_filters(lead_data_full["lead_data"]):
-                            logger.info(f"Lead {lead_id} did not pass custom checks, skipping.")
-                            continue
-                        
-                        # Gather personalization
-                        personalization = gather_personalization_data(
-                            company_name=lead_data_full["company_data"]["name"],
-                            city=lead_data_full["company_data"]["city"],
-                            state=lead_data_full["company_data"]["state"]
-                        )
-                        
-                        # Decide which template
-                        template_path = get_template_path(
-                            club_type=lead_data_full["company_data"]["club_type"],
-                            role=lead_data_full["lead_data"]["jobtitle"]
-                        )
-                        
-                        # Calculate a good send date
-                        send_date = calculate_send_date(
-                            geography=lead_data_full["company_data"]["geographic_seasonality"],
-                            persona=lead_data_full["lead_data"]["jobtitle"],
-                            state_code=lead_data_full["company_data"]["state"],
-                            season_data={
-                                "peak_season_start": lead_data_full["company_data"].get("peak_season_start_month"),
-                                "peak_season_end": lead_data_full["company_data"].get("peak_season_end_month")
-                            }
-                        )
-                        
-                        # Build the outreach email
-                        email_content = build_outreach_email(
-                            template_path=template_path,
-                            profile_type=lead_data_full["lead_data"]["jobtitle"],
-                            placeholders={
-                                "firstname": lead_data_full["lead_data"]["firstname"],
-                                "LastName": lead_data_full["lead_data"]["lastname"],
-                                "companyname": lead_data_full["company_data"]["name"],
-                                "company_short_name": lead_data_full["company_data"].get("company_short_name", ""),
-                                "JobTitle": lead_data_full["lead_data"]["jobtitle"],
-                                "company_info": lead_data_full["company_data"].get("club_info", ""),
-                                "has_news": personalization.get("has_news", False),
-                                "news_text": personalization.get("news_text", ""),
-                                "clubname": lead_data_full["company_data"]["name"]
-                            },
-                            current_month=datetime.now().month,
-                            start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
-                            end_peak_month=lead_data_full["company_data"].get("peak_season_end_month")
-                        )
-
-                        if email_content:
-                            # First replace placeholders
-                            subject = replace_placeholders(email_content[0], lead_data_full)
-                            body = replace_placeholders(email_content[1], lead_data_full)
-                            
-                            # Then get conversation analysis
-                            email_address = lead_data_full["lead_data"]["email"]
-                            conversation_summary = conversation_analyzer.analyze_conversation(email_address)
-                            
-                            # Create context block with placeholder-replaced content
-                            context = build_context_block(
-                                interaction_history=conversation_summary,
-                                original_email={"subject": subject, "body": body},
-                                company_data={
-                                    "name": lead_data_full["company_data"]["name"],
-                                    "company_short_name": (
-                                        lead_data_full["company_data"].get("company_short_name") or
-                                        lead_data_full.get("company_short_name") or  # Try alternate location
-                                        lead_data_full["company_data"]["name"].split(" ")[0]  # Fallback
-                                    ),
-                                    "city": lead_data_full["company_data"].get("city", ""),
-                                    "state": lead_data_full["company_data"].get("state", ""),
-                                    "club_type": lead_data_full["company_data"]["club_type"],
-                                    "club_info": lead_data_full["company_data"].get("club_info", "")
-                                }
-                            )
-                            
-                            # Add debug logging
-                            logger.debug(f"Building context with company_short_name: {lead_data_full['company_data'].get('company_short_name', '')}")
-                            
-                            # Finally, personalize with xAI using the placeholder-replaced content
-                            personalized_content = personalize_email_with_xai(
-                                lead_sheet=lead_data_full,
-                                subject=subject,
-                                body=body,
-                                summary=conversation_summary,
-                                context=context
-                            )
-                                                            
-                            # Create the Gmail draft with personalized content
-                            draft_result = create_draft(
-                                sender="me",
-                                to=email_address,
-                                subject=personalized_content["subject"],
-                                message_text=personalized_content["body"]
-                            )
-                            
-                            if draft_result["status"] == "ok":
-                                store_lead_email_info(
-                                    lead_sheet={
-                                        "lead_data": {
-                                            "email": lead_data_full["lead_data"]["email"],
-                                            "properties": {
-                                                "hs_object_id": lead_id,
-                                                "firstname": lead_data_full["lead_data"]["firstname"],
-                                                "lastname": lead_data_full["lead_data"]["lastname"]
-                                            }
-                                        },
-                                        "company_data": {
-                                            "name": lead_data_full["company_data"]["name"],
-                                            "city": lead_data_full["company_data"]["city"],
-                                            "state": lead_data_full["company_data"]["state"],
-                                            "company_type": lead_data_full["company_data"]["club_type"]
-                                        }
-                                    },
-                                    draft_id=draft_result["draft_id"],
-                                    scheduled_date=send_date,
-                                    body=email_content[1],
-                                    sequence_num=1
-                                )
-                                logger.info(f"Created draft email for {lead_data_full['lead_data']['email']}")
-                            else:
-                                logger.error(f"Failed to create Gmail draft for lead {lead_id}")
-                        else:
-                            logger.error(f"Failed to generate email content for lead {lead_id}")
-                    
-                    except Exception as e:
-                        logger.error(f"Error processing lead {lead_id} for company {company_id}: {e}", exc_info=True)
-                    
-                    leads_processed += 1
-                    if leads_processed >= LEADS_TO_PROCESS:
-                        logger.info(f"Reached processing limit of {LEADS_TO_PROCESS} leads")
-                        return
-    
-    except LeadContextError as e:
-        logger.error(f"Lead context error: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error in main_companies_first workflow: {str(e)}", exc_info=True)
-        raise
-
-# -----------------------------------------------------------------------------
-# LEADS-FIRST WORKFLOW
-# -----------------------------------------------------------------------------
-def main_leads_first():
-    """
-    1) Get leads first
-    2) If USE_RANDOM_LEAD is True, randomly select one lead; otherwise process all leads
-    3) Retrieve associated company(ies)
-    4) Check if company(ies) pass the workflow filters
-    5) Build and store the outreach email(s)
-    """
-    try:
-        # Initialize counter at the start of the function
-        leads_processed = 0
-        
-        workflow_context = {'correlation_id': str(uuid.uuid4())}
-        hubspot = HubspotService(HUBSPOT_API_KEY)
-        company_enricher = CompanyEnrichmentService()
-        data_gatherer = DataGathererService()
-        conversation_analyzer = ConversationAnalysisService()
-        
-        with workflow_step("1", "Initialize and get leads", workflow_context):
-            # Pull high-scoring leads first
-            leads = get_leads(hubspot, min_score=0)
-            logger.info(f"Found {len(leads)} total leads (score > 0)")
-            
-            # Check if we should randomly select one lead
-            use_random = os.getenv('USE_RANDOM_LEAD', 'false').lower() == 'true'
-            logger.info(f"USE_RANDOM_LEAD setting: {use_random}")
-            
-            if not leads:
-                logger.warning("No leads found to process")
-                return
-                
-            if use_random:
-                selected_lead = random.choice(leads)
-                leads = [selected_lead]  # Replace leads list with just the selected lead
-                logger.info(f"Randomly selected lead: {selected_lead.get('properties', {}).get('email')} for processing")
-            else:
-                # Shuffle the leads list to randomize processing order
-                random.shuffle(leads)
-                logger.info(f"Processing all {len(leads)} leads in random order")
-
-        with workflow_step("2", "Process each lead's associated company", workflow_context):
-            for lead in leads:
-                lead_id = lead.get("id")
-                lead_props = lead.get("properties", {})
-                
-                logger.info(f"Processing lead: {lead_props.get('email')} (ID: {lead_id})")
-                
-                # 1) Retrieve associated company
-                associated_company_id = lead_props.get("associatedcompanyid")
-                if not associated_company_id:
-                    logger.warning(f"No associated company for lead {lead_id}, skipping.")
-                    continue
-                
-                company = get_company_by_id(hubspot, associated_company_id)
-                company_id = company.get("id")
-                company_props = company.get("properties", {}) if company else {}
-                
-                if not company_id:
-                    logger.warning(f"Could not retrieve valid company for lead {lead_id}, skipping.")
-                    continue
-                
-                # Add state validation
-                if company_props.get("state") not in COMPANY_FILTERS["filterGroups"][0]["filters"][0]["values"]:
-                    logger.info(f"Skipping company {company_id} - State {company_props.get('state')} not in target states")
-                    continue
-                
-                # 2) Enrich the company data
-                enrichment_result = company_enricher.enrich_company(company_id)
-                if not enrichment_result.get("success", False):
-                    logger.warning(f"Enrichment failed for company {company_id}, skipping.")
-                    continue
-                company_props.update(enrichment_result.get("data", {}))
-                
-                # Simple direct checks
-                club_type = company_props.get("club_type", "")
-                last_contacted = company_props.get("notes_last_contacted")
-                
-                # # Check if club type is valid (must be Country Club or not specified)
-                # if club_type and club_type != "Country Club":
-                #     logger.info(f"Skipping company {company_id} - Club type is {club_type}")
-                #     continue
-                    
-                # Check if we've contacted them recently
-                if last_contacted and last_contacted > "2025-01-01T00:00:00Z":
-                    logger.info(f"Skipping company {company_id} - Last contacted on {last_contacted}")
-                    continue
-                
-                # # 4) Check if the current month is in the "best" time for outreach
-                # if not is_company_in_best_state(company_props):
-                #     logger.info(f"Company {company_id} not in best outreach window, skipping lead {lead_id}.")
-                #     continue
-                
-                # 5) Now process the lead
-                with workflow_step("3", f"Processing lead {lead_id}", workflow_context):
-                    try:
-                        lead_data_full = extract_lead_data(company_props, lead_props)
-                        
-                        if "unknown" in lead_data_full["company_data"]["name"].lower():
-                            logger.info(f"Skipping lead {lead_id} - Club name contains 'Unknown'")
-                            continue
-                        if lead_data_full["company_data"]["club_type"] == "Unknown":
-                            logger.info(f"Skipping lead {lead_id} - Club type is Unknown")
-                            continue
-                        
-                        if not check_lead_filters(lead_data_full["lead_data"]):
-                            logger.info(f"Lead {lead_id} did not pass custom checks, skipping.")
-                            continue
-                        
-                        email_address = lead_data_full["lead_data"]["email"]
-                        if has_recent_email(email_address):
-                            logger.info(f"Skipping {email_address} - email sent in last 2 months")
-                            continue
-                        
-                        interaction_summary = lead_props.get("recent_interaction", "")
-                        
-                        personalization = gather_personalization_data(
-                            company_name=lead_data_full["company_data"]["name"],
-                            city=lead_data_full["company_data"]["city"],
-                            state=lead_data_full["company_data"]["state"]
-                        )
-                        
-                        template_path = get_template_path(
-                            club_type=lead_data_full["company_data"]["club_type"],
-                            role=lead_data_full["lead_data"]["jobtitle"]
-                        )
-                        
-                        send_date = calculate_send_date(
-                            geography=lead_data_full["company_data"]["geographic_seasonality"],
-                            persona=lead_data_full["lead_data"]["jobtitle"],
-                            state_code=lead_data_full["company_data"]["state"],
-                            season_data={
-                                "peak_season_start": lead_data_full["company_data"].get("peak_season_start_month"),
-                                "peak_season_end": lead_data_full["company_data"].get("peak_season_end_month")
-                            }
-                        )
-                        
-                        email_content = build_outreach_email(
-                            template_path=template_path,
-                            profile_type=lead_data_full["lead_data"]["jobtitle"],
-                            placeholders={
-                                "firstname": lead_data_full["lead_data"]["firstname"],
-                                "LastName": lead_data_full["lead_data"]["lastname"],
-                                "companyname": lead_data_full["company_data"]["name"],
-                                "company_short_name": lead_data_full["company_data"].get("company_short_name", ""),
-                                "JobTitle": lead_data_full["lead_data"]["jobtitle"],
-                                "company_info": lead_data_full["company_data"].get("club_info", ""),
-                                "has_news": personalization.get("has_news", False),
-                                "news_text": personalization.get("news_text", ""),
-                                "clubname": lead_data_full["company_data"]["name"]
-                            },
-                            current_month=datetime.now().month,
-                            start_peak_month=lead_data_full["company_data"].get("peak_season_start_month"),
-                            end_peak_month=lead_data_full["company_data"].get("peak_season_end_month")
-                        )
-
-                        if email_content:
-                            subject = replace_placeholders(email_content[0], lead_data_full)
-                            body = replace_placeholders(email_content[1], lead_data_full)
-                            
-                            conversation_summary = conversation_analyzer.analyze_conversation(email_address)
-                            
-                            context = build_context_block(
-                                interaction_history=conversation_summary,
-                                original_email={"subject": subject, "body": body},
-                                company_data={
-                                    "name": lead_data_full["company_data"]["name"],
-                                    "company_short_name": (
-                                        lead_data_full["company_data"].get("company_short_name") or
-                                        lead_data_full.get("company_short_name") or  # Try alternate location
-                                        lead_data_full["company_data"]["name"].split(" ")[0]  # Fallback
-                                    ),
-                                    "city": lead_data_full["company_data"].get("city", ""),
-                                    "state": lead_data_full["company_data"].get("state", ""),
-                                    "club_type": lead_data_full["company_data"]["club_type"],
-                                    "club_info": lead_data_full["company_data"].get("club_info", "")
-                                }
-                            )
-                            
-                            # Add debug logging
-                            logger.debug(f"Building context with company_short_name: {lead_data_full['company_data'].get('company_short_name', '')}")
-                            
-                            personalized_content = personalize_email_with_xai(
-                                lead_sheet=lead_data_full,
-                                subject=subject,
-                                body=body,
-                                summary=conversation_summary,
-                                context=context
-                            )
-                                                            
-                            draft_result = create_draft(
-                                sender="me",
-                                to=email_address,
-                                subject=personalized_content["subject"],
-                                message_text=personalized_content["body"]
-                            )
-                            
-                            if draft_result["status"] == "ok":
-                                store_lead_email_info(
-                                    lead_sheet={
-                                        "lead_data": {
-                                            "email": lead_data_full["lead_data"]["email"],
-                                            "properties": {
-                                                "hs_object_id": lead_id,
-                                                "firstname": lead_data_full["lead_data"]["firstname"],
-                                                "lastname": lead_data_full["lead_data"]["lastname"]
-                                            }
-                                        },
-                                        "company_data": {
-                                            "name": lead_data_full["company_data"]["name"],
-                                            "city": lead_data_full["company_data"]["city"],
-                                            "state": lead_data_full["company_data"]["state"],
-                                            "company_type": lead_data_full["company_data"]["club_type"]
-                                        }
-                                    },
-                                    draft_id=draft_result["draft_id"],
-                                    scheduled_date=send_date,
-                                    body=email_content[1],
-                                    sequence_num=1
-                                )
-                                logger.info(f"Created draft email for {lead_data_full['lead_data']['email']}")
-                            else:
-                                logger.error(f"Failed to create Gmail draft for lead {lead_id}")
-                        else:
-                            logger.error(f"Failed to generate email content for lead {lead_id}")
-                    
-                    except Exception as e:
-                        logger.error(f"Error processing lead {lead_id}: {str(e)}", exc_info=True)
-                        continue
-                    
-                    leads_processed += 1
-                    logger.info(f"Completed processing lead {lead_id} ({leads_processed}/{LEADS_TO_PROCESS})")
-                    
-                    if leads_processed >= LEADS_TO_PROCESS:
-                        logger.info(f"Reached processing limit of {LEADS_TO_PROCESS} leads")
-                        return
-    
-    except LeadContextError as e:
-        logger.error(f"Lead context error: {str(e)}")
-    except Exception as e:
-        logger.error(f"Error in main_leads_first workflow: {str(e)}", exc_info=True)
-        raise
-
-# -----------------------------------------------------------------------------
-# SINGLE ENTRY POINT THAT CHECKS WORKFLOW_MODE
-# -----------------------------------------------------------------------------
-def main():
-    logger.debug(f"Starting with CLEAR_LOGS_ON_START={CLEAR_LOGS_ON_START} and WORKFLOW_MODE={WORKFLOW_MODE}")
-    
-    if CLEAR_LOGS_ON_START:
-        clear_files_on_start()
-        os.system('cls' if os.name == 'nt' else 'clear')
-    
-    # Start scheduler in background
-    scheduler_thread = threading.Thread(target=start_scheduler, daemon=True)
-    scheduler_thread.start()
-    
-    # Decide which approach to use
-    if WORKFLOW_MODE.lower() == "companies":
-        main_companies_first()
-    else:
-        main_leads_first()
-
-# -----------------------------------------------------------------------------
-# RUN SCRIPT
-# -----------------------------------------------------------------------------
-if __name__ == "__main__":
-    main()
-
-
-
-
-## test_hubspot_data_pull.py
-
-import json
-import re
-from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
-
-import openai
-from dateutil.parser import parse as parse_date
-import pytz
-
-from services.data_gatherer_service import DataGathererService
-from config.settings import HUBSPOT_API_KEY, OPENAI_API_KEY
-from utils.logging_setup import logger
-from services.gmail_service import GmailService
-from utils.conversation_summary import get_latest_email_date, summarize_lead_interactions
-
-
-def clean_email_body(body_text: Optional[str]) -> Optional[str]:
-    """
-    Clean up email body text by removing signatures, footers, and formatting.
-
-    :param body_text: The raw email body text.
-    :return: A cleaned version of the email body or None if the input is None.
-    """
-    if body_text is None:
-        return None
-
-    # Split on common email reply markers (signatures, footers, etc.)
-    splits = re.split(
-        r'(?:\r\n|\r|\n)*(?:From:|On .* wrote:|_{3,}|Get Outlook|Sent from|<http)',
-        body_text
-    )
-
-    # Take the first part (assumed to be the main message)
-    message = splits[0].strip()
-
-    # Remove extra whitespace
-    message = re.sub(r'\s+', ' ', message)
-    # Remove [cid:...] references
-    message = re.sub(r'\[cid:[^\]]+\]', '', message)
-    # Remove HTML tags
-    message = re.sub(r'<[^>]+>', '', message)
-
-    return message.strip()
-
-
-def summarize_conversation(emails: List[Dict[str, Any]]) -> str:
-    """Use OpenAI to summarize the conversation thread."""
-    if not emails:
-        return "No conversation found."
-
-    # Sort emails by timestamp in ascending order
-    sorted_emails = sorted(
-        (e for e in emails if e.get('timestamp')),
-        key=lambda x: parse_date(x['timestamp'])
-    )
-
-    # Find the latest incoming message
-    latest_incoming = None
-    for email in reversed(sorted_emails):
-        if email.get('direction') == 'INCOMING_EMAIL':
-            latest_incoming = email
-            break
-
-    # Prepare conversation text for OpenAI
-    conversation_text = "Full conversation:\n\n"
-    for email in sorted_emails:
-        date = parse_date(email['timestamp']).strftime('%Y-%m-%d %H:%M')
-        direction = "OUTBOUND" if email.get('direction') in ['EMAIL', 'NOTE'] else "INBOUND"
-        message = clean_email_body(email.get('body_text')) or f"[Email with subject: {email.get('subject', 'No subject')}]"
-        conversation_text += f"{date} ({direction}): {message}\n\n"
-
-    # Add specific information about latest incoming message
-    if latest_incoming:
-        latest_date = parse_date(latest_incoming['timestamp']).strftime('%Y-%m-%d %H:%M')
-        conversation_text += f"\nLatest incoming message was at {latest_date}\n"
-
-    try:
-        today = datetime.now().date()
-        openai.api_key = OPENAI_API_KEY
-        response = openai.ChatCompletion.create(
-            model="gpt-4",
-            temperature=0.2,  # Add moderate temperature for consistent but natural responses
-            messages=[
-                {
-                    "role": "system", 
-                    "content": (
-                        "You are a sales assistant analyzing email conversations. "
-                        "Please provide: "
-                        "1) A brief summary of the conversation thread, "
-                        "2) The latest INCOMING response only (ignore outbound messages from Ryan Donovan or Ty Hayes), including the date and who it was from, "
-                        f"3) Whether we responded to the latest incoming message, and if so, what was our response (include the full email text) and how many days ago was it sent relative to {today}."
-                    )
-                },
-                {"role": "user", "content": conversation_text}
-            ]
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        logger.error(f"Error in OpenAI summarization: {str(e)}")
-        return f"Error generating summary: {str(e)}"
-
-
-def print_conversation_thread(emails: List[Dict[str, Any]], notes: List[Dict[str, Any]], gmail_emails: Dict[str, Any]) -> None:
-    """
-    Print emails as a conversation thread and provide an AI summary.
-    """
-    if not emails and not notes and not gmail_emails["inbound"] and not gmail_emails["outbound"]:
-        print("\nNo conversation found!")
-        return
-
-    # print("\nConversation Thread:")
-    # print("=" * 50)
-
-    # Convert notes to email format
-    email_notes = []
-    for note in notes:
-        if note.get("timestamp") and "email" in note.get("body", "").lower():
-            # Ensure timestamp is timezone-aware
-            timestamp = parse_date(note["timestamp"])
-            if timestamp.tzinfo is None:
-                timestamp = pytz.UTC.localize(timestamp)
-                
-            email_notes.append({
-                "timestamp": timestamp.isoformat(),
-                "body_text": note.get("body"),
-                "direction": "NOTE",
-                "subject": "Email Note"
-            })
-
-    # Add Gmail messages if they exist
-    gmail_messages = []
-    for direction, msg in gmail_emails.items():
-        if msg and msg.get("timestamp"):
-            # Ensure timestamp is timezone-aware
-            timestamp = parse_date(msg["timestamp"])
-            if timestamp.tzinfo is None:
-                timestamp = pytz.UTC.localize(timestamp)
-                
-            gmail_messages.append({
-                "timestamp": timestamp.isoformat(),
-                "body_text": msg["body_text"],
-                "direction": msg["direction"],
-                "subject": msg.get("subject", "No subject"),
-                "source": "Gmail",
-                "gmail_id": msg.get("gmail_id")
-            })
-
-    # Process HubSpot emails
-    hubspot_messages = []
-    for email in emails:
-        if email.get("timestamp"):
-            # Ensure timestamp is timezone-aware
-            timestamp = parse_date(email["timestamp"])
-            if timestamp.tzinfo is None:
-                timestamp = pytz.UTC.localize(timestamp)
-                
-            hubspot_messages.append({
-                "timestamp": timestamp.isoformat(),
-                "body_text": email.get("body_text"),
-                "direction": email.get("direction"),
-                "subject": email.get("subject", "No subject"),
-                "source": "HubSpot"
-            })
-
-    # Combine all messages
-    all_messages = hubspot_messages + email_notes + gmail_messages
-
-    # Sort all messages by timestamp in descending order
-    sorted_messages = sorted(
-        all_messages,
-        key=lambda x: parse_date(x["timestamp"]),
-        reverse=True
-    )
-
-    # for message in sorted_messages:
-    #     try:
-    #         date_obj = parse_date(message["timestamp"])
-            
-    #         # Determine message source and direction
-    #         source = message.get("source", "HubSpot")
-    #         if message.get("direction") == "NOTE":
-    #             direction_arrow = "📝"
-    #         else:
-    #             direction_arrow = "→" if message.get("direction") == "EMAIL" else "←"
-            
-    #         print(f"\n{date_obj.strftime('%Y-%m-%d %H:%M')} {direction_arrow} [{source}] ", end="")
-
-    #         body_text = clean_email_body(message.get("body_text"))
-    #         if body_text:
-    #             print(body_text)
-    #         else:
-    #             subject = message.get("subject", "No subject")
-    #             print(f"[Email with subject: {subject}]")
-
-    #     except Exception as e:
-    #         logger.error(f"Error processing message: {str(e)}")
-    #         continue
-
-    # Print AI-generated summary
-    print("\nAI Analysis:")
-    print("=" * 50)
-    summary = summarize_conversation(sorted_messages)
-    print(summary)
-
-
-def get_contacts_from_list(list_id: str) -> List[Dict[str, Any]]:
-    """Get all contacts from a specified HubSpot list."""
-    try:
-        data_gatherer = DataGathererService()
-        logger.debug(f"Initializing contact pull from list {list_id}")
-        
-        # First get list memberships
-        url = f"https://api.hubapi.com/crm/v3/lists/{list_id}/memberships"
-        logger.debug(f"Fetching list memberships from: {url}")
-        memberships = data_gatherer.hubspot._make_hubspot_get(url)
-        
-        # Extract record IDs
-        record_ids = []
-        if isinstance(memberships, dict) and "results" in memberships:
-            record_ids = [result["recordId"] for result in memberships.get("results", [])]
-        
-        logger.debug(f"Found {len(record_ids)} records in list")
-        
-        # Now fetch full contact details for each ID (limit to first 25)
-        contacts = []
-        for record_id in record_ids[:25]:  # Limit to first 25
+        # 4) Add the "to_review" label to the underlying draft message
+        label_id = get_or_create_label(service, "to_review")
+        if label_id:
             try:
-                # Get full contact details using v3 API
-                contact_url = f"https://api.hubapi.com/crm/v3/objects/contacts/{record_id}"
-                params = {
-                    "properties": ["email", "firstname", "lastname", "company"]
-                }
-                contact_data = data_gatherer.hubspot._make_hubspot_get(contact_url, params)
-                if contact_data:
-                    contacts.append(contact_data)
-                    
+                service.users().messages().modify(
+                    userId="me",
+                    id=draft_message_id,
+                    body={"addLabelIds": [label_id]},
+                ).execute()
+                logger.debug(f"Added '{label_id}' label to draft message {draft_message_id}")
             except Exception as e:
-                logger.warning(f"Failed to fetch details for contact {record_id}: {str(e)}")
-                continue
-        
-        logger.info(f"Successfully retrieved {len(contacts)} contacts with details")
-        return contacts
-        
-    except Exception as e:
-        logger.error(f"Error getting contacts from list: {str(e)}", exc_info=True)
-        return []
+                logger.error(f"Failed to add label to draft: {str(e)}")
+        else:
+            logger.warning("Could not get/create 'to_review' label - draft remains unlabeled")
 
-
-def process_list_contacts(list_id: str) -> None:
-    """Process all contacts from a specified HubSpot list."""
-    try:
-        logger.debug(f"Starting to process list ID: {list_id}")
-        
-        # Get contacts from list
-        contacts = get_contacts_from_list(list_id)
-        
-        if not contacts:
-            print(f"No contacts found in list {list_id}")
-            return
-
-        print("\nFirst 25 email addresses from list:")
-        print("=" * 50)
-        
-        # Process each contact
-        for i, contact in enumerate(contacts, 1):
-            # Get email from properties
-            properties = contact.get("properties", {})
-            email = properties.get("email")
-            
-            if email:
-                print(f"{i}. {email}")
-            else:
-                print(f"{i}. [No email found]")
-
-    except Exception as e:
-        print(f"Error processing list contacts: {str(e)}")
-        logger.error(f"Error in process_list_contacts: {str(e)}", exc_info=True)
-
-
-def test_email_pull(email_address: str) -> None:
-    """Test function to pull and display HubSpot data for a specific email address."""
-    try:
-        data_gatherer = DataGathererService()
-        gmail_service = GmailService()
-
-        # Get contact data
-        contact_data = data_gatherer.hubspot.get_contact_by_email(email_address)
-        if not contact_data:
-            print(f"No contact found for email: {email_address}")
-            return
-
-        contact_id = contact_data["id"]
-
-        # Get all emails and notes from HubSpot
-        try:
-            all_emails = data_gatherer.hubspot.get_all_emails_for_contact(contact_id)
-            all_notes = data_gatherer.hubspot.get_all_notes_for_contact(contact_id)
-            
-            # Get latest Gmail messages
-            gmail_emails = gmail_service.get_latest_emails_for_contact(email_address)
-            
-            # Get latest email date
-            latest_date = get_latest_email_date(all_emails)
-            if latest_date:
-                print(f"\nLatest Email Date: {latest_date.strftime('%Y-%m-%d %H:%M:%S')}")
-            else:
-                print("\nNo emails found")
-            
-            print_conversation_thread(all_emails, all_notes, gmail_emails)
-            
-        except Exception as e:
-            print(f"Error fetching messages: {str(e)}")
-            all_emails = []
-            all_notes = []
-            gmail_emails = {"inbound": None, "outbound": None}
-
-        # Save raw data to file
-        output_data = {
-            "contact_id": contact_id,
-            "emails": all_emails,
-            "notes": all_notes,
-            "gmail_emails": gmail_emails
+        return {
+            "status": "ok",
+            "draft_id": draft_id,
+            "sequence_num": sequence_num,
         }
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"hubspot_data_{timestamp}.json"
-        with open(filename, 'w') as f:
-            json.dump(output_data, f, indent=2)
-        print(f"\nFull response saved to: {filename}")
+    except Exception as e:
+        logger.error(f"Error in create_draft: {str(e)}", exc_info=True)
+        return {"status": "error", "error": str(e)}
+
+def get_lead_email(lead_id: str) -> str:
+    """Get a lead's email from the database."""
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Updated query to use correct column names
+        cursor.execute("""
+            SELECT email 
+            FROM leads 
+            WHERE lead_id = ?
+        """, (lead_id,))
+        
+        result = cursor.fetchone()
+
+        if not result:
+            logger.error(f"No email found for lead_id={lead_id}")
+            return ""
+
+        return result[0]
 
     except Exception as e:
-        print(f"Error occurred: {str(e)}")
-        logger.error(f"Error in test_email_pull: {str(e)}", exc_info=True)
+        logger.error(f"Error getting lead email: {str(e)}")
+        return ""
+    finally:
+        if "cursor" in locals():
+            cursor.close()
+        if "conn" in locals():
+            conn.close()
 
+def store_draft_info(
+    lead_id: str,
+    draft_id: str,
+    scheduled_date: datetime,
+    subject: str,
+    body: str,
+    sequence_num: int = None,
+):
+    """Store draft information using the consolidated storage function."""
+    lead_sheet = {"lead_data": {"properties": {"hs_object_id": lead_id}}}
+    store_lead_email_info(
+        lead_sheet=lead_sheet,
+        draft_id=draft_id,
+        scheduled_date=scheduled_date,
+        subject=subject,
+        body=body,
+        sequence_num=sequence_num
+    )
 
-if __name__ == "__main__":
-    # Enable debug logging
-    logger.setLevel("DEBUG")
-    
-    # Replace this with your actual HubSpot list ID
-    TEST_LIST_ID = "221"  # <-- Put your actual HubSpot list ID here
-    
-    print(f"\nStarting contact pull from HubSpot list: {TEST_LIST_ID}")
-    process_list_contacts(TEST_LIST_ID)
+def send_message(sender, to, subject, message_text) -> Dict[str, Any]:
+    """
+    Send an email immediately (without creating a draft).
+    """
+    logger.debug(f"Preparing to send message. Sender={sender}, To={to}, Subject={subject}")
+    service = get_gmail_service()
+    message_body = create_message(to=to, subject=subject, body=message_text)
+
+    try:
+        sent_msg = (
+            service.users()
+            .messages()
+            .send(userId="me", body=message_body)
+            .execute()
+        )
+        if sent_msg.get("id"):
+            logger.info(f"Message sent successfully to '{to}' – ID={sent_msg['id']}")
+            return {"status": "ok", "message_id": sent_msg["id"]}
+        else:
+            logger.error(f"Message sent to '{to}' but no ID returned – possibly an API error.")
+            return {"status": "error", "error": "No message ID returned"}
+    except Exception as e:
+        logger.error(
+            f"Failed to send message to '{to}' with subject='{subject}'. Error: {e}"
+        )
+        return {"status": "error", "error": str(e)}
+
+def search_messages(query="") -> list:
+    """
+    Search for messages in the Gmail inbox using the specified `query`.
+    For example:
+      - 'from:someone@example.com'
+      - 'subject:Testing'
+      - 'to:me newer_than:7d'
+    Returns a list of message dicts.
+    """
+    service = get_gmail_service()
+    try:
+        response = service.users().messages().list(userId="me", q=query).execute()
+        return response.get("messages", [])
+    except Exception as e:
+        logger.error(f"Error searching messages with query='{query}': {e}")
+        return []
+
+def check_thread_for_reply(thread_id: str) -> bool:
+    """
+    Checks if there's more than one message in a given thread, indicating a reply.
+    More precise than searching by 'from:' or date alone.
+    """
+    service = get_gmail_service()
+    try:
+        thread_data = service.users().threads().get(userId="me", id=thread_id).execute()
+        msgs = thread_data.get("messages", [])
+        return len(msgs) > 1
+    except Exception as e:
+        logger.error(f"Error retrieving thread {thread_id}: {e}")
+        return False
+
+def search_inbound_messages_for_email(email_address: str, max_results: int = 1) -> list:
+    """
+    Search for inbound messages sent from `email_address`.
+    Returns a list of short snippets from the most recent matching messages.
+    """
+    query = f"from:{email_address}"
+    message_ids = search_messages(query=query)
+    if not message_ids:
+        return []
+
+    service = get_gmail_service()
+    snippets = []
+    for m in message_ids[:max_results]:
+        try:
+            full_msg = service.users().messages().get(
+                userId="me",
+                id=m["id"],
+                format="full",
+            ).execute()
+            snippet = full_msg.get("snippet", "")
+            snippets.append(snippet)
+        except Exception as e:
+            logger.error(f"Error fetching message {m['id']} from {email_address}: {e}")
+
+    return snippets
+
+def create_followup_draft(
+    sender: str,
+    to: str,
+    subject: str,
+    message_text: str,
+    lead_id: str = None,
+    sequence_num: int = None,
+    original_html: str = None  # Add parameter for original HTML
+) -> Dict[str, Any]:
+    """Create a follow-up email draft with proper Gmail threading format."""
+    try:
+        logger.debug(
+            f"Creating follow-up draft with subject='{subject}', body length={len(message_text)}"
+        )
+
+        service = get_gmail_service()
+        if not service:
+            logger.error("Failed to get Gmail service")
+            return {"status": "error", "error": "No Gmail service"}
+
+        # Create message container
+        message = MIMEMultipart('alternative')
+        message["to"] = to
+        message["subject"] = subject
+        message["bcc"] = "20057893@bcc.hubspot.com"
+
+        # Split the message text into new content and quoted content
+        new_content, _, quoted_content = message_text.partition("On ")
+        
+        # Create the HTML with proper Gmail quote styling
+        html = f"""
+        <div dir="ltr">
+            {new_content.strip().replace("\n", "<br>")}
+            <div class="gmail_quote">
+                <blockquote class="gmail_quote" 
+                    style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">
+                    {original_html if original_html else quoted_content.replace("\n", "<br>")}
+                </blockquote>
+            </div>
+        </div>
+        """
+
+        # Create both plain text and HTML versions
+        text_part = MIMEText(message_text, 'plain')
+        html_part = MIMEText(html, 'html')
+
+        # Add both parts to the message
+        message.attach(text_part)
+        message.attach(html_part)
+
+        # Encode the message
+        raw_message = message.as_string()
+        encoded_message = base64.urlsafe_b64encode(raw_message.encode("utf-8")).decode("utf-8")
+        
+        draft = (
+            service.users()
+            .drafts()
+            .create(userId="me", body={"message": {"raw": encoded_message}})
+            .execute()
+        )
+
+        if "id" not in draft:
+            logger.error("Draft creation returned no ID")
+            return {"status": "error", "error": "No draft ID returned"}
+
+        draft_id = draft["id"]
+        logger.debug(f"Created follow-up draft with id={draft_id}")
+
+        # Add the "to_review" label
+        label_id = get_or_create_label(service, "to_review")
+        if label_id:
+            try:
+                service.users().messages().modify(
+                    userId="me",
+                    id=draft["message"]["id"],
+                    body={"addLabelIds": [label_id]},
+                ).execute()
+                logger.debug(f"Added 'to_review' label to draft message")
+            except Exception as e:
+                logger.error(f"Failed to add label to draft: {str(e)}")
+
+        return {
+            "status": "ok",
+            "draft_id": draft_id,
+            "sequence_num": sequence_num,
+        }
+
+    except Exception as e:
+        logger.error(f"Error in create_followup_draft: {str(e)}", exc_info=True)
+        return {"status": "error", "error": str(e)}
 

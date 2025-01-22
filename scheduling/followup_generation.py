@@ -1,20 +1,25 @@
 # followup_generation.py
 
 from scheduling.database import get_db_connection
-from utils.gmail_integration import create_draft
+from utils.gmail_integration import create_draft, get_gmail_service
 from utils.logging_setup import logger
-from scripts.golf_outreach_strategy import get_best_outreach_window, adjust_send_time
+from scripts.golf_outreach_strategy import (
+    get_best_outreach_window,
+    adjust_send_time,
+    calculate_send_date
+)
 from datetime import datetime, timedelta
 import random
+import base64
 
 
 def generate_followup_email_xai(
     lead_id: int, 
-    email_id: int = None, 
+    email_id: int = None,
     sequence_num: int = None,
     original_email: dict = None
 ) -> dict:
-    """Generate a follow-up email using xAI"""
+    """Generate a follow-up email using xAI and original Gmail message"""
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -23,19 +28,17 @@ def generate_followup_email_xai(
         if not original_email:
             cursor.execute("""
                 SELECT TOP 1
-                    l.email,
-                    l.first_name,
-                    c.name,
-                    e.subject,
-                    e.body,
-                    e.created_at,
-                    c.state
-                FROM emails e
-                JOIN leads l ON l.lead_id = e.lead_id
-                LEFT JOIN companies c ON l.company_id = c.company_id
-                WHERE e.lead_id = ?
-                AND e.sequence_num = 1
-                ORDER BY e.created_at DESC
+                    email_address,
+                    name,
+                    body,
+                    gmail_id,
+                    scheduled_send_date,
+                    draft_id
+                FROM emails
+                WHERE lead_id = ?
+                AND sequence_num = 1
+                AND gmail_id IS NOT NULL
+                ORDER BY created_at DESC
             """, (lead_id,))
             
             row = cursor.fetchone()
@@ -43,176 +46,114 @@ def generate_followup_email_xai(
                 logger.error(f"No original email found for lead_id={lead_id}")
                 return None
 
-            email, first_name, company_name, subject, body, created_at, state = row
+            email_address, name, body, gmail_id, scheduled_date, draft_id = row
             original_email = {
-                'email': email,
-                'first_name': first_name,
-                'name': company_name,
-                'subject': subject,
+                'email': email_address,
+                'name': name,
                 'body': body,
-                'created_at': created_at,
-                'state': state
+                'gmail_id': gmail_id,
+                'scheduled_send_date': scheduled_date,
+                'draft_id': draft_id
             }
 
-        # If original_email is provided, use that instead of querying
-        if original_email:
-            email = original_email.get('email')
-            first_name = original_email.get('first_name')
-            company_name = original_email.get('name', 'your club')
-            state = original_email.get('state')
-            orig_subject = original_email.get('subject')
-            orig_body = original_email.get('body')
-            orig_date = original_email.get('created_at', datetime.now())
+        # Get the Gmail service
+        gmail_service = get_gmail_service()
+        
+        # Get the original message from Gmail
+        try:
+            message = gmail_service.users().messages().get(
+                userId='me',
+                id=original_email['gmail_id'],
+                format='full'
+            ).execute()
             
-            # Get original scheduled send date
-            cursor.execute("""
-                SELECT TOP 1 scheduled_send_date 
-                FROM emails 
-                WHERE lead_id = ? AND sequence_num = 1
-                ORDER BY created_at DESC
-            """, (lead_id,))
-            result = cursor.fetchone()
-            orig_scheduled_date = result[0] if result else orig_date
-        else:
-            # Query for required fields
-            query = """
-                SELECT 
-                    l.email,
-                    l.first_name,
-                    c.state,
-                    c.name,
-                    e.subject,
-                    e.body,
-                    e.created_at
-                FROM leads l
-                LEFT JOIN companies c ON l.company_id = c.company_id
-                LEFT JOIN emails e ON l.lead_id = e.lead_id
-                WHERE l.lead_id = ? AND e.email_id = ?
-            """
-            cursor.execute(query, (lead_id, email_id))
-            result = cursor.fetchone()
+            # Get the original HTML content
+            original_html = None
+            if 'parts' in message['payload']:
+                for part in message['payload']['parts']:
+                    if part['mimeType'] == 'text/html':
+                        original_html = base64.urlsafe_b64decode(
+                            part['body']['data']
+                        ).decode('utf-8')
+                        break
+            elif message['payload']['mimeType'] == 'text/html':
+                original_html = base64.urlsafe_b64decode(
+                    message['payload']['body']['data']
+                ).decode('utf-8')
             
-            if not result:
-                logger.error(f"No lead found for lead_id={lead_id}")
-                return None
-
-            email, first_name, state, company_name, orig_subject, orig_body, orig_date = result
-            company_name = company_name or 'your club'
+            # Extract subject and original message content
+            headers = message.get('payload', {}).get('headers', [])
+            orig_subject = next(
+                (header['value'] for header in headers if header['name'].lower() == 'subject'),
+                'No Subject'
+            )
             
-            # Get original scheduled send date
-            cursor.execute("""
-                SELECT scheduled_send_date 
-                FROM emails 
-                WHERE email_id = ?
-            """, (email_id,))
-            result = cursor.fetchone()
-            orig_scheduled_date = result[0] if result and result[0] else orig_date
-
-        # If orig_scheduled_date is still None, default to orig_date
-        if orig_scheduled_date is None:
-            logger.warning("orig_scheduled_date is None, defaulting to orig_date")
-            orig_scheduled_date = orig_date
-
-        # Validate required fields
-        if not email:
-            logger.error("Missing required field: email")
+            # Get the original sender (me) and timestamp
+            from_header = next(
+                (header['value'] for header in headers if header['name'].lower() == 'from'),
+                'me'
+            )
+            date_header = next(
+                (header['value'] for header in headers if header['name'].lower() == 'date'),
+                ''
+            )
+            
+            # Get original message body
+            if 'parts' in message['payload']:
+                orig_body = ''
+                for part in message['payload']['parts']:
+                    if part['mimeType'] == 'text/plain':
+                        orig_body = base64.urlsafe_b64decode(
+                            part['body']['data']
+                        ).decode('utf-8')
+                        break
+            else:
+                orig_body = base64.urlsafe_b64decode(
+                    message['payload']['body']['data']
+                ).decode('utf-8')
+            
+        except Exception as e:
+            logger.error(f"Error fetching Gmail message: {str(e)}", exc_info=True)
             return None
 
-        # Use RE: with original subject
-        subject = f"RE: {orig_subject}"
-
-        # Format the follow-up email body
+        # Format the follow-up email with the original included
+        name = original_email.get('name', 'your club')
+        subject = f"Re: {orig_subject}"
+        
         body = (
-            f"Following up about improving operations at {company_name}. "
+            f"Following up about improving operations at {name}. "
             f"Would you have 10 minutes this week for a brief call?\n\n"
             f"Best regards,\n"
-            f"Ty\n\n"
-            f"Swoop Golf\n"
-            f"480-225-9702\n"
-            f"swoopgolf.com\n\n"
-            f"-------- Original Message --------\n"
-            f"Date: {orig_date.strftime('%Y-%m-%d %H:%M:%S')}\n"
-            f"Subject: {orig_subject}\n"
-            f"To: {email}\n\n"
+            f"Ty\n\n\n\n"
+            f"On {date_header}, {from_header} wrote:\n"
             f"{orig_body}"
         )
 
-        # Calculate base date (3 days after original scheduled date)
-        base_date = orig_scheduled_date + timedelta(days=3)
-        
-        # Get optimal send window
-        outreach_window = get_best_outreach_window(
-            persona="general",
-            geography="US",
+        # Calculate send date using golf_outreach_strategy logic
+        send_date = calculate_send_date(
+            geography="Year-Round Golf",
+            persona="General Manager",
+            state="AZ",
+            season_data=None
         )
-        
-        best_time = outreach_window["Best Time"]
-        best_days = outreach_window["Best Day"]
-        
-        # Adjust to next valid day while preserving the 3-day minimum gap
-        while base_date.weekday() not in best_days or base_date < (orig_scheduled_date + timedelta(days=3)):
-            base_date += timedelta(days=1)
-        
-        # Set time within the best window
-        send_hour = best_time["start"]
-        if random.random() < 0.5:  # 50% chance to use later hour
-            send_hour += 1
-            
-        send_date = base_date.replace(
-            hour=send_hour,
-            minute=random.randint(0, 59),
-            second=0,
-            microsecond=0
-        )
-        
-        # Adjust for timezone
-        send_date = adjust_send_time(send_date, state) if state else send_date
 
-        logger.debug(f"[followup_generation] Potential scheduled_send_date for lead_id={lead_id} (1st email) is: {send_date}")
-
-        # Calculate base date (3 days after original scheduled date)
-        base_date = orig_scheduled_date + timedelta(days=3)
-        
-        # Get optimal send window
-        outreach_window = get_best_outreach_window(
-            persona="general",
-            geography="US",
-        )
-        
-        best_time = outreach_window["Best Time"]
-        best_days = outreach_window["Best Day"]
-        
-        # Adjust to next valid day while preserving the 3-day minimum gap
-        while base_date.weekday() not in best_days or base_date < (orig_scheduled_date + timedelta(days=3)):
-            base_date += timedelta(days=1)
-        
-        # Set time within the best window
-        send_hour = best_time["start"]
-        if random.random() < 0.5:  # 50% chance to use later hour
-            send_hour += 1
-            
-        send_date = base_date.replace(
-            hour=send_hour,
-            minute=random.randint(0, 59),
-            second=0,
-            microsecond=0
-        )
-        
-        # Adjust for timezone
-        send_date = adjust_send_time(send_date, state) if state else send_date
-
-        logger.debug(f"[followup_generation] Potential scheduled_send_date for lead_id={lead_id} (follow-up) is: {send_date}")
+        # Ensure minimum 3-day gap from original send date
+        orig_scheduled_date = original_email.get('scheduled_send_date', datetime.now())
+        while send_date < (orig_scheduled_date + timedelta(days=3)):
+            send_date += timedelta(days=1)
 
         return {
-            'email': email,
+            'email': original_email.get('email'),
             'subject': subject,
             'body': body,
             'scheduled_send_date': send_date,
             'sequence_num': sequence_num or 2,
             'lead_id': lead_id,
-            'first_name': first_name,
-            'state': state
+            'name': name,
+            'in_reply_to': original_email['gmail_id'],   # <--- add this
+            'original_html': original_html    
         }
+        
 
     except Exception as e:
         logger.error(f"Error generating follow-up: {str(e)}", exc_info=True)
