@@ -203,6 +203,80 @@ def print_conversation_thread(emails: List[Dict[str, Any]], notes: List[Dict[str
     print(summary)
 
 
+def get_contacts_from_list(list_id: str) -> List[Dict[str, Any]]:
+    """Get all contacts from a specified HubSpot list."""
+    try:
+        data_gatherer = DataGathererService()
+        logger.debug(f"Initializing contact pull from list {list_id}")
+        
+        # First get list memberships
+        url = f"https://api.hubapi.com/crm/v3/lists/{list_id}/memberships"
+        logger.debug(f"Fetching list memberships from: {url}")
+        memberships = data_gatherer.hubspot._make_hubspot_get(url)
+        
+        # Extract record IDs
+        record_ids = []
+        if isinstance(memberships, dict) and "results" in memberships:
+            record_ids = [result["recordId"] for result in memberships.get("results", [])]
+        
+        logger.debug(f"Found {len(record_ids)} records in list")
+        
+        # Now fetch full contact details for each ID (limit to first 25)
+        contacts = []
+        for record_id in record_ids[:25]:  # Limit to first 25
+            try:
+                # Get full contact details using v3 API
+                contact_url = f"https://api.hubapi.com/crm/v3/objects/contacts/{record_id}"
+                params = {
+                    "properties": ["email", "firstname", "lastname", "company"]
+                }
+                contact_data = data_gatherer.hubspot._make_hubspot_get(contact_url, params)
+                if contact_data:
+                    contacts.append(contact_data)
+                    
+            except Exception as e:
+                logger.warning(f"Failed to fetch details for contact {record_id}: {str(e)}")
+                continue
+        
+        logger.info(f"Successfully retrieved {len(contacts)} contacts with details")
+        return contacts
+        
+    except Exception as e:
+        logger.error(f"Error getting contacts from list: {str(e)}", exc_info=True)
+        return []
+
+
+def process_list_contacts(list_id: str) -> None:
+    """Process all contacts from a specified HubSpot list."""
+    try:
+        logger.debug(f"Starting to process list ID: {list_id}")
+        
+        # Get contacts from list
+        contacts = get_contacts_from_list(list_id)
+        
+        if not contacts:
+            print(f"No contacts found in list {list_id}")
+            return
+
+        print("\nFirst 25 email addresses from list:")
+        print("=" * 50)
+        
+        # Process each contact
+        for i, contact in enumerate(contacts, 1):
+            # Get email from properties
+            properties = contact.get("properties", {})
+            email = properties.get("email")
+            
+            if email:
+                print(f"{i}. {email}")
+            else:
+                print(f"{i}. [No email found]")
+
+    except Exception as e:
+        print(f"Error processing list contacts: {str(e)}")
+        logger.error(f"Error in process_list_contacts: {str(e)}", exc_info=True)
+
+
 def test_email_pull(email_address: str) -> None:
     """Test function to pull and display HubSpot data for a specific email address."""
     try:
@@ -260,6 +334,11 @@ def test_email_pull(email_address: str) -> None:
 
 
 if __name__ == "__main__":
-    TEST_EMAILS = ["bryanj@standardclub.org"]
-    for email in TEST_EMAILS:
-        test_email_pull(email)
+    # Enable debug logging
+    logger.setLevel("DEBUG")
+    
+    # Replace this with your actual HubSpot list ID
+    TEST_LIST_ID = "221"  # <-- Put your actual HubSpot list ID here
+    
+    print(f"\nStarting contact pull from HubSpot list: {TEST_LIST_ID}")
+    process_list_contacts(TEST_LIST_ID)

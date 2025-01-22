@@ -561,3 +561,30 @@ class HubspotService:
         except Exception as e:
             logger.error(f"Error getting company {company_id}: {e}")
             return {}
+
+    def get_contacts_from_list(self, list_id: str) -> List[Dict[str, Any]]:
+        """Get all contacts from a specified HubSpot list."""
+        url = f"{self.base_url}/contacts/v1/lists/{list_id}/contacts/all"
+        all_contacts = []
+        vidOffset = 0
+        has_more = True
+        
+        while has_more:
+            try:
+                params = {
+                    "count": 100,
+                    "vidOffset": vidOffset
+                }
+                response = self._make_hubspot_get(url, params)
+                
+                contacts = response.get("contacts", [])
+                all_contacts.extend(contacts)
+                
+                has_more = response.get("has-more", False)
+                vidOffset = response.get("vid-offset", 0)
+                
+            except Exception as e:
+                logger.error(f"Error fetching contacts from list: {str(e)}")
+                break
+        
+        return all_contacts

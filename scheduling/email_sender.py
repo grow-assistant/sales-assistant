@@ -3,6 +3,7 @@ from utils.gmail_integration import get_gmail_service
 from scheduling.database import get_db_connection
 import logging
 import time
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -10,6 +11,7 @@ def send_scheduled_emails():
     """
     Sends emails that are scheduled for now or in the past.
     Updates their status in the database.
+    Includes random delays between sends to appear more natural.
     """
     now = datetime.now()
     logger.info(f"Checking for emails to send at {now}")
@@ -57,10 +59,13 @@ def send_scheduled_emails():
                 conn.commit()
                 logger.info(f"Successfully sent email_id={email_id} to {recipient}")
 
-                # Small delay between sends to respect rate limits
-                time.sleep(1)
+                # Random delay between sends (30-180 seconds)
+                delay = random.uniform(5, 30)
+                logger.debug(f"Waiting {delay:.1f} seconds before next send")
+                time.sleep(delay)
 
             except Exception as e:
                 logger.error(f"Failed to send email_id={email_id} to {recipient}: {str(e)}", exc_info=True)
                 conn.rollback()
+                
                 continue 
