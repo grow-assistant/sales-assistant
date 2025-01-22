@@ -1,6 +1,13 @@
 
 ## test_followup_generation.py
 
+import sys
+from pathlib import Path
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+
 from scheduling.followup_generation import generate_followup_email_xai
 from scheduling.database import get_db_connection
 from utils.logging_setup import logger
@@ -14,26 +21,29 @@ def test_followup_generation():
         conn = get_db_connection()
         cursor = conn.cursor()
         
-        # Get the most recent sent email
+        # Get the most recent sequence 1 email
         cursor.execute("""
             SELECT TOP 1
                 lead_id,
                 email_address,
                 name,
                 gmail_id,
-                scheduled_send_date
+                scheduled_send_date,
+                sequence_num,
+                company_short_name
             FROM emails
-            WHERE gmail_id IS NOT NULL
-            AND sequence_num = 1
+            WHERE sequence_num = 1
+            AND gmail_id IS NOT NULL
             ORDER BY created_at DESC
         """)
         
         row = cursor.fetchone()
         if not row:
-            logger.error("No sent emails found in database")
+            logger.error("No emails found in database")
             return
             
-        lead_id, email, name, gmail_id, scheduled_date = row
+        lead_id, email, name, gmail_id, scheduled_date, seq_num, company_short_name = row
+        
         logger.info(f"Found original email to {email} (Lead ID: {lead_id})")
         
         # Generate follow-up email
@@ -43,51 +53,40 @@ def test_followup_generation():
                 'email': email,
                 'name': name,
                 'gmail_id': gmail_id,
-                'scheduled_send_date': scheduled_date
+                'scheduled_send_date': scheduled_date,
+                'company_short_name': company_short_name
             }
         )
         
-        if not followup:
-            logger.error("Failed to generate follow-up email")
-            return
+        if followup:
+            # Create Gmail draft
+            draft_result = create_followup_draft(
+                to_email=email,
+                subject=followup['subject'],
+                body=followup['body'],
+                in_reply_to=followup['in_reply_to']
+            )
             
-        # Create draft in Gmail using the new follow-up function
-        draft_result = create_followup_draft(
-            sender="me",
-            to=followup['email'],
-            subject=followup['subject'],
-            message_text=followup['body'],
-            lead_id=followup['lead_id'],
-            sequence_num=followup['sequence_num']
-        )
-        
-        if draft_result["status"] == "ok":
-            logger.info(f"Created follow-up draft for {email}")
-            logger.info(f"Draft ID: {draft_result['draft_id']}")
-            logger.info(f"Scheduled send date: {followup['scheduled_send_date']}")
-            
-            # Store the follow-up in database
-            store_lead_email_info(
-                lead_sheet={
-                    "lead_data": {
-                        "properties": {
-                            "hs_object_id": followup['lead_id'],
-                            "firstname": name.split()[0] if name else "",
-                            "lastname": name.split()[1] if name and len(name.split()) > 1 else ""
+            if draft_result.get('draft_id'):
+                # Store in database
+                store_lead_email_info(
+                    lead_sheet={
+                        'lead_data': {
+                            'properties': {'hs_object_id': lead_id},
+                            'email': email
+                        },
+                        'company_data': {
+                            'company_short_name': company_short_name
                         }
                     },
-                    "company_data": {
-                        "name": name
-                    }
-                },
-                draft_id=draft_result['draft_id'],
-                scheduled_date=followup['scheduled_send_date'],
-                body=followup['body'],
-                sequence_num=followup['sequence_num']
-            )
-            logger.info("Stored follow-up in database")
-        else:
-            logger.error(f"Failed to create Gmail draft: {draft_result.get('error', 'Unknown error')}")
+                    draft_id=draft_result['draft_id'],
+                    scheduled_date=followup['scheduled_send_date'],
+                    body=followup['body'],
+                    sequence_num=2
+                )
+                logger.info("Stored follow-up in database")
+            else:
+                logger.error(f"Failed to create Gmail draft: {draft_result.get('error', 'Unknown error')}")
             
     except Exception as e:
         logger.error(f"Error in test_followup_generation: {str(e)}", exc_info=True)
@@ -178,12 +177,15 @@ def init_db():
                     created_at         DATETIME DEFAULT GETDATE(),
                     status             VARCHAR(50) DEFAULT 'pending',
                     draft_id           VARCHAR(100) NULL,
-                    gmail_id           VARCHAR(100)
+                    gmail_id           VARCHAR(100),
+                    company_short_name VARCHAR(100) NULL
                 )
             END
         """)
+        
+        
         conn.commit()
-        logger.info("init_db completed successfully. Emails table created if it didn't exist.")
+        
         
     except Exception as e:
         logger.error("Error in init_db", extra={
@@ -219,7 +221,8 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
                      body: str = None,
                      scheduled_send_date: datetime = None,
                      draft_id: str = None,
-                     status: str = 'pending') -> int:
+                     status: str = 'pending',
+                     company_short_name: str = None) -> int:
     """
     Store email draft in database. Returns email_id.
     
@@ -236,6 +239,7 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
     - status
     - draft_id
     - gmail_id (managed elsewhere)
+    - company_short_name
     """
     # First check if this draft_id already exists
     cursor.execute("""
@@ -253,7 +257,8 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
                 sequence_num = ?,
                 body = ?,
                 scheduled_send_date = ?,
-                status = ?
+                status = ?,
+                company_short_name = ?
             WHERE draft_id = ? AND lead_id = ?
         """, (
             name,
@@ -262,6 +267,7 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
             body,
             scheduled_send_date,
             status,
+            company_short_name,
             draft_id,
             lead_id
         ))
@@ -277,10 +283,11 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
                 body,
                 scheduled_send_date,
                 status,
-                draft_id
+                draft_id,
+                company_short_name
             ) VALUES (
                 ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?, ?
             )
         """, (
             lead_id,
@@ -290,7 +297,8 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
             body,
             scheduled_send_date,
             status,
-            draft_id
+            draft_id,
+            company_short_name
         ))
         cursor.execute("SELECT SCOPE_IDENTITY()")
         return cursor.fetchone()[0]
@@ -302,9 +310,17 @@ if __name__ == "__main__":
 
 
 
+
 ## scheduling\followup_generation.py
 
 # followup_generation.py
+
+import sys
+from pathlib import Path
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
 
 from scheduling.database import get_db_connection
 from utils.gmail_integration import create_draft, get_gmail_service
@@ -336,6 +352,7 @@ def generate_followup_email_xai(
                 SELECT TOP 1
                     email_address,
                     name,
+                    company_short_name,
                     body,
                     gmail_id,
                     scheduled_send_date,
@@ -352,10 +369,11 @@ def generate_followup_email_xai(
                 logger.error(f"No original email found for lead_id={lead_id}")
                 return None
 
-            email_address, name, body, gmail_id, scheduled_date, draft_id = row
+            email_address, name, company_short_name, body, gmail_id, scheduled_date, draft_id = row
             original_email = {
                 'email': email_address,
                 'name': name,
+                'company_short_name': company_short_name,
                 'body': body,
                 'gmail_id': gmail_id,
                 'scheduled_send_date': scheduled_date,
@@ -423,14 +441,14 @@ def generate_followup_email_xai(
             return None
 
         # Format the follow-up email with the original included
-        name = original_email.get('name', 'your club')
+        venue_name = original_email.get('company_short_name', 'your club')
         subject = f"Re: {orig_subject}"
         
         body = (
-            f"Following up about improving operations at {name}. "
+            f"Following up about improving operations at {venue_name}. "
             f"Would you have 10 minutes this week for a brief call?\n\n"
             f"Best regards,\n"
-            f"Ty\n\n"
+            f"Ty\n\n\n\n"
             f"On {date_header}, {from_header} wrote:\n"
             f"{orig_body}"
         )
@@ -455,10 +473,11 @@ def generate_followup_email_xai(
             'scheduled_send_date': send_date,
             'sequence_num': sequence_num or 2,
             'lead_id': lead_id,
-            'name': name,
+            'company_short_name': original_email.get('company_short_name', ''),
             'in_reply_to': original_email['gmail_id'],
-            'original_html': original_html
+            'original_html': original_html    
         }
+        
 
     except Exception as e:
         logger.error(f"Error generating follow-up: {str(e)}", exc_info=True)
@@ -945,14 +964,10 @@ def create_followup_draft(
     message_text: str,
     lead_id: str = None,
     sequence_num: int = None,
-    original_html: str = None  # Add parameter for original HTML
+    original_html: str = None,
+    in_reply_to: str = None
 ) -> Dict[str, Any]:
-    """Create a follow-up email draft with proper Gmail threading format."""
     try:
-        logger.debug(
-            f"Creating follow-up draft with subject='{subject}', body length={len(message_text)}"
-        )
-
         service = get_gmail_service()
         if not service:
             logger.error("Failed to get Gmail service")
@@ -964,60 +979,52 @@ def create_followup_draft(
         message["subject"] = subject
         message["bcc"] = "20057893@bcc.hubspot.com"
 
-        # Split the message text into new content and quoted content
-        new_content, _, quoted_content = message_text.partition("On ")
+        # Add threading headers
+        if in_reply_to:
+            message["In-Reply-To"] = in_reply_to
+            message["References"] = in_reply_to
+
+        # Split the message text to remove the original content
+        new_content = message_text.split("On ", 1)[0].strip()
         
-        # Create the HTML with proper Gmail quote styling
-        html = f"""
-        <div dir="ltr">
-            {new_content.strip().replace("\n", "<br>")}
-            <div class="gmail_quote">
-                <blockquote class="gmail_quote" 
-                    style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">
-                    {original_html if original_html else quoted_content.replace("\n", "<br>")}
-                </blockquote>
-            </div>
-        </div>
-        """
+        # Create the HTML parts separately to avoid f-string backslash issues
+        html_start = '<div dir="ltr" style="font-family:Arial, sans-serif;">'
+        html_content = new_content.replace("\n", "<br>")
+        html_quote_start = '<br><br><div class="gmail_quote"><blockquote class="gmail_quote" style="margin:0 0 0 .8ex;border-left:1px solid #ccc;padding-left:1ex">'
+        html_quote_content = original_html if original_html else ""
+        html_end = '</blockquote></div></div>'
+
+        # Combine HTML parts
+        html = html_start + html_content + html_quote_start + html_quote_content + html_end
 
         # Create both plain text and HTML versions
-        text_part = MIMEText(message_text, 'plain')
+        text_part = MIMEText(new_content, 'plain')  # Only include new content in plain text
         html_part = MIMEText(html, 'html')
 
         # Add both parts to the message
         message.attach(text_part)
         message.attach(html_part)
 
-        # Encode the message
-        raw_message = message.as_string()
-        encoded_message = base64.urlsafe_b64encode(raw_message.encode("utf-8")).decode("utf-8")
-        
-        draft = (
-            service.users()
-            .drafts()
-            .create(userId="me", body={"message": {"raw": encoded_message}})
-            .execute()
-        )
+        # Encode and create the draft
+        raw_message = base64.urlsafe_b64encode(message.as_string().encode("utf-8")).decode("utf-8")
+        draft = service.users().drafts().create(
+            userId="me",
+            body={"message": {"raw": raw_message}}
+        ).execute()
 
         if "id" not in draft:
-            logger.error("Draft creation returned no ID")
             return {"status": "error", "error": "No draft ID returned"}
 
         draft_id = draft["id"]
-        logger.debug(f"Created follow-up draft with id={draft_id}")
-
-        # Add the "to_review" label
+        
+        # Add 'to_review' label
         label_id = get_or_create_label(service, "to_review")
         if label_id:
-            try:
-                service.users().messages().modify(
-                    userId="me",
-                    id=draft["message"]["id"],
-                    body={"addLabelIds": [label_id]},
-                ).execute()
-                logger.debug(f"Added 'to_review' label to draft message")
-            except Exception as e:
-                logger.error(f"Failed to add label to draft: {str(e)}")
+            service.users().messages().modify(
+                userId="me",
+                id=draft["message"]["id"],
+                body={"addLabelIds": [label_id]},
+            ).execute()
 
         return {
             "status": "ok",

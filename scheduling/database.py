@@ -70,12 +70,15 @@ def init_db():
                     created_at         DATETIME DEFAULT GETDATE(),
                     status             VARCHAR(50) DEFAULT 'pending',
                     draft_id           VARCHAR(100) NULL,
-                    gmail_id           VARCHAR(100)
+                    gmail_id           VARCHAR(100),
+                    company_short_name VARCHAR(100) NULL
                 )
             END
         """)
+        
+        
         conn.commit()
-        logger.info("init_db completed successfully. Emails table created if it didn't exist.")
+        
         
     except Exception as e:
         logger.error("Error in init_db", extra={
@@ -111,7 +114,8 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
                      body: str = None,
                      scheduled_send_date: datetime = None,
                      draft_id: str = None,
-                     status: str = 'pending') -> int:
+                     status: str = 'pending',
+                     company_short_name: str = None) -> int:
     """
     Store email draft in database. Returns email_id.
     
@@ -128,6 +132,7 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
     - status
     - draft_id
     - gmail_id (managed elsewhere)
+    - company_short_name
     """
     # First check if this draft_id already exists
     cursor.execute("""
@@ -145,7 +150,8 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
                 sequence_num = ?,
                 body = ?,
                 scheduled_send_date = ?,
-                status = ?
+                status = ?,
+                company_short_name = ?
             WHERE draft_id = ? AND lead_id = ?
         """, (
             name,
@@ -154,6 +160,7 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
             body,
             scheduled_send_date,
             status,
+            company_short_name,
             draft_id,
             lead_id
         ))
@@ -169,10 +176,11 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
                 body,
                 scheduled_send_date,
                 status,
-                draft_id
+                draft_id,
+                company_short_name
             ) VALUES (
                 ?, ?, ?, ?,
-                ?, ?, ?, ?
+                ?, ?, ?, ?, ?
             )
         """, (
             lead_id,
@@ -182,7 +190,8 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
             body,
             scheduled_send_date,
             status,
-            draft_id
+            draft_id,
+            company_short_name
         ))
         cursor.execute("SELECT SCOPE_IDENTITY()")
         return cursor.fetchone()[0]
@@ -190,3 +199,4 @@ def store_email_draft(cursor, lead_id: int, name: str = None,
 if __name__ == "__main__":
     init_db()
     logger.info("Database table created.")
+

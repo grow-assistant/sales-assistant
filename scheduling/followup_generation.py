@@ -1,5 +1,12 @@
 # followup_generation.py
 
+import sys
+from pathlib import Path
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.parent
+sys.path.append(str(project_root))
+
 from scheduling.database import get_db_connection
 from utils.gmail_integration import create_draft, get_gmail_service
 from utils.logging_setup import logger
@@ -30,6 +37,7 @@ def generate_followup_email_xai(
                 SELECT TOP 1
                     email_address,
                     name,
+                    company_short_name,
                     body,
                     gmail_id,
                     scheduled_send_date,
@@ -46,10 +54,11 @@ def generate_followup_email_xai(
                 logger.error(f"No original email found for lead_id={lead_id}")
                 return None
 
-            email_address, name, body, gmail_id, scheduled_date, draft_id = row
+            email_address, name, company_short_name, body, gmail_id, scheduled_date, draft_id = row
             original_email = {
                 'email': email_address,
                 'name': name,
+                'company_short_name': company_short_name,
                 'body': body,
                 'gmail_id': gmail_id,
                 'scheduled_send_date': scheduled_date,
@@ -117,13 +126,13 @@ def generate_followup_email_xai(
             return None
 
         # Format the follow-up email with the original included
-        name = original_email.get('name', 'your club')
+        venue_name = original_email.get('company_short_name', 'your club')
         subject = f"Re: {orig_subject}"
         
         body = (
-            f"Following up about improving operations at {name}. "
+            f"Following up about improving operations at {venue_name}. "
             f"Would you have 10 minutes this week for a brief call?\n\n"
-            f"Best regards,\n"
+            f"Thanks,\n"
             f"Ty\n\n\n\n"
             f"On {date_header}, {from_header} wrote:\n"
             f"{orig_body}"
@@ -148,10 +157,11 @@ def generate_followup_email_xai(
             'body': body,
             'scheduled_send_date': send_date,
             'sequence_num': sequence_num or 2,
-            'lead_id': lead_id,
-            'name': name,
-            'in_reply_to': original_email['gmail_id'],   # <--- add this
-            'original_html': original_html    
+            'lead_id': str(lead_id),
+            'company_short_name': original_email.get('company_short_name', ''),
+            'in_reply_to': original_email['gmail_id'],
+            'original_html': original_html,
+            'thread_id': original_email['gmail_id']
         }
         
 
