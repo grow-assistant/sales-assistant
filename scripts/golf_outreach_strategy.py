@@ -116,20 +116,20 @@ def get_best_time(persona: str) -> dict:
                 "start_hour": 8, "start_minute": 30,
                 "end_hour": 10, "end_minute": 30
             },  # 8:30-10:30 AM
-            {
-                "start_hour": 15, "start_minute": 0,
-                "end_hour": 16, "end_minute": 30
-            }   # 3:00-4:30 PM
+            # {
+            #     "start_hour": 15, "start_minute": 0,
+            #     "end_hour": 16, "end_minute": 30
+            # }   # 3:00-4:30 PM
         ],
         "Food & Beverage Director": [
             {
                 "start_hour": 9, "start_minute": 30,
                 "end_hour": 11, "end_minute": 30
             },  # 9:30-11:30 AM
-            {
-                "start_hour": 15, "start_minute": 0,
-                "end_hour": 16, "end_minute": 30
-            }   # 3:00-4:30 PM
+            # {
+            #     "start_hour": 15, "start_minute": 0,
+            #     "end_hour": 16, "end_minute": 30
+            # }   # 3:00-4:30 PM
         ]
         # "Golf Professional": [
         #     {

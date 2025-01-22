@@ -159,6 +159,63 @@ def update_email_status(email_id: int, new_status: str, body: str = None):
     except Exception as e:
         logger.error(f"Error updating email ID {email_id}: {str(e)}", exc_info=True)
 
+def delete_orphaned_draft_records():
+    """
+    Delete records from the emails table that have status='draft' but their
+    corresponding Gmail drafts no longer exist.
+    """
+    try:
+        # Get Gmail service
+        gmail_service = get_gmail_service()
+        if not gmail_service:
+            logger.error("Could not initialize Gmail service.")
+            return
+
+        # Get all draft records
+        drafts = get_draft_emails()
+        if not drafts:
+            logger.info("No draft emails found to check.")
+            return
+
+        logger.info(f"Checking {len(drafts)} draft records for orphaned entries")
+
+        # Get list of all Gmail drafts
+        try:
+            gmail_drafts = gmail_service.users().drafts().list(userId='me').execute()
+            existing_draft_ids = {d['id'] for d in gmail_drafts.get('drafts', [])}
+        except Exception as e:
+            logger.error(f"Error fetching Gmail drafts: {str(e)}")
+            return
+
+        # Track which records to delete
+        orphaned_records = []
+        for record in drafts:
+            if not record['draft_id'] or record['draft_id'] not in existing_draft_ids:
+                orphaned_records.append(record['email_id'])
+                logger.debug(f"Found orphaned record: email_id={record['email_id']}, draft_id={record['draft_id']}")
+
+        if not orphaned_records:
+            logger.info("No orphaned draft records found.")
+            return
+
+        # Delete orphaned records
+        try:
+            with get_db_connection() as conn:
+                cursor = conn.cursor()
+                placeholders = ','.join('?' * len(orphaned_records))
+                cursor.execute(f"""
+                    DELETE FROM emails
+                     WHERE email_id IN ({placeholders})
+                       AND status = ?
+                """, (*orphaned_records, SQL_DRAFT_STATUS))
+                conn.commit()
+                logger.info(f"Deleted {cursor.rowcount} orphaned draft records")
+        except Exception as e:
+            logger.error(f"Error deleting orphaned records: {str(e)}", exc_info=True)
+
+    except Exception as e:
+        logger.error(f"Error in delete_orphaned_draft_records: {str(e)}", exc_info=True)
+
 ###############################################################################
 #                               MAIN PROCESS
 ###############################################################################
@@ -166,6 +223,9 @@ def update_email_status(email_id: int, new_status: str, body: str = None):
 def main():
     """Check Gmail drafts for labels and update SQL status accordingly."""
     logger.info("=== Starting Gmail label check process ===")
+
+    # First, clean up any orphaned draft records
+    delete_orphaned_draft_records()
 
     # Get all draft emails from SQL
     pending = get_draft_emails()
