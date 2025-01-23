@@ -102,35 +102,43 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
     logger.debug(f"Using geography matrix fallback for {geography}, selected months: {result}")
     return result
 
-def get_best_time(persona: str) -> dict:
+def get_best_time(persona: str, sequence_num: int) -> dict:
     """
-    Determine best time of day based on persona.
+    Determine best time of day based on persona and email sequence number.
     Returns a dict with start and end hours/minutes in 24-hour format.
     Times are aligned to 30-minute windows.
     """
-    logger.debug(f"Getting best time for persona: {persona}")
+    logger.debug(f"Getting best time for persona: {persona}, sequence_num: {sequence_num}")
     
     time_windows = {
-        "General Manager": [
-            {
-                "start_hour": 8, "start_minute": 30,
-                "end_hour": 10, "end_minute": 30
-            },  # 8:30-10:30 AM
-            # {
-            #     "start_hour": 15, "start_minute": 0,
-            #     "end_hour": 16, "end_minute": 30
-            # }   # 3:00-4:30 PM
-        ],
-        "Food & Beverage Director": [
-            {
-                "start_hour": 9, "start_minute": 30,
-                "end_hour": 11, "end_minute": 30
-            },  # 9:30-11:30 AM
-            # {
-            #     "start_hour": 15, "start_minute": 0,
-            #     "end_hour": 16, "end_minute": 30
-            # }   # 3:00-4:30 PM
-        ]
+        "General Manager": {
+            1: [  # Sequence 1: Morning hours
+                {
+                    "start_hour": 8, "start_minute": 30,
+                    "end_hour": 10, "end_minute": 30
+                }
+            ],
+            2: [  # Sequence 2: Afternoon hours
+                {
+                    "start_hour": 15, "start_minute": 0,
+                    "end_hour": 16, "end_minute": 30
+                }
+            ]
+        },
+        "Food & Beverage Director": {
+            1: [  # Sequence 1: Morning hours
+                {
+                    "start_hour": 9, "start_minute": 30,
+                    "end_hour": 11, "end_minute": 30
+                }
+            ],
+            2: [  # Sequence 2: Afternoon hours
+                {
+                    "start_hour": 15, "start_minute": 0,
+                    "end_hour": 16, "end_minute": 30
+                }
+            ]
+        }
         # "Golf Professional": [
         #     {
         #         "start_hour": 8, "start_minute": 0,
@@ -143,13 +151,13 @@ def get_best_time(persona: str) -> dict:
     persona = " ".join(word.capitalize() for word in persona.split("_"))
     logger.debug(f"Normalized persona: {persona}")
     
-    # Get time windows for the persona, defaulting to GM times if not found
-    windows = time_windows.get(persona, time_windows["General Manager"])
-    if persona not in time_windows:
-        logger.debug(f"No specific time window for {persona}, using General Manager defaults")
+    # Get time windows for the persona and sequence number, defaulting to GM times if not found
+    windows = time_windows.get(persona, time_windows["General Manager"]).get(sequence_num, time_windows["General Manager"][1])
+    if persona not in time_windows or sequence_num not in time_windows[persona]:
+        logger.debug(f"No specific time window for {persona} with sequence {sequence_num}, using General Manager defaults")
     
-    # Randomly select between morning and afternoon windows if multiple exist
-    selected_window = random.choice(windows)
+    # Select the time window
+    selected_window = windows[0]  # Since we have only one window per sequence
     logger.debug(f"Selected time window: {selected_window['start_hour']}:{selected_window['start_minute']} - {selected_window['end_hour']}:{selected_window['end_minute']}")
     
     # Update calculate_send_date function expects start/end format
@@ -163,7 +171,7 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
     logger.debug(f"Getting outreach window for persona: {persona}, geography: {geography}, club_type: {club_type}")
     
     best_months = get_best_month(geography, club_type, season_data)
-    best_time = get_best_time(persona)
+    best_time = get_best_time(persona, 1)
     best_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday (0 = Monday, 6 = Sunday)
     
     logger.debug(f"Calculated base outreach window", extra={
@@ -180,13 +188,13 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
         "Best Day": best_days
     }
 
-def calculate_send_date(geography: str, persona: str, state: str, season_data: dict = None) -> datetime:
+def calculate_send_date(geography: str, persona: str, state: str, sequence_num: int, season_data: dict = None) -> datetime:
     """Calculate the next appropriate send date based on outreach window."""
-    logger.debug(f"Calculating send date for: geography={geography}, persona={persona}, state={state}")
+    logger.debug(f"Calculating send date for: geography={geography}, persona={persona}, state={state}, sequence_num={sequence_num}")
     
     outreach_window = get_best_outreach_window(geography, persona, season_data=season_data)
     best_months = outreach_window["Best Month"]
-    preferred_time = outreach_window["Best Time"]
+    preferred_time = get_best_time(persona, sequence_num)
     preferred_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
     
     # Get current time and adjust it for target state's timezone first
@@ -215,5 +223,8 @@ def calculate_send_date(geography: str, persona: str, state: str, season_data: d
     # Final timezone adjustment
     final_date = adjust_send_time(target_date, state)
     logger.debug(f"Final scheduled date after timezone adjustment: {final_date}")
+    
+    # Log the final scheduled send date and time
+    logger.info(f"Scheduled send date and time: {final_date}")
     
     return final_date

@@ -9,6 +9,7 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from google.auth.exceptions import RefreshError
 from google.oauth2.credentials import Credentials
+from googleapiclient.errors import HttpError
 
 from utils.logging_setup import logger
 from datetime import datetime
@@ -429,11 +430,18 @@ def check_thread_for_reply(thread_id: str) -> bool:
     """
     service = get_gmail_service()
     try:
+        logger.debug(f"Attempting to retrieve thread with ID: {thread_id}")
         thread_data = service.users().threads().get(userId="me", id=thread_id).execute()
         msgs = thread_data.get("messages", [])
         return len(msgs) > 1
+    except HttpError as e:
+        if e.resp.status == 404:
+            logger.error(f"Thread with ID {thread_id} not found. It may have been deleted or moved.")
+        else:
+            logger.error(f"HttpError occurred: {e}")
+        return False
     except Exception as e:
-        logger.error(f"Error retrieving thread {thread_id}: {e}")
+        logger.error(f"Unexpected error retrieving thread {thread_id}: {e}", exc_info=True)
         return False
 
 def search_inbound_messages_for_email(email_address: str, max_results: int = 1) -> list:
@@ -473,6 +481,8 @@ def create_followup_draft(
     in_reply_to: str = None
 ) -> Dict[str, Any]:
     try:
+        logger.debug(f"Creating follow-up draft for lead_id={lead_id}, sequence_num={sequence_num}")
+        
         service = get_gmail_service()
         if not service:
             logger.error("Failed to get Gmail service")
@@ -530,6 +540,8 @@ def create_followup_draft(
                 id=draft["message"]["id"],
                 body={"addLabelIds": [label_id]},
             ).execute()
+
+        logger.debug(f"Created follow-up draft with id={draft_id}")
 
         return {
             "status": "ok",

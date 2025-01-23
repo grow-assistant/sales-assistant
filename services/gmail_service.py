@@ -105,7 +105,20 @@ class GmailService:
         """Check if there has been a reply in the thread."""
         return check_thread_for_reply(thread_id)
 
-    
+    def search_replies(self, thread_id):
+        """
+        Search for replies in a Gmail thread.
+        """
+        try:
+            service = get_gmail_service()
+            query = f'threadId:{thread_id} is:reply'
+            results = service.users().messages().list(userId='me', q=query).execute()
+            messages = results.get('messages', [])
+            return messages if messages else None
+        except Exception as e:
+            logger.error(f"Error searching for replies in thread {thread_id}: {str(e)}", exc_info=True)
+            return None
+
     def _get_header(self, message: Dict[str, Any], header_name: str) -> str:
         """Extract header value from Gmail message."""
         headers = message.get("payload", {}).get("headers", [])

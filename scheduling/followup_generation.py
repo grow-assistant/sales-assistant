@@ -28,6 +28,8 @@ def generate_followup_email_xai(
 ) -> dict:
     """Generate a follow-up email using xAI and original Gmail message"""
     try:
+        logger.debug(f"Starting follow-up generation for lead_id={lead_id}, sequence_num={sequence_num}")
+        
         conn = get_db_connection()
         cursor = conn.cursor()
 
@@ -143,13 +145,17 @@ def generate_followup_email_xai(
             geography="Year-Round Golf",
             persona="General Manager",
             state="AZ",
+            sequence_num=sequence_num or 2,  # Pass sequence_num to determine time window
             season_data=None
         )
+        logger.debug(f"Calculated send date: {send_date}")
 
         # Ensure minimum 3-day gap from original send date
         orig_scheduled_date = original_email.get('scheduled_send_date', datetime.now())
+        logger.debug(f"Original scheduled date: {orig_scheduled_date}")
         while send_date < (orig_scheduled_date + timedelta(days=3)):
             send_date += timedelta(days=1)
+            logger.debug(f"Adjusted send date to ensure 3-day gap: {send_date}")
 
         return {
             'email': original_email.get('email'),

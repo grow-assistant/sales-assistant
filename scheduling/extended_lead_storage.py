@@ -82,6 +82,8 @@ def store_lead_email_info(
       - No more than 15 emails in any rolling 3-minute window
       - Each new email at least 2 minutes after the previously scheduled one
     """
+    logger.debug(f"Storing lead email info for draft_id={draft_id}, scheduled_date={scheduled_date}")
+    
     if correlation_id is None:
         correlation_id = f"store_{lead_sheet.get('lead_data', {}).get('email', 'unknown')}"
 
