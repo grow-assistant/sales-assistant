@@ -126,3 +126,109 @@ class GmailService:
             if header["name"].lower() == header_name.lower():
                 return header["value"]
         return ""
+
+    def get_latest_emails_with_bounces(self, email_address: str) -> Dict[str, Any]:
+        """Get the latest emails including bounce notifications for a contact from Gmail."""
+        try:
+            # Search for latest inbound message
+            inbound_query = f"from:{email_address}"
+            inbound_messages = search_messages(query=inbound_query)
+            
+            # Search for bounce notifications and outbound messages
+            outbound_query = f"(to:{email_address} OR (subject:\"Delivery Status Notification\" from:mailer-daemon@googlemail.com {email_address}))"
+            outbound_messages = search_messages(query=outbound_query)
+            
+            service = get_gmail_service()
+            latest_emails = {
+                "inbound": None,
+                "outbound": None
+            }
+            
+            # Get latest inbound email
+            if inbound_messages:
+                latest_inbound = service.users().messages().get(
+                    userId="me",
+                    id=inbound_messages[0]["id"],
+                    format="full"
+                ).execute()
+                
+                # Convert timestamp to UTC aware datetime
+                timestamp = datetime.fromtimestamp(
+                    int(latest_inbound["internalDate"]) / 1000,
+                    tz=pytz.UTC
+                )
+                
+                latest_emails["inbound"] = {
+                    "timestamp": timestamp.isoformat(),
+                    "subject": self._get_header(latest_inbound, "subject"),
+                    "body_text": self._get_full_body(latest_inbound),
+                    "direction": "INCOMING_EMAIL",
+                    "gmail_id": latest_inbound["id"]
+                }
+            
+            # Get latest outbound email or bounce notification
+            if outbound_messages:
+                latest_outbound = service.users().messages().get(
+                    userId="me",
+                    id=outbound_messages[0]["id"],
+                    format="full"
+                ).execute()
+                
+                # Convert timestamp to UTC aware datetime
+                timestamp = datetime.fromtimestamp(
+                    int(latest_outbound["internalDate"]) / 1000,
+                    tz=pytz.UTC
+                )
+                
+                # Check if it's a bounce notification
+                from_header = self._get_header(latest_outbound, "from")
+                is_bounce = "mailer-daemon@googlemail.com" in from_header.lower()
+                
+                latest_emails["outbound"] = {
+                    "timestamp": timestamp.isoformat(),
+                    "subject": self._get_header(latest_outbound, "subject"),
+                    "body_text": self._get_full_body(latest_outbound),
+                    "direction": "BOUNCE" if is_bounce else "EMAIL",
+                    "gmail_id": latest_outbound["id"],
+                    "is_bounce": is_bounce
+                }
+            
+            return latest_emails
+            
+        except Exception as e:
+            logger.error(f"Error getting Gmail messages: {str(e)}")
+            return {"inbound": None, "outbound": None}
+
+    def _get_full_body(self, message: Dict[str, Any]) -> str:
+        """Extract full message body from Gmail message."""
+        try:
+            if 'payload' not in message:
+                return message.get('snippet', '')
+
+            def get_text_from_part(part):
+                if part.get('mimeType') == 'text/plain':
+                    data = part.get('body', {}).get('data', '')
+                    if data:
+                        import base64
+                        try:
+                            return base64.urlsafe_b64decode(data).decode('utf-8')
+                        except:
+                            return ''
+                return ''
+
+            # Check main payload
+            text = get_text_from_part(message['payload'])
+            if text:
+                return text
+
+            # Check parts recursively
+            parts = message['payload'].get('parts', [])
+            for part in parts:
+                text = get_text_from_part(part)
+                if text:
+                    return text
+
+            return message.get('snippet', '')
+        except Exception as e:
+            logger.error(f"Error getting message body: {str(e)}")
+            return message.get('snippet', '')

@@ -212,14 +212,20 @@ def get_contacts_from_list(list_id: str) -> List[Dict[str, Any]]:
         # First get list memberships
         url = f"https://api.hubapi.com/crm/v3/lists/{list_id}/memberships"
         logger.debug(f"Fetching list memberships from: {url}")
-        memberships = data_gatherer.hubspot._make_hubspot_get(url)
         
+        memberships = data_gatherer.hubspot._make_hubspot_get(url)
+        if not memberships:
+            logger.warning(f"No memberships found for list {list_id}")
+            return []
+            
         # Extract record IDs
         record_ids = []
         if isinstance(memberships, dict) and "results" in memberships:
             record_ids = [result["recordId"] for result in memberships.get("results", [])]
-        
-        logger.debug(f"Found {len(record_ids)} records in list")
+            logger.info(f"Found {len(record_ids)} records in list {list_id}")
+        else:
+            logger.warning(f"Unexpected membership response format for list {list_id}")
+            return []
         
         # Now fetch full contact details for each ID (limit to first 25)
         contacts = []
@@ -231,22 +237,30 @@ def get_contacts_from_list(list_id: str) -> List[Dict[str, Any]]:
                     "properties": ["email", "firstname", "lastname", "company"]
                 }
                 contact_data = data_gatherer.hubspot._make_hubspot_get(contact_url, params)
+                
                 if contact_data:
+                    logger.debug(f"Successfully fetched contact {record_id}")
                     contacts.append(contact_data)
+                else:
+                    logger.warning(f"No data returned for contact {record_id}")
                     
             except Exception as e:
                 logger.warning(f"Failed to fetch details for contact {record_id}: {str(e)}")
                 continue
         
-        logger.info(f"Successfully retrieved {len(contacts)} contacts with details")
+        if not contacts:
+            logger.warning(f"No contact details retrieved for list {list_id}")
+        else:
+            logger.info(f"Successfully retrieved {len(contacts)} contacts with details from list {list_id}")
+        
         return contacts
         
     except Exception as e:
-        logger.error(f"Error getting contacts from list: {str(e)}", exc_info=True)
+        logger.error(f"Error getting contacts from list {list_id}: {str(e)}", exc_info=True)
         return []
 
 
-def process_list_contacts(list_id: str) -> None:
+def process_list_contacts(list_id: str) -> List[Dict[str, Any]]:
     """Process all contacts from a specified HubSpot list."""
     try:
         logger.debug(f"Starting to process list ID: {list_id}")
@@ -256,7 +270,7 @@ def process_list_contacts(list_id: str) -> None:
         
         if not contacts:
             print(f"No contacts found in list {list_id}")
-            return
+            return []  # Return empty list instead of None
 
         print("\nFirst 25 email addresses from list:")
         print("=" * 50)
@@ -272,9 +286,12 @@ def process_list_contacts(list_id: str) -> None:
             else:
                 print(f"{i}. [No email found]")
 
+        return contacts  # Return the contacts list
+
     except Exception as e:
         print(f"Error processing list contacts: {str(e)}")
         logger.error(f"Error in process_list_contacts: {str(e)}", exc_info=True)
+        return []  # Return empty list on error
 
 
 def test_email_pull(email_address: str) -> None:
@@ -341,4 +358,21 @@ if __name__ == "__main__":
     TEST_LIST_ID = "221"  # <-- Put your actual HubSpot list ID here
     
     print(f"\nStarting contact pull from HubSpot list: {TEST_LIST_ID}")
-    process_list_contacts(TEST_LIST_ID)
+    
+    try:
+        # Get and process contacts from list
+        contacts = process_list_contacts(TEST_LIST_ID)
+        
+        if contacts:  # Check if we have any contacts
+            for contact in contacts:
+                properties = contact.get("properties", {})
+                email = properties.get("email")
+                if email:
+                    print(f"\nProcessing email: {email}")
+                    test_email_pull(email)
+        else:
+            print("No contacts found to process")
+            
+    except Exception as e:
+        print(f"Error in main execution: {str(e)}")
+        logger.error(f"Main execution error: {str(e)}", exc_info=True)

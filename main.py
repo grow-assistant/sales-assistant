@@ -21,6 +21,7 @@ from utils.xai_integration import (
 )
 from utils.gmail_integration import search_messages
 import json
+import time
 
 # -----------------------------------------------------------------------------
 # PROJECT IMPORTS (Adjust paths/names as needed)
@@ -818,7 +819,32 @@ def main_list_workflow():
                 body = replace_placeholders(email_content[1], lead_data_full)
 
                 # 8) Get conversation summary
-                conversation_summary = conversation_analyzer.analyze_conversation(email)
+                try:
+                    logger.debug(f"Starting conversation analysis for email: {email}")
+                    
+                    # Log the input state
+                    logger.debug(f"Conversation analyzer state before analysis:")
+                    logger.debug(f"- Email: {email}")
+                    logger.debug(f"- Analyzer type: {type(conversation_analyzer).__name__}")
+                    
+                    # Perform the analysis with timing
+                    start_time = time.time()
+                    conversation_summary = conversation_analyzer.analyze_conversation(email)
+                    analysis_time = time.time() - start_time
+                    
+                    # Log the results
+                    logger.info(f"Conversation analysis completed in {analysis_time:.2f} seconds")
+                    logger.debug(f"Analysis results:")
+                    logger.debug(f"- Summary length: {len(conversation_summary) if conversation_summary else 0}")
+                    logger.debug(f"- Summary content: {conversation_summary}")
+                    
+                    if not conversation_summary:
+                        logger.warning("Conversation analysis returned empty summary")
+                
+                except Exception as e:
+                    logger.error(f"Error during conversation analysis for {email}: {str(e)}", exc_info=True)
+                    conversation_summary = None
+                    raise
 
                 # 9) Build context block
                 context = build_context_block(
