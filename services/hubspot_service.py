@@ -588,3 +588,15 @@ class HubspotService:
                 break
         
         return all_contacts
+
+    def delete_contact(self, contact_id: str) -> bool:
+        """Delete a contact from HubSpot."""
+        try:
+            url = f"{self.contacts_endpoint}/{contact_id}"
+            response = requests.delete(url, headers=self.headers)
+            response.raise_for_status()
+            logger.info(f"Successfully deleted contact {contact_id} from HubSpot")
+            return True
+        except Exception as e:
+            logger.error(f"Error deleting contact {contact_id}: {str(e)}")
+            return False

@@ -12,6 +12,7 @@ from utils.gmail_integration import (
 from utils.logging_setup import logger
 from datetime import datetime
 import pytz
+import re
 
 class GmailService:
     def get_latest_emails_for_contact(self, email_address: str) -> Dict[str, Any]:
@@ -232,3 +233,176 @@ class GmailService:
         except Exception as e:
             logger.error(f"Error getting message body: {str(e)}")
             return message.get('snippet', '')
+
+    def archive_email(self, message_id: str) -> bool:
+        """Archive an email in Gmail by removing the INBOX label."""
+        try:
+            service = get_gmail_service()
+            # Remove INBOX label to archive the message
+            service.users().messages().modify(
+                userId='me',
+                id=message_id,
+                body={'removeLabelIds': ['INBOX']}
+            ).execute()
+            logger.info(f"Successfully archived email {message_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error archiving email {message_id}: {str(e)}")
+            return False
+
+    def search_bounce_notifications(self, email_address: str) -> List[str]:
+        """Search for bounce notification emails for a specific email address."""
+        try:
+            # Search for bounce notifications containing the email address
+            query = f'from:mailer-daemon@googlemail.com subject:"Delivery Status Notification" "{email_address}"'
+            messages = search_messages(query=query)
+            
+            if messages:
+                return [msg['id'] for msg in messages]
+            return []
+            
+        except Exception as e:
+            logger.error(f"Error searching bounce notifications: {str(e)}")
+            return []
+
+    def search_messages(self, query: str) -> List[Dict[str, Any]]:
+        """Search for messages in Gmail using the given query."""
+        try:
+            logger.debug(f"Executing Gmail search with query: {query}")
+            # Use the imported search_messages function
+            messages = search_messages(query=query)
+            logger.debug(f"Search results: {messages if messages else 'No messages found'}")
+            return messages if messages else []
+        except Exception as e:
+            logger.error(f"Error searching messages: {str(e)}", exc_info=True)
+            return []
+
+    def get_message(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """Get a specific message by ID."""
+        try:
+            service = get_gmail_service()
+            message = service.users().messages().get(
+                userId="me",
+                id=message_id,
+                format="full"
+            ).execute()
+            return message
+        except Exception as e:
+            logger.error(f"Error getting message {message_id}: {str(e)}")
+            return None
+
+    def get_bounce_message_details(self, message_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get details from a bounce notification message including the bounced email address.
+        
+        Args:
+            message_id: The Gmail message ID
+            
+        Returns:
+            Dict with bounced email and other details, or None if not found
+        """
+        try:
+            logger.debug(f"Getting bounce message details for ID: {message_id}")
+            message = self.get_message(message_id)
+            if not message:
+                logger.debug(f"No message found for ID: {message_id}")
+                return None
+            
+            # Get the full message body
+            body = self._get_full_body(message)
+            if not body:
+                logger.debug(f"No body found in message: {message_id}")
+                return None
+            
+            logger.debug(f"Message body length: {len(body)}")
+            logger.debug(f"First 200 characters of body: {body[:200]}")
+            
+            # Extract bounced email using various patterns
+            patterns = [
+                r'Original-Recipient:.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?',
+                r'Final-Recipient:.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?',
+                r'To: <([\w\.-]+@[\w\.-]+\.\w+)>',
+                r'The email account that you tried to reach[^\n]*?([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[A-Z|a-z]{2,})',
+                r'failed permanently.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?',
+                r"message wasn(?:&#39;|\')t delivered to ([\w\.-]+@[\w\.-]+\.\w+)",
+            ]
+            
+            for pattern in patterns:
+                match = re.search(pattern, body, re.IGNORECASE | re.DOTALL)
+                if match:
+                    bounced_email = match.group(1)
+                    if bounced_email and '@' in bounced_email:
+                        logger.debug(f"Found bounced email {bounced_email} using pattern: {pattern}")
+                        subject = self._get_header(message, 'subject')
+                        return {
+                            'bounced_email': bounced_email,
+                            'subject': subject,
+                            'body': body,
+                            'message_id': message_id
+                        }
+                else:
+                    logger.debug(f"Pattern did not match: {pattern}")
+            
+            logger.debug(f"No email found in message {message_id}. Full body: {body[:500]}...")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting bounce message details for {message_id}: {str(e)}", exc_info=True)
+            return None
+
+    def process_bounce_notification(self, message_id: str) -> Optional[str]:
+        """
+        Process a bounce notification and extract the bounced email address.
+        
+        Args:
+            message_id: The Gmail message ID
+            
+        Returns:
+            The bounced email address if found, None otherwise
+        """
+        try:
+            details = self.get_bounce_message_details(message_id)
+            if details and 'bounced_email' in details:
+                return details['bounced_email']
+            return None
+        except Exception as e:
+            logger.error(f"Error processing bounce notification {message_id}: {str(e)}")
+            return None
+
+    def get_all_bounce_notifications(self, inbox_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get all bounce notifications from Gmail.
+        
+        Args:
+            inbox_only: If True, only search for bounce notifications in the inbox
+        
+        Returns:
+            List of bounce notification message IDs and details
+        """
+        try:
+            # Search for all bounce notifications
+            base_query = "from:mailer-daemon@googlemail.com subject:\"Delivery Status Notification\""
+            if inbox_only:
+                query = f"{base_query} in:inbox"
+            else:
+                query = base_query
+            
+            logger.debug(f"Searching with query: {query}")
+            messages = self.search_messages(query)
+            logger.debug(f"Found {len(messages) if messages else 0} messages matching query")
+            
+            bounce_notifications = []
+            for message in messages:
+                message_id = message['id']
+                logger.debug(f"Processing message ID: {message_id}")
+                details = self.get_bounce_message_details(message_id)
+                logger.debug(f"Details extracted for message {message_id}: {details}")
+                if details:
+                    bounce_notifications.append(details)
+                
+            logger.debug(f"Total bounce notifications processed: {len(bounce_notifications)}")
+            return bounce_notifications
+            
+        except Exception as e:
+            logger.error(f"Error getting bounce notifications: {str(e)}", exc_info=True)
+            return []

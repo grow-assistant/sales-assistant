@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Any
 from .data_gatherer_service import DataGathererService
 from .gmail_service import GmailService
 from .hubspot_service import HubspotService
@@ -134,6 +134,80 @@ class ResponseAnalyzerService:
         # You might want to add more sophisticated analysis here
         return "GENUINE_RESPONSE", 0.7
 
+    def extract_bounced_email_address(self, bounce_message: Dict[str, Any]) -> Optional[str]:
+        """
+        Extract the original recipient's email address from a bounce notification message.
+        
+        Args:
+            bounce_message: The full Gmail message object of the bounce notification
+            
+        Returns:
+            str: The extracted email address or None if not found
+        """
+        try:
+            # Get the message body
+            if 'payload' not in bounce_message:
+                return None
+
+            # First try to get it from the subject line
+            subject = None
+            for header in bounce_message['payload'].get('headers', []):
+                if header['name'].lower() == 'subject':
+                    subject = header['value']
+                    break
+
+            if subject:
+                # Look for email pattern in subject
+                import re
+                email_pattern = r'[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}'
+                matches = re.findall(email_pattern, subject)
+                if matches:
+                    # Filter out mailer-daemon address
+                    for email in matches:
+                        if 'mailer-daemon' not in email.lower():
+                            return email
+
+            # If not found in subject, try message body
+            def get_text_from_part(part):
+                if part.get('mimeType') == 'text/plain':
+                    data = part.get('body', {}).get('data', '')
+                    if data:
+                        import base64
+                        try:
+                            return base64.urlsafe_b64decode(data).decode('utf-8')
+                        except:
+                            return ''
+                return ''
+
+            # Get text from main payload
+            message_text = get_text_from_part(bounce_message['payload'])
+            
+            # If not in main payload, check parts
+            if not message_text:
+                for part in bounce_message['payload'].get('parts', []):
+                    message_text = get_text_from_part(part)
+                    if message_text:
+                        break
+
+            if message_text:
+                # Look for common bounce message patterns
+                patterns = [
+                    r'Original-Recipient:.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?',
+                    r'Final-Recipient:.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?',
+                    r'The email account that you tried to reach does not exist.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?',
+                    r'failed permanently.*?<?([\w\.-]+@[\w\.-]+\.\w+)>?'
+                ]
+                
+                for pattern in patterns:
+                    match = re.search(pattern, message_text, re.IGNORECASE | re.DOTALL)
+                    if match:
+                        return match.group(1)
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error extracting bounced email address: {str(e)}")
+            return None
 
 def main():
     """Test function to demonstrate usage."""
