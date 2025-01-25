@@ -7,6 +7,7 @@ from tenacity import retry, stop_after_attempt, wait_fixed
 from config.settings import logger
 from utils.exceptions import HubSpotError
 from utils.formatting_utils import clean_html
+from datetime import datetime
 
 
 class HubspotService:
@@ -599,4 +600,37 @@ class HubspotService:
             return True
         except Exception as e:
             logger.error(f"Error deleting contact {contact_id}: {str(e)}")
+            return False
+
+    def mark_contact_as_bounced(self, email: str) -> bool:
+        """Mark a contact as bounced in HubSpot."""
+        try:
+            # Add detailed logging
+            logger.info(f"Marking contact as bounced in HubSpot: {email}")
+            
+            # Get the contact
+            contact = self.get_contact_by_email(email)
+            if not contact:
+                logger.warning(f"Contact not found in HubSpot: {email}")
+                return False
+            
+            # Update the contact properties
+            properties = {
+                "email_bounced": "true",
+                "email_bounced_date": datetime.now().strftime("%Y-%m-%d"),
+                "email_bounced_reason": "Hard bounce - Invalid recipient"
+            }
+            
+            # Make the API call
+            success = self.update_contact(contact['id'], properties)
+            
+            if success:
+                logger.info(f"Successfully marked contact as bounced in HubSpot: {email}")
+            else:
+                logger.error(f"Failed to mark contact as bounced in HubSpot: {email}")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error marking contact as bounced in HubSpot: {str(e)}")
             return False
