@@ -12,6 +12,7 @@ from utils.logging_setup import logger
 from config.settings import HUBSPOT_API_KEY
 from services.data_gatherer_service import DataGathererService
 from scheduling.database import get_db_connection
+from utils.xai_integration import analyze_auto_reply
 
 # Define queries for different types of notifications
 BOUNCE_QUERY = 'from:mailer-daemon@googlemail.com subject:"Delivery Status Notification" in:inbox'
@@ -147,76 +148,84 @@ def extract_new_contact_email(message: str) -> str:
             return match.group(1)
     return None
 
-def process_employment_change(email: str, new_email: str, message_id: str) -> None:
-    """Process employment change specifically for jim@chickasawcc.com"""
-    # Only process for this specific email
-    if email.lower() != "jim@chickasawcc.com":
-        return
-        
+def process_employment_change(email: str, message_id: str, gmail_service: GmailService) -> None:
+    """Process employment change notification."""
     try:
+        message_data = gmail_service.get_message(message_id)
+        subject = gmail_service._get_header(message_data, 'subject')
+        body = gmail_service._get_full_body(message_data)
+        
+        # Use xAI to analyze the auto-reply
+        contact_info = analyze_auto_reply(body, subject)
+        logger.debug(f"Auto-reply analysis results: {contact_info}")
+        
+        if not contact_info or not contact_info['new_email']:
+            logger.warning(f"No valid new contact information found for {email}")
+            return
+
         hubspot = HubspotService(HUBSPOT_API_KEY)
-        gmail = GmailService()
-        
-        logger.info(f"Processing employment change for {email}")
-        
-        # Get original contact details
         old_contact = hubspot.get_contact_by_email(email)
+        
         if not old_contact:
             logger.warning(f"Original contact not found in HubSpot: {email}")
             return
 
-        # Create new contact with same properties
-        new_email = "news@chickasawcc.com"  # Hardcode new email
-        try:
-            # Get properties from old contact
-            properties = old_contact.get('properties', {})
-            new_properties = {
-                'email': new_email,
-                'firstname': properties.get('firstname', ''),
-                'lastname': properties.get('lastname', ''),
-                'company': 'Chickasaw Country Club',
-                'jobtitle': properties.get('jobtitle', ''),
-                'phone': properties.get('phone', ''),
-                'website': properties.get('website', '')
-            }
-            
-            if TESTING:
-                print(f"Would have created new contact in HubSpot: {new_email}")
-            else:
-                # Create new contact
-                new_contact = hubspot.create_contact(new_properties)
-                if new_contact:
-                    logger.info(f"Created new contact in HubSpot: {new_email}")
-                    
-                    # Copy associations
-                    old_associations = hubspot.get_contact_associations(old_contact['id'])
-                    for association in old_associations:
-                        hubspot.create_association(new_contact['id'], association['id'], association['type'])
-                        logger.info(f"Copied association to new contact")
-                
-        except Exception as e:
-            logger.error(f"Error creating new contact {new_email}: {str(e)}")
-            return
+        # Create new contact with combined properties
+        old_properties = old_contact.get('properties', {})
+        logger.debug(f"Old contact properties: {old_properties}")
         
+        new_properties = {
+            'email': contact_info['new_email'],
+            'firstname': contact_info['new_contact'].split()[0] if contact_info['new_contact'] != 'Unknown' else old_properties.get('firstname', ''),
+            'lastname': ' '.join(contact_info['new_contact'].split()[1:]) if contact_info['new_contact'] != 'Unknown' else old_properties.get('lastname', ''),
+            'company': contact_info['company'] if contact_info['company'] != 'Unknown' else old_properties.get('company', ''),
+            'jobtitle': contact_info['new_title'] if contact_info['new_title'] != 'Unknown' else old_properties.get('jobtitle', ''),
+            'phone': contact_info['phone'] if contact_info['phone'] != 'Unknown' else old_properties.get('phone', '')
+        }
+        
+        logger.debug(f"Attempting to create new contact with properties: {new_properties}")
+
         if TESTING:
-            print(f"Would have deleted contact {email} with ID {old_contact.get('id')}")
-            print(f"Would have deleted {email} from SQL database")
-            print(f"Would have archived employment change notification with ID: {message_id}")
-        else:
-            # Delete old contact
-            if old_contact.get('id'):
-                if hubspot.delete_contact(old_contact['id']):
-                    logger.info(f"Deleted old contact from HubSpot: {email}")
+            print(f"\nAuto-reply Analysis Results:")
+            print(f"Original Contact: {email}")
+            print(f"Analysis Results: {contact_info}")
+            print(f"\nWould have performed these actions:")
+            print(f"1. Create new contact in HubSpot: {new_properties}")
+            print(f"2. Delete old contact: {email}")
+            print(f"3. Archive message: {message_id}")
+            return
+
+        # Create new contact
+        new_contact = hubspot.create_contact(new_properties)
+        if new_contact:
+            logger.info(f"Created/Updated contact in HubSpot: {contact_info['new_email']}")
             
-            # Delete from SQL database
-            delete_email_from_database(email)
+            # Copy associations before deleting old contact
+            old_associations = hubspot.get_contact_associations(old_contact['id'])
+            logger.debug(f"Found {len(old_associations)} associations to copy")
+            
+            for assoc in old_associations:
+                if hubspot.create_association(new_contact['id'], assoc['id'], assoc['type']):
+                    logger.debug(f"Copied association {assoc['type']} to new contact")
+                else:
+                    logger.warning(f"Failed to copy association {assoc['type']}")
+            
+            # Delete old contact
+            if hubspot.delete_contact(old_contact['id']):
+                logger.info(f"Deleted old contact: {email}")
+            else:
+                logger.error(f"Failed to delete old contact: {email}")
             
             # Archive the notification
-            if gmail.archive_email(message_id):
+            if gmail_service.archive_email(message_id):
                 logger.info(f"Archived employment change notification")
-            
+            else:
+                logger.error(f"Failed to archive notification")
+        else:
+            logger.error(f"Failed to create/update new contact in HubSpot")
+
     except Exception as e:
-        logger.error(f"Error processing employment change: {str(e)}")
+        logger.error(f"Error processing employment change: {str(e)}", exc_info=True)
 
 def is_inactive_email(message: str, subject: str) -> bool:
     """Check if message indicates email is inactive."""
@@ -253,12 +262,65 @@ def process_email_response(message_id: str, email: str, subject: str, body: str,
             contact_email = contact.get('properties', {}).get('email', '')
             logger.info(f"Found contact in HubSpot: {contact_email} (ID: {contact_id})")
             
-            # Check if it's a "no longer employed" message
-            if "no longer employed" in subject.lower():
-                process_employment_change(contact_email, None, message_id)
-            # Check if it's an auto-reply or inactive email
-            elif any(phrase in subject.lower() for phrase in ["automatic reply", "out of office"]) or is_inactive_email(body, subject):
-                # Process bounce notification to mark as bounced and delete
+            # First check if it's an auto-reply and analyze with xAI
+            if "automatic reply" in subject.lower():
+                logger.info("Detected auto-reply, sending to xAI for analysis...")
+                contact_info = analyze_auto_reply(body, subject)
+                
+                if contact_info and contact_info.get('new_email'):
+                    # Get existing contact properties
+                    properties = contact.get('properties', {})
+                    
+                    # Prepare new contact properties
+                    new_properties = {
+                        'email': contact_info['new_email'],
+                        'firstname': contact_info['new_contact'].split()[0] if contact_info['new_contact'] != 'Unknown' else properties.get('firstname', ''),
+                        'lastname': ' '.join(contact_info['new_contact'].split()[1:]) if contact_info['new_contact'] != 'Unknown' else properties.get('lastname', ''),
+                        'company': contact_info['company'] if contact_info['company'] != 'Unknown' else properties.get('company', ''),
+                        'jobtitle': contact_info['new_title'] if contact_info['new_title'] != 'Unknown' else properties.get('jobtitle', ''),
+                        'phone': contact_info['phone'] if contact_info['phone'] != 'Unknown' else properties.get('phone', '')
+                    }
+
+                    if TESTING:
+                        print("\nAuto-reply Analysis Results:")
+                        print(f"Original Contact: {email}")
+                        print(f"Analysis Results: {contact_info}")
+                        print(f"\nWould have performed these actions:")
+                        print(f"1. Create new contact in HubSpot: {new_properties}")
+                        print(f"2. Copy all associations from old contact: {contact_id}")
+                        print(f"3. Delete old contact: {email}")
+                        print(f"4. Archive message: {message_id}")
+                        return
+                    
+                    # Create new contact and handle transition
+                    new_contact = hubspot.create_contact(new_properties)
+                    if new_contact:
+                        logger.info(f"Created new contact in HubSpot: {contact_info['new_email']}")
+                        
+                        # Copy associations
+                        old_associations = hubspot.get_contact_associations(contact_id)
+                        for association in old_associations:
+                            hubspot.create_association(new_contact['id'], association['id'], association['type'])
+                        
+                        # Delete old contact
+                        if hubspot.delete_contact(contact_id):
+                            logger.info(f"Deleted old contact: {email}")
+                        
+                        # Archive the notification
+                        if gmail_service.archive_email(message_id):
+                            logger.info(f"Archived employment change notification")
+                else:
+                    logger.info("No new contact information found, processing as standard auto-reply")
+                    notification = {
+                        "bounced_email": contact_email,
+                        "message_id": message_id
+                    }
+                    process_bounce_notification(notification, gmail_service)
+            
+            # Other conditions remain unchanged
+            elif "no longer employed" in subject.lower():
+                process_employment_change(contact_email, message_id, gmail_service)
+            elif is_inactive_email(body, subject):
                 notification = {
                     "bounced_email": contact_email,
                     "message_id": message_id
@@ -304,9 +366,10 @@ def process_bounce_notification(notification, gmail_service):
         delete_email_from_database(bounced_email)
     
     try:
-        # Delete from HubSpot with API key
+        # Delete from HubSpot
         hubspot = HubspotService(api_key=HUBSPOT_API_KEY)
         contact = hubspot.get_contact_by_email(bounced_email)
+        
         if contact:
             contact_id = contact.get('id')
             if contact_id:
@@ -324,7 +387,6 @@ def process_bounce_notification(notification, gmail_service):
             logger.warning(f"No contact found in HubSpot for {bounced_email}")
         
         # Archive the Gmail message
-        logger.debug(f"Attempting to archive message {message_id}")
         if TESTING:
             print(f"Would have archived bounce notification with ID: {message_id}")
         else:
@@ -440,7 +502,7 @@ def process_bounce_notifications(target_email: str = None):
 
 if __name__ == "__main__":
     # For testing specific email
-    TARGET_EMAIL = "bhagen@premiergc.com"
+    TARGET_EMAIL = "cmccarthy@mountainbranch.com"
     if TESTING:
         print(f"\nRunning in TEST mode - no actual changes will be made\n")
     process_bounce_notifications(TARGET_EMAIL)

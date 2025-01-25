@@ -634,3 +634,110 @@ class HubspotService:
         except Exception as e:
             logger.error(f"Error marking contact as bounced in HubSpot: {str(e)}")
             return False
+
+    def create_contact(self, properties: Dict[str, str]) -> Optional[Dict[str, Any]]:
+        """
+        Create a new contact in HubSpot.
+        
+        Args:
+            properties (Dict[str, str]): Dictionary of contact properties
+                Required keys: email
+                Optional keys: firstname, lastname, company, jobtitle, phone
+                
+        Returns:
+            Optional[Dict[str, Any]]: The created contact data or None if creation fails
+        """
+        try:
+            email = properties.get('email')
+            logger.info(f"Creating new contact in HubSpot with email: {email}")
+            logger.debug(f"Contact properties: {properties}")
+            
+            # Validate required email property
+            if not email:
+                logger.error("Cannot create contact: email is required")
+                return None
+            
+            # Check if contact already exists
+            existing_contact = self.get_contact_by_email(email)
+            if existing_contact:
+                logger.warning(f"Contact already exists with email {email}. Updating instead.")
+                # Update existing contact with new properties
+                if self.update_contact(existing_contact['id'], properties):
+                    logger.info(f"Successfully updated existing contact: {existing_contact['id']}")
+                    return existing_contact
+                return None
+            
+            payload = {
+                "properties": {
+                    key: str(value) for key, value in properties.items() if value and value != 'Unknown'
+                }
+            }
+            
+            logger.debug(f"Making create contact request with payload: {payload}")
+            response = requests.post(
+                self.contacts_endpoint,
+                headers=self.headers,
+                json=payload
+            )
+            
+            if response.status_code == 409:
+                logger.warning(f"Conflict creating contact {email} - contact may already exist")
+                # Try to get the existing contact again (in case it was just created)
+                existing_contact = self.get_contact_by_email(email)
+                if existing_contact:
+                    logger.info(f"Found existing contact after conflict: {existing_contact['id']}")
+                    if self.update_contact(existing_contact['id'], properties):
+                        return existing_contact
+                return None
+            
+            response.raise_for_status()
+            contact_data = response.json()
+            logger.info(f"Successfully created new contact: {contact_data.get('id')}")
+            logger.debug(f"New contact data: {contact_data}")
+            return contact_data
+            
+        except Exception as e:
+            logger.error(f"Error creating contact in HubSpot: {str(e)}")
+            if isinstance(e, requests.exceptions.HTTPError):
+                logger.error(f"Response status code: {e.response.status_code}")
+                logger.error(f"Response body: {e.response.text}")
+            return None
+
+    def get_contact_associations(self, contact_id: str) -> List[Dict[str, Any]]:
+        """Get all associations for a contact."""
+        url = f"{self.contacts_endpoint}/{contact_id}/associations"
+        
+        try:
+            response = requests.get(url, headers=self.headers)
+            response.raise_for_status()
+            data = response.json()
+            return data.get("results", [])
+        except Exception as e:
+            logger.error(f"Error fetching contact associations: {str(e)}")
+            return []
+
+    def create_association(self, from_id: str, to_id: str, association_type: str) -> bool:
+        """Create an association between two objects."""
+        url = f"{self.contacts_endpoint}/{from_id}/associations/{association_type}/{to_id}"
+        
+        try:
+            response = requests.put(url, headers=self.headers)
+            response.raise_for_status()
+            logger.info(f"Successfully created association between {from_id} and {to_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Error creating association: {str(e)}")
+            return False
+
+    def update_contact(self, contact_id: str, properties: Dict[str, Any]) -> bool:
+        """Update contact properties in HubSpot."""
+        try:
+            url = f"{self.contacts_endpoint}/{contact_id}"
+            payload = {"properties": properties}
+            
+            response = requests.patch(url, headers=self.headers, json=payload)
+            response.raise_for_status()
+            return True
+        except Exception as e:
+            logger.error(f"Error updating contact {contact_id}: {str(e)}")
+            return False

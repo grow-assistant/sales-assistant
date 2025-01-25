@@ -842,3 +842,130 @@ def check_for_placeholders(text: str) -> List[str]:
     import re
     pattern = r'\[([^\]]+)\]'
     return re.findall(pattern, text)
+
+def analyze_auto_reply(body: str, subject: str) -> Dict[str, str]:
+    """
+    Analyze auto-reply email to extract contact transition information.
+    
+    Args:
+        body (str): The email body text
+        subject (str): The email subject line
+        
+    Returns:
+        Dict with structured contact transition information:
+        {
+            'original_person': str,
+            'new_contact': str,
+            'new_email': str,
+            'new_title': str,
+            'phone': str,
+            'company': str,
+            'reason': str,
+            'permanent': str
+        }
+    """
+    prompt = f"""
+Analyze this auto-reply email and extract the following information with precision:
+
+1. **ORIGINAL PERSON**: Who sent the auto-reply?
+2. **NEW CONTACT**: Who is the new person to contact?
+3. **NEW EMAIL**: What is their new email address?
+4. **NEW TITLE**: What is their job title/role?
+5. **PHONE**: Any phone number provided?
+6. **COMPANY**: Company name if mentioned
+7. **REASON**: Why is the original person no longer available? (Retired, Left Company, etc.)
+8. **PERMANENT**: Is this a permanent change? (Yes/No/Unknown)
+
+CRITICAL RULES:
+- Only extract information explicitly stated in the message
+- Use 'Unknown' if information is not clearly provided
+- Do not make assumptions
+- For emails, only include if properly formatted (user@domain.com)
+
+Email Subject: {subject}
+Email Body:
+{body}
+
+Format your response with these exact headings:
+ORIGINAL PERSON:
+[Answer]
+
+NEW CONTACT:
+[Answer]
+
+NEW EMAIL:
+[Answer]
+
+NEW TITLE:
+[Answer]
+
+PHONE:
+[Answer]
+
+COMPANY:
+[Answer]
+
+REASON:
+[Answer]
+
+PERMANENT:
+[Answer]
+"""
+
+    try:
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert at analyzing auto-reply emails and extracting "
+                        "contact information changes. Only return verified information, "
+                        "use 'Unknown' if not certain."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            "model": MODEL_NAME,
+            "temperature": 0.0
+        }
+
+        response = _send_xai_request(payload)
+        logger.debug(f"Raw xAI response for contact extraction:\n{response}")
+
+        # Parse the response
+        result = {
+            'original_person': '',
+            'new_contact': '',
+            'new_email': '',
+            'new_title': 'Unknown',
+            'phone': 'Unknown',
+            'company': 'Unknown',
+            'reason': 'Unknown',
+            'permanent': 'Unknown'
+        }
+
+        sections = {
+            'original_person': re.search(r'ORIGINAL PERSON:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'new_contact': re.search(r'NEW CONTACT:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'new_email': re.search(r'NEW EMAIL:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'new_title': re.search(r'NEW TITLE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'phone': re.search(r'PHONE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'company': re.search(r'COMPANY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'reason': re.search(r'REASON:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'permanent': re.search(r'PERMANENT:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+        }
+
+        for key, match in sections.items():
+            if match:
+                result[key] = match.group(1).strip().split('\n')[0].strip()
+
+        # Validate email format
+        if result['new_email'] and not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', result['new_email']):
+            result['new_email'] = ''
+
+        logger.debug(f"Parsed contact info: {result}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error analyzing auto-reply: {str(e)}")
+        return None
