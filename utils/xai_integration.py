@@ -29,9 +29,17 @@ _cache = {
     "icebreakers": {},
 }
 
-
-
-
+def clean_html(html_text: str) -> str:
+    """Remove HTML tags and decode HTML entities."""
+    import re
+    from html import unescape
+    # Remove HTML tags
+    clean_text = re.sub(r'<[^>]+>', '', html_text)
+    # Decode HTML entities
+    clean_text = unescape(clean_text)
+    # Remove extra whitespace
+    clean_text = ' '.join(clean_text.split())
+    return clean_text
 
 def get_email_rules() -> List[str]:
     """
@@ -868,8 +876,8 @@ def analyze_auto_reply(body: str, subject: str) -> Dict[str, str]:
 Analyze this auto-reply email and extract the following information with precision:
 
 1. **ORIGINAL PERSON**: Who sent the auto-reply?
-2. **NEW CONTACT**: Who is the new person to contact?
-3. **NEW EMAIL**: What is their new email address?
+2. **NEW CONTACT**: Who is the new person to contact? If multiple people are listed, only use the first one mentioned.
+3. **NEW EMAIL**: What is their new email address? If multiple emails are listed, only use the first one that matches the first new contact.
 4. **NEW TITLE**: What is their job title/role?
 5. **PHONE**: Any phone number provided?
 6. **COMPANY**: Company name if mentioned
@@ -881,6 +889,7 @@ CRITICAL RULES:
 - Use 'Unknown' if information is not clearly provided
 - Do not make assumptions
 - For emails, only include if properly formatted (user@domain.com)
+- If multiple contacts are listed, only extract info for the first person mentioned
 
 Email Subject: {subject}
 Email Body:
@@ -968,4 +977,87 @@ PERMANENT:
 
     except Exception as e:
         logger.error(f"Error analyzing auto-reply: {str(e)}")
+        return None
+
+def analyze_employment_change(body: str, subject: str) -> Dict[str, str]:
+    """
+    Analyze an employment change notification email to extract relevant information.
+    Similar to analyze_auto_reply but specifically focused on employment changes.
+    """
+    try:
+        # Clean HTML if present
+        if '<html>' in body:
+            body = clean_html(body)
+
+        prompt = (
+            "Analyze this employment change notification email and extract the following information. "
+            "Use 'Unknown' if information is not clearly stated.\n\n"
+            "Email Subject: " + subject + "\n"
+            "Email Body: " + body + "\n\n"
+            "Extract and format the information as follows:\n"
+            "ORIGINAL PERSON:\n[Name of person who left]\n\n"
+            "NEW CONTACT:\n[Name of new contact person]\n\n"
+            "NEW EMAIL:\n[Email of new contact]\n\n"
+            "NEW TITLE:\n[Title of new contact]\n\n"
+            "PHONE:\n[Phone number]\n\n"
+            "COMPANY:\n[Company name]\n\n"
+            "REASON:\n[Reason for change]\n\n"
+            "PERMANENT:\n[Is this a permanent change? Yes/No/Unknown]"
+        )
+
+        payload = {
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert at analyzing employment change notifications "
+                        "and extracting contact information changes. Only return verified "
+                        "information, use 'Unknown' if not certain."
+                    )
+                },
+                {"role": "user", "content": prompt}
+            ],
+            "model": MODEL_NAME,
+            "temperature": 0.0
+        }
+
+        response = _send_xai_request(payload)
+        logger.debug(f"Raw xAI response for employment change analysis:\n{response}")
+
+        # Parse the response using the same structure as analyze_auto_reply
+        result = {
+            'original_person': '',
+            'new_contact': '',
+            'new_email': '',
+            'new_title': 'Unknown',
+            'phone': 'Unknown',
+            'company': 'Unknown',
+            'reason': 'Unknown',
+            'permanent': 'Unknown'
+        }
+
+        sections = {
+            'original_person': re.search(r'ORIGINAL PERSON:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'new_contact': re.search(r'NEW CONTACT:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'new_email': re.search(r'NEW EMAIL:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'new_title': re.search(r'NEW TITLE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'phone': re.search(r'PHONE:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'company': re.search(r'COMPANY:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'reason': re.search(r'REASON:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL),
+            'permanent': re.search(r'PERMANENT:\s*(.+?)(?=\n[A-Z ]+?:|$)', response, re.DOTALL)
+        }
+
+        for key, match in sections.items():
+            if match:
+                result[key] = match.group(1).strip().split('\n')[0].strip()
+
+        # Validate email format
+        if result['new_email'] and not re.match(r'^[\w\.-]+@[\w\.-]+\.\w+$', result['new_email']):
+            result['new_email'] = ''
+
+        logger.debug(f"Parsed employment change info: {result}")
+        return result
+
+    except Exception as e:
+        logger.error(f"Error analyzing employment change: {str(e)}")
         return None
