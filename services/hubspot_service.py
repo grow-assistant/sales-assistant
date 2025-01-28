@@ -837,3 +837,76 @@ class HubspotService:
         except Exception as e:
             logger.error(f"Error marking contact as DQ in HubSpot: {str(e)}")
             return False
+
+    def get_contacts_by_company_domain(self, domain: str) -> List[Dict[str, Any]]:
+        """
+        Get contacts in HubSpot whose email domain matches the given company domain.
+        
+        Args:
+            domain (str): The company domain to search for (e.g., "example.com")
+            
+        Returns:
+            List[Dict[str, Any]]: List of contact records matching the domain
+        """
+        try:
+            logger.info(f"Searching for contacts with company domain: {domain}")
+            url = f"{self.contacts_endpoint}/search"
+            
+            # Updated payload structure to match HubSpot's API requirements
+            payload = {
+                "filterGroups": [
+                    {
+                        "filters": [
+                            {
+                                "propertyName": "email",
+                                "operator": "CONTAINS_TOKEN",  # Changed from CONTAINS to CONTAINS_TOKEN
+                                "value": domain
+                            }
+                        ]
+                    }
+                ],
+                "sorts": [
+                    {
+                        "propertyName": "createdate",
+                        "direction": "DESCENDING"
+                    }
+                ],
+                "properties": [
+                    "email", 
+                    "firstname", 
+                    "lastname", 
+                    "company", 
+                    "jobtitle",
+                    "phone",
+                    "createdate",
+                    "lastmodifieddate"
+                ],
+                "limit": 100
+            }
+            
+            try:
+                response = self._make_hubspot_post(url, payload)
+                
+                if not response:
+                    logger.warning(f"No response received from HubSpot for domain: {domain}")
+                    return []
+                    
+                results = response.get("results", [])
+                
+                # Filter results to ensure exact domain match
+                filtered_results = []
+                for contact in results:
+                    contact_email = contact.get("properties", {}).get("email", "")
+                    if contact_email and contact_email.lower().endswith(f"@{domain.lower()}"):
+                        filtered_results.append(contact)
+                
+                logger.info(f"Found {len(filtered_results)} contacts for domain {domain}")
+                return filtered_results
+                
+            except Exception as e:
+                logger.error(f"Error in HubSpot API request: {str(e)}")
+                return []
+            
+        except Exception as e:
+            logger.error(f"Error getting contacts by company domain: {str(e)}")
+            return []
