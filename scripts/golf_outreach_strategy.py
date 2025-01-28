@@ -1,6 +1,7 @@
-"""
-Scripts for determining optimal outreach timing based on club and contact attributes.
-"""
+# scripts/golf_outreach_strategy.py
+# """
+# Scripts for determining optimal outreach timing based on club and contact attributes.
+# """
 from typing import Dict, Any
 import csv
 import logging

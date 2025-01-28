@@ -1,5 +1,7 @@
 # scheduling/database.py
-
+"""
+Database operations for the scheduling service.
+"""
 import sys
 from pathlib import Path
 import pyodbc

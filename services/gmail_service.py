@@ -1,3 +1,4 @@
+## services/gmail_service.py
 from typing import List, Dict, Any, Optional
 from utils.gmail_integration import (
     get_gmail_service,
@@ -14,6 +15,7 @@ from datetime import datetime
 import pytz
 import re
 from services.hubspot_service import HubspotService
+import base64
 
 class GmailService:
     def get_latest_emails_for_contact(self, email_address: str) -> Dict[str, Any]:
@@ -220,7 +222,6 @@ class GmailService:
                 extract_parts(message['payload'])
             
             # Join all parts and decode
-            import base64
             full_body = ''
             for part in parts:
                 try:
@@ -452,3 +453,72 @@ class GmailService:
         # Combine phrases with OR and add inbox filter
         query = f"({' OR '.join(rejection_phrases)}) in:inbox"
         return query
+
+    def get_gmail_template(self, template_name: str = "salesv2") -> str:
+        """
+        Fetch HTML email template from Gmail drafts whose subject
+        contains `template_name`.
+
+        Args:
+            template_name (str): Name to search for in draft subjects. Defaults to "sales".
+
+        Returns:
+            str: The template as an HTML string, or "" if no template found.
+        """
+        try:
+            service = get_gmail_service()
+            drafts_list = service.users().drafts().list(userId='me').execute()
+            if not drafts_list.get('drafts'):
+                logger.error("No drafts found in Gmail account.")
+                return ""
+
+            # Optional: gather subjects for debugging
+            draft_subjects = []
+            template_html = ""
+
+            for draft in drafts_list['drafts']:
+                msg_id = draft['message']['id']
+                msg = service.users().messages().get(
+                    userId='me',
+                    id=msg_id,
+                    format='full'
+                ).execute()
+
+                # Grab the subject
+                headers = msg['payload'].get('headers', [])
+                subject = next(
+                    (h['value'] for h in headers if h['name'].lower() == 'subject'),
+                    ''
+                ).lower()
+                draft_subjects.append(subject)
+
+                # If the draft subject contains template_name, treat that as the template
+                if template_name.lower() in subject:
+                    logger.debug(f"Found template draft with subject: {subject}")
+
+                    # Extract HTML parts
+                    if 'parts' in msg['payload']:
+                        for part in msg['payload']['parts']:
+                            if part['mimeType'] == 'text/html':
+                                template_html = base64.urlsafe_b64decode(
+                                    part['body']['data']
+                                ).decode('utf-8', errors='ignore')
+                                break
+                    elif msg['payload'].get('mimeType') == 'text/html':
+                        template_html = base64.urlsafe_b64decode(
+                            msg['payload']['body']['data']
+                        ).decode('utf-8', errors='ignore')
+
+                    if template_html:
+                        return template_html
+
+            # If we got here, we never found a match
+            logger.error(
+                f"No template found with name: {template_name}. "
+                f"Available draft subjects: {draft_subjects}"
+            )
+            return ""
+
+        except Exception as e:
+            logger.error(f"Error fetching Gmail template: {str(e)}", exc_info=True)
+            return ""

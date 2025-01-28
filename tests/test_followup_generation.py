@@ -1,4 +1,7 @@
 ## test_followup_generation.py
+"""
+Test script for generating follow-up emails.
+""" 
 
 import sys
 from pathlib import Path

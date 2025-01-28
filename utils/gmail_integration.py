@@ -70,6 +70,9 @@ def get_gmail_service():
 def get_gmail_template(service, template_name: str = "sales") -> str:
     """Fetch HTML email template from Gmail drafts."""
     try:
+        logger.debug(f"Searching for template with name: {template_name}")
+        logger.debug("=" * 80)
+        
         # First try to list all drafts
         drafts = service.users().drafts().list(userId='me').execute()
         if not drafts.get('drafts'):
@@ -79,6 +82,9 @@ def get_gmail_template(service, template_name: str = "sales") -> str:
         # Log all available drafts for debugging
         draft_subjects = []
         template_html = ""
+        
+        logger.debug("SCANNING DRAFTS:")
+        logger.debug("=" * 80)
         
         for draft in drafts.get('drafts', []):
             msg = service.users().messages().get(
@@ -94,25 +100,60 @@ def get_gmail_template(service, template_name: str = "sales") -> str:
                 ''
             ).lower()
             draft_subjects.append(subject)
+            logger.debug(f"Found draft with subject: {subject}")
             
             # If this is our template
             if template_name.lower() in subject:
-                logger.debug(f"Found template draft with subject: {subject}")
+                logger.debug(f"FOUND MATCHING TEMPLATE: {subject}")
+                logger.debug("=" * 80)
                 
                 # Extract HTML content
                 if 'parts' in msg['payload']:
+                    logger.debug("Processing multipart message")
                     for part in msg['payload']['parts']:
+                        logger.debug(f"Checking part with mimeType: {part['mimeType']}")
                         if part['mimeType'] == 'text/html':
                             template_html = base64.urlsafe_b64decode(
                                 part['body']['data']
                             ).decode('utf-8')
+                            logger.debug(f"Found HTML part, length: {len(template_html)}")
+                            logger.debug("First 200 chars of raw template:")
+                            logger.debug(template_html[:200])
+                            
+                            # Clean up the template HTML
+                            if '<div class="gmail_quote">' in template_html:
+                                logger.debug("Found gmail_quote - cleaning template")
+                                template_html = template_html.split('<div class="gmail_quote">')[0]
+                                logger.debug(f"Template length after cleaning: {len(template_html)}")
                             break
                 elif msg['payload']['mimeType'] == 'text/html':
+                    logger.debug("Processing single-part HTML message")
                     template_html = base64.urlsafe_b64decode(
                         msg['payload']['body']['data']
                     ).decode('utf-8')
+                    logger.debug(f"Found HTML content, length: {len(template_html)}")
+                    
+                    # Clean up the template HTML
+                    if '<div class="gmail_quote">' in template_html:
+                        logger.debug("Found gmail_quote - cleaning template")
+                        template_html = template_html.split('<div class="gmail_quote">')[0]
+                        logger.debug(f"Template length after cleaning: {len(template_html)}")
                 
                 if template_html:
+                    # Add wrapper div if not present
+                    if not template_html.strip().startswith('<div'):
+                        logger.debug("Adding wrapper div to template")
+                        template_html = f'<div class="template-content">{template_html}</div>'
+                    
+                    logger.debug("FINAL TEMPLATE:")
+                    logger.debug("=" * 80)
+                    logger.debug(f"Length: {len(template_html)}")
+                    logger.debug("First 200 chars:")
+                    logger.debug(template_html[:200])
+                    logger.debug("Last 200 chars:")
+                    logger.debug(template_html[-200:])
+                    logger.debug("=" * 80)
+                    
                     return template_html
 
         if not template_html:
@@ -124,6 +165,7 @@ def get_gmail_template(service, template_name: str = "sales") -> str:
 
     except Exception as e:
         logger.error(f"Error fetching Gmail template: {str(e)}", exc_info=True)
+        logger.exception("Full traceback:")
         return ""
 
 def create_message(to: str, subject: str, body: str) -> Dict[str, str]:

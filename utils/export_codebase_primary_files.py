@@ -8,16 +8,14 @@ def should_include_file(filepath):
     filepath = filepath.replace('\\', '/')
     # List of primary files focused on email template building and placeholder replacement
     primary_files = [
-        'main.py',
+        'scheduling/database.py',
+        'scheduling/followup_generation.py', 
         'scripts/golf_outreach_strategy.py',
-        'services/hubspot_service.py',
         'services/gmail_service.py',
-        'test_followup_generation.py',
-        'utils/xai_integration.py',
-        'scripts/monitor/run_email_monitoring.py',
-        'scripts/monitor/review_email_responses.py',
-        'scripts/monitor/monitor_email_sent_status.py',
-        'scripts/monitor/monitor_email_review_status.py'
+        'services/leads_service.py',
+        'tests/test_followup_generation.py',
+        'tests/test_hubspot_leads_service.py'
+
     ]
     # Check if file is in primary files list
     for primary_file in primary_files:
