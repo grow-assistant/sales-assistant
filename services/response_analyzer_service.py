@@ -11,6 +11,54 @@ class ResponseAnalyzerService:
         self.data_gatherer = DataGathererService()
         self.gmail_service = GmailService()
         self.hubspot = HubspotService(HUBSPOT_API_KEY)
+        
+        # Add patterns for different types of responses
+        self.out_of_office_patterns = [
+            r"out\s+of\s+office",
+            r"automatic\s+reply",
+            r"auto\s*-?\s*reply",
+            r"vacation\s+response",
+            r"away\s+from\s+(?:the\s+)?office",
+            r"will\s+be\s+(?:away|out)",
+            r"not\s+(?:in|available)",
+            r"on\s+vacation",
+            r"on\s+holiday",
+        ]
+        
+        self.employment_change_patterns = [
+            r"no\s+longer\s+(?:with|at)",
+            r"has\s+left\s+the\s+company",
+            r"(?:email|address)\s+is\s+no\s+longer\s+valid",
+            r"(?:has|have)\s+moved\s+on",
+            r"no\s+longer\s+employed",
+            r"last\s+day",
+            r"departed",
+            r"resigned",
+        ]
+        
+        self.do_not_contact_patterns = [
+            r"do\s+not\s+contact",
+            r"stop\s+(?:contact|email)",
+            r"unsubscribe",
+            r"remove\s+(?:me|from)",
+            r"opt\s+out",
+            r"take\s+me\s+off",
+        ]
+        
+        self.inactive_email_patterns = [
+            r"undeliverable",
+            r"delivery\s+failed",
+            r"delivery\s+status\s+notification",
+            r"failed\s+delivery",
+            r"bounce",
+            r"not\s+found",
+            r"does\s+not\s+exist",
+            r"invalid\s+recipient",
+            r"recipient\s+rejected",
+            r"no\s+longer\s+active",
+            r"account\s+disabled",
+            r"email\s+is\s+(?:now\s+)?inactive",
+        ]
 
     def analyze_response_status(self, email_address: str) -> Dict:
         """
@@ -208,6 +256,43 @@ class ResponseAnalyzerService:
         except Exception as e:
             logger.error(f"Error extracting bounced email address: {str(e)}")
             return None
+
+    def is_out_of_office(self, body: str, subject: str) -> bool:
+        """Check if message is an out of office reply."""
+        text = f"{subject} {body}".lower()
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in self.out_of_office_patterns)
+
+    def is_employment_change(self, body: str, subject: str) -> bool:
+        """Check if message indicates employment change."""
+        text = f"{subject} {body}".lower()
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in self.employment_change_patterns)
+
+    def is_do_not_contact_request(self, body: str, subject: str) -> bool:
+        """Check if message is a request to not be contacted."""
+        text = f"{subject} {body}".lower()
+        return any(re.search(pattern, text, re.IGNORECASE) for pattern in self.do_not_contact_patterns)
+
+    def is_inactive_email(self, body: str, subject: str) -> bool:
+        """Check if message indicates an inactive email address."""
+        inactive_phrases = [
+            "not actively monitored",
+            "no longer monitored",
+            "inbox is not monitored",
+            "email is inactive",
+            "mailbox is inactive",
+            "account is inactive",
+            "email address is inactive",
+            "no longer in service",
+            "mailbox is not monitored"
+        ]
+        
+        # Convert to lowercase for case-insensitive matching
+        body_lower = body.lower()
+        subject_lower = subject.lower()
+        
+        # Check both subject and body for inactive phrases
+        return any(phrase in body_lower or phrase in subject_lower 
+                  for phrase in inactive_phrases)
 
 def main():
     """Test function to demonstrate usage."""
