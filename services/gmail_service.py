@@ -430,3 +430,25 @@ class GmailService:
         except Exception as e:
             logger.error(f"Error getting bounce notifications: {str(e)}", exc_info=True)
             return []
+
+    def get_rejection_search_query(self):
+        """Returns search query for explicit rejection emails"""
+        rejection_phrases = [
+            '"no thanks"',
+            '"don\'t contact"',
+            '"do not contact"',
+            '"please remove"',
+            '"not interested"',
+            '"we use"',
+            '"we already use"',
+            '"we have"',
+            '"we already have"',
+            '"please don\'t contact"',
+            '"stop contacting"',
+            '"remove me"',
+            '"unsubscribe"'
+        ]
+        
+        # Combine phrases with OR and add inbox filter
+        query = f"({' OR '.join(rejection_phrases)}) in:inbox"
+        return query

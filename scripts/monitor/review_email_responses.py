@@ -216,6 +216,25 @@ def is_employment_change(body: str, subject: str) -> bool:
     message_lower = (body + " " + subject).lower()
     return any(phrase in message_lower for phrase in employment_phrases)
 
+def is_do_not_contact_request(message: str, subject: str) -> bool:
+    """Check if message is a request to not be contacted."""
+    dnc_phrases = [
+        "don't contact",
+        "do not contact",
+        "stop contacting",
+        "please remove",
+        "unsubscribe",
+        "take me off",
+        "remove me from",
+        "no thanks",
+        "not interested"
+    ]
+    
+    message_lower = message.lower()
+    subject_lower = subject.lower()
+    
+    return any(phrase in message_lower or phrase in subject_lower for phrase in dnc_phrases)
+
 def process_email_response(message_id: str, email: str, subject: str, body: str, gmail_service: GmailService) -> None:
     """Process an email response."""
     try:
@@ -229,6 +248,26 @@ def process_email_response(message_id: str, email: str, subject: str, body: str,
         
         # Get contact directly
         contact = hubspot.get_contact_by_email(email)
+        
+        # Check if it's a do not contact request first
+        if is_do_not_contact_request(body, subject):
+            logger.info(f"Detected do-not-contact request from {email}")
+            if contact:
+                # Get company name from contact if available
+                company_name = contact.get('properties', {}).get('company', '')
+                
+                # Mark as do not contact in HubSpot
+                if hubspot.mark_do_not_contact(email, company_name):
+                    logger.info(f"Successfully marked {email} as do-not-contact")
+                    
+                    # Delete from SQL database
+                    delete_email_from_database(email)
+                    logger.info(f"Removed {email} from SQL database")
+                    
+                    # Archive the message
+                    if gmail_service.archive_email(message_id):
+                        logger.info(f"Archived do-not-contact request email")
+                return
         
         # First check if it's an employment change notification
         if is_employment_change(body, subject):
@@ -466,6 +505,40 @@ def process_bounce_notifications(target_email: str = None):
     else:
         logger.info("No auto-reply notifications found.")
     
+    # Add new rejection check
+    logger.info("Searching for explicit rejection responses...")
+    rejection_query = gmail_service.get_rejection_search_query()
+    rejection_messages = gmail_service.search_messages(rejection_query)
+    
+    if rejection_messages:
+        logger.info(f"Found {len(rejection_messages)} rejection messages.")
+        for message in rejection_messages:
+            message_data = gmail_service.get_message(message['id'])
+            if message_data:
+                # Properly extract the from header
+                from_header = gmail_service._get_header(message_data, 'from')
+                email_match = re.search(r'<(.+?)>', from_header)
+                email = email_match.group(1) if email_match else from_header.split()[-1]
+                
+                if target_email and email.lower() == target_email.lower():
+                    logger.info(f"Processing rejection from {email}")
+                    # Get the body and subject for context
+                    body = gmail_service._get_full_body(message_data)
+                    subject = gmail_service._get_header(message_data, 'subject')
+                    
+                    # Mark as DQ in HubSpot
+                    hubspot_service = HubspotService(HUBSPOT_API_KEY)
+                    contact = hubspot_service.get_contact_by_email(email)
+                    if contact:
+                        hubspot_service.mark_contact_as_dq(email, "Explicit rejection")
+                        logger.info(f"Marked {email} as DQ in HubSpot")
+                    
+                    # Archive the message
+                    if gmail_service.archive_email(message['id']):
+                        logger.info(f"Archived rejection message from {email}")
+                    
+                    processed_emails.add(email)
+
     # Verify processing for all processed emails
     if processed_emails:
         logger.info("Verifying processing results...")
@@ -482,9 +555,16 @@ def process_bounce_notifications(target_email: str = None):
     else:
         logger.info("No emails were processed")
 
+def mark_lead_as_dq(email_address, reason):
+    """Mark a lead as disqualified in the database"""
+    logger.info(f"Marking {email_address} as DQ. Reason: {reason}")
+    # Add your database update logic here
+    # Example:
+    # db.update_lead_status(email_address, status='DQ', reason=reason)
+
 if __name__ == "__main__":
     # For testing specific email
-    TARGET_EMAIL = "ddew@forestcreekgolfclub.com"
+    TARGET_EMAIL = "bhiggins@foxchapelgolfclub.com"
     if TESTING:
         print(f"\nRunning in TEST mode - no actual changes will be made\n")
     process_bounce_notifications(TARGET_EMAIL)

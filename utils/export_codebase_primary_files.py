@@ -6,11 +6,18 @@ def should_include_file(filepath):
     """Determine if a file should be included in the export."""
     # Normalize path separators 
     filepath = filepath.replace('\\', '/')
-    
     # List of primary files focused on email template building and placeholder replacement
     primary_files = [
         'main.py',
-        'golf_outreach_strategy.py'
+        'scripts/golf_outreach_strategy.py',
+        'services/hubspot_service.py',
+        'services/gmail_service.py',
+        'test_followup_generation.py',
+        'utils/xai_integration.py',
+        'scripts/monitor/run_email_monitoring.py',
+        'scripts/monitor/review_email_responses.py',
+        'scripts/monitor/monitor_email_sent_status.py',
+        'scripts/monitor/monitor_email_review_status.py'
     ]
     # Check if file is in primary files list
     for primary_file in primary_files:

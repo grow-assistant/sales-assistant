@@ -741,3 +741,99 @@ class HubspotService:
         except Exception as e:
             logger.error(f"Error updating contact {contact_id}: {str(e)}")
             return False
+
+    def mark_do_not_contact(self, email: str, company_name: str = None) -> bool:
+        """
+        Mark a contact as 'Do Not Contact' and update related properties.
+        
+        Args:
+            email: Contact's email address
+            company_name: Optional company name for template
+            
+        Returns:
+            bool: Success status
+        """
+        try:
+            logger.info(f"Processing do-not-contact request for {email}")
+            
+            # Get contact
+            contact = self.get_contact_by_email(email)
+            if not contact:
+                logger.warning(f"Contact not found for email: {email}")
+                return False
+            
+            contact_id = contact.get('id')
+            
+            # Update contact properties
+            properties = {
+                "hs_lead_status": "DQ",  # Set lead status to DQ
+                "do_not_contact": "true",
+                "do_not_contact_reason": "Customer Request",
+                "lifecyclestage": "Other",
+                "hs_marketable_reason_id": "UNSUBSCRIBED",
+                "hs_marketable_status": "NO",
+                "hs_marketable_until_renewal": "false"
+            }
+            
+            # Update the contact
+            if not self.update_contact(contact_id, properties):
+                logger.error(f"Failed to update contact properties for {email}")
+                return False
+            
+            # Get first name for template
+            first_name = contact.get('properties', {}).get('firstname', '')
+            company_short = company_name or contact.get('properties', {}).get('company', '')
+            
+            # Generate response from template
+            template_vars = {
+                "firstname": first_name,
+                "company_short_name": company_short
+            }
+            
+            logger.info(f"Successfully marked {email} as do-not-contact")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing do-not-contact request: {str(e)}")
+            return False
+
+    def mark_contact_as_dq(self, email: str, reason: str) -> bool:
+        """Mark a contact as disqualified in HubSpot."""
+        try:
+            # First get the contact
+            contact = self.get_contact_by_email(email)
+            if not contact:
+                logger.warning(f"No contact found in HubSpot for {email}")
+                return False
+
+            contact_id = contact.get('id')
+            if not contact_id:
+                logger.warning(f"Contact found but no ID for {email}")
+                return False
+
+            # Update the contact properties to mark as DQ
+            properties = {
+                'lifecyclestage': 'disqualified',
+                'hs_lead_status': 'DQ',
+                'dq_reason': reason,
+                'dq_date': datetime.now().strftime('%Y-%m-%d')
+            }
+
+            # Update the contact in HubSpot
+            url = f"{self.base_url}/objects/contacts/{contact_id}"
+            response = requests.patch(
+                url,
+                json={'properties': properties},
+                headers=self.headers
+            )
+
+            if response.status_code == 200:
+                logger.info(f"Successfully marked {email} as DQ in HubSpot")
+                return True
+            else:
+                logger.error(f"Failed to mark {email} as DQ in HubSpot. Status code: {response.status_code}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error marking contact as DQ in HubSpot: {str(e)}")
+            return False
