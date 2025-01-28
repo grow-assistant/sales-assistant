@@ -14,6 +14,7 @@ from config.settings import PROJECT_ROOT, DEBUG_MODE
 from services.data_gatherer_service import DataGathererService
 from utils.logging_setup import logger
 from utils.doc_reader import read_doc
+from utils.exceptions import HubSpotError
 
 
 class LeadContextError(Exception):
@@ -112,3 +113,48 @@ class LeadsService:
             "subject": subject,
             "body": body
         }
+
+    def get_lead_summary(self, lead_id: str) -> Dict[str, Optional[str]]:
+        """
+        Get key summary information about a lead.
+        
+        Args:
+            lead_id: HubSpot contact ID
+            
+        Returns:
+            Dict containing:
+                - last_reply_date: Date of latest email reply
+                - lifecycle_stage: Current lifecycle stage
+                - company_short_name: Short name of associated company
+                - company_name: Full name of associated company
+                - error: Error message if any
+        """
+        try:
+            logger.info(f"Fetching HubSpot properties for lead {lead_id}...")
+            contact_props = self.data_gatherer.hubspot.get_contact_properties(lead_id)
+            result = {
+                'last_reply_date': None,
+                'lifecycle_stage': None,
+                'company_short_name': None,
+                'company_name': None,
+                'error': None
+            }
+            
+            # Get basic contact info
+            result['last_reply_date'] = contact_props.get('hs_sales_email_last_replied')
+            result['lifecycle_stage'] = contact_props.get('lifecyclestage')
+            
+            # Get company information
+            company_id = self.data_gatherer.hubspot.get_associated_company_id(lead_id)
+            if company_id:
+                company_props = self.data_gatherer.hubspot.get_company_data(company_id)
+                if company_props:
+                    result['company_name'] = company_props.get('name')
+                    result['company_short_name'] = company_props.get('company_short_name')
+            
+            return result
+            
+        except HubSpotError as e:
+            if '404' in str(e):
+                return {'error': '404 - Lead not found'}
+            return {'error': str(e)}
