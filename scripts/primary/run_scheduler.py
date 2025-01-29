@@ -2,11 +2,12 @@ import os
 import sys
 import logging
 
-# Add project root to Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+# Add project root to Python path (going up two levels from current file)
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 sys.path.append(project_root)
 
-from scheduling.email_sender import send_scheduled_emails
+# Now import using absolute imports
+from scripts.primary.email_sender import send_scheduled_emails
 from utils.logging_setup import logger
 import time
 

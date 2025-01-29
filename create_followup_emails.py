@@ -9,7 +9,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.append(str(project_root))
 
-from test_hubspot_leads_service import get_random_lead_id
+from tests.test_hubspot_leads_service import get_random_lead_id
 from scheduling.database import get_db_connection
 from scheduling.followup_generation import generate_followup_email_xai
 from services.gmail_service import GmailService
@@ -59,7 +59,7 @@ def create_followup_for_unreplied_leads():
 
         # Fetch leads that have a first-sequence email with valid Gmail info
         cursor.execute("""
-            SELECT TOP 100
+            SELECT TOP 200
                 lead_id,
                 email_address,
                 name,

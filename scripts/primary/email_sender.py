@@ -1,3 +1,10 @@
+import os
+import sys
+
+# Add project root to Python path
+project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+sys.path.append(project_root)
+
 from datetime import datetime
 from utils.gmail_integration import get_gmail_service
 from scheduling.database import get_db_connection
