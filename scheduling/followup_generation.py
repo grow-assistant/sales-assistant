@@ -137,12 +137,21 @@ def generate_followup_email_xai(
         
         followup_content = (
             f"<div dir='ltr'>"
-            f"<p>Following up about improving operations at {venue_name}. "
-            f"Would you have 10 minutes this week for a brief call?</p>"
-            f"<p>Thanks,<br>Ty</p>"
+            f"<p>I wanted to quickly follow up on my previous email about Swoop. "
+            f"We’ve made setup incredibly easy—just send us a menu, and {venue_name} could be up and running in as little as 24-48 hours to try out.</p>"
+            f"<p>Would you have 10 minutes next week for a brief call?</p>"
+            f"<p>Ty</p>"
             f"</div>"
         )
 
+        # followup_content = (
+        #     f"<div dir='ltr'>"
+        #     f"<p>Following up about improving operations at {venue_name}. "
+        #     f"Would you have 10 minutes next week for a brief call?</p>"
+        #     f"<p>Thanks,<br>Ty</p>"
+        #     f"</div>"
+        # )
+        
         # Get Calendly template
         template_html = get_calendly_template()
         

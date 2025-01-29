@@ -113,13 +113,17 @@ def get_best_time(persona: str, sequence_num: int) -> dict:
     
     time_windows = {
         "General Manager": {
-            1: [  # Sequence 1: Morning hours
+            2: [  # Sequence 2: Morning or afternoon hours
                 {
                     "start_hour": 8, "start_minute": 30,
                     "end_hour": 10, "end_minute": 30
+                },
+                {
+                    "start_hour": 15, "start_minute": 0,
+                    "end_hour": 16, "end_minute": 30
                 }
             ],
-            2: [  # Sequence 2: Afternoon hours
+            1: [  # Sequence 1: Afternoon hours only
                 {
                     "start_hour": 15, "start_minute": 0,
                     "end_hour": 16, "end_minute": 30
@@ -127,25 +131,23 @@ def get_best_time(persona: str, sequence_num: int) -> dict:
             ]
         },
         "Food & Beverage Director": {
-            1: [  # Sequence 1: Morning hours
+            2: [  # Sequence 2: Morning or afternoon hours
                 {
                     "start_hour": 9, "start_minute": 30,
                     "end_hour": 11, "end_minute": 30
+                },
+                {
+                    "start_hour": 15, "start_minute": 0,
+                    "end_hour": 16, "end_minute": 30
                 }
             ],
-            2: [  # Sequence 2: Afternoon hours
+            1: [  # Sequence 1: Afternoon hours only
                 {
                     "start_hour": 15, "start_minute": 0,
                     "end_hour": 16, "end_minute": 30
                 }
             ]
         }
-        # "Golf Professional": [
-        #     {
-        #         "start_hour": 8, "start_minute": 0,
-        #         "end_hour": 10, "end_minute": 0
-        #     }   # 8:00-10:00 AM
-        # ]
     }
     
     # Convert persona to title case to handle different formats
@@ -157,8 +159,13 @@ def get_best_time(persona: str, sequence_num: int) -> dict:
     if persona not in time_windows or sequence_num not in time_windows[persona]:
         logger.debug(f"No specific time window for {persona} with sequence {sequence_num}, using General Manager defaults")
     
-    # Select the time window
-    selected_window = windows[0]  # Since we have only one window per sequence
+    # For sequence 2, randomly choose between morning and afternoon windows
+    if sequence_num == 2:
+        selected_window = random.choice(windows)
+        logger.debug(f"Sequence 2: Randomly selected window: {selected_window['start_hour']}:{selected_window['start_minute']} - {selected_window['end_hour']}:{selected_window['end_minute']}")
+    else:
+        selected_window = windows[0]  # For sequence 1, use the single defined window
+    
     logger.debug(f"Selected time window: {selected_window['start_hour']}:{selected_window['start_minute']} - {selected_window['end_hour']}:{selected_window['end_minute']}")
     
     # Update calculate_send_date function expects start/end format
@@ -201,31 +208,31 @@ def calculate_send_date(geography: str, persona: str, state: str, sequence_num: 
     # Get current time and adjust it for target state's timezone first
     now = datetime.now()
     state_now = adjust_send_time(now, state)
-    today_weekday = state_now.weekday()
     
-    # Check if we can use today (must be preferred day AND before end time in STATE's timezone)
-    end_hour = int(preferred_time["end"])
-    if (today_weekday in preferred_days and 
-        state_now.hour < end_hour):  # Compare state's local time to end hour
-        target_date = now
-        logger.debug(f"Using today ({target_date}) as it's a preferred day (weekday: {today_weekday}) and before end time ({end_hour})")
-    else:
-        days_ahead = [(day - today_weekday) % 7 for day in preferred_days]
-        next_preferred_day = min(days_ahead)
-        target_date = now + timedelta(days=next_preferred_day)
-        logger.debug(f"Using future date ({target_date}) as today isn't valid (weekday: {today_weekday} or after {end_hour})")
-    
-    # Apply preferred time
+    # Calculate target time for today
     start_hour = int(preferred_time["start"])
     start_minutes = int((preferred_time["start"] % 1) * 60)
-    target_date = target_date.replace(hour=start_hour, minute=start_minutes)
-    logger.debug(f"Applied preferred time: {target_date}")
+    target_time = state_now.replace(hour=start_hour, minute=start_minutes, second=0, microsecond=0)
     
-    # Final timezone adjustment
-    final_date = adjust_send_time(target_date, state)
+    # If target time is in the past, move to next available time slot
+    if target_time <= state_now:
+        # If we're past today's target time, try tomorrow at the same time
+        target_time += timedelta(days=1)
+    
+    # Find next available preferred day
+    while target_time.weekday() not in preferred_days:
+        target_time += timedelta(days=1)
+    
+    # Final timezone adjustment back from state time
+    final_date = adjust_send_time(target_time, state)
     logger.debug(f"Final scheduled date after timezone adjustment: {final_date}")
     
-    # Log the final scheduled send date and time
-    logger.info(f"Scheduled send date and time: {final_date}")
+    # Verify final date is in the future
+    if final_date <= datetime.now():
+        logger.warning("Final date was not in future, adding one day")
+        final_date += timedelta(days=1)
+        while final_date.weekday() not in preferred_days:
+            final_date += timedelta(days=1)
     
+    logger.info(f"Scheduled send date and time: {final_date}")
     return final_date

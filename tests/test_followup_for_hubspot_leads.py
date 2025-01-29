@@ -49,7 +49,7 @@ def create_followup_for_unreplied_leads():
 
         # Fetch leads that have a first-sequence email with valid Gmail info
         cursor.execute("""
-            SELECT
+            SELECT TOP 100
                 lead_id,
                 email_address,
                 name,
