@@ -22,6 +22,7 @@ from utils.xai_integration import (
 from utils.gmail_integration import search_messages
 import json
 import time
+from utils.data_extraction import extract_lead_data
 
 # -----------------------------------------------------------------------------
 # PROJECT IMPORTS (Adjust paths/names as needed)
@@ -31,8 +32,8 @@ from services.company_enrichment_service import CompanyEnrichmentService
 from services.data_gatherer_service import DataGathererService
 from scripts.golf_outreach_strategy import (
     get_best_outreach_window, 
-    get_best_month, 
-    adjust_send_time
+    get_best_month
+    
 )
 from scripts.build_template import build_outreach_email
 from scheduling.database import get_db_connection
@@ -111,34 +112,6 @@ def clear_files_on_start():
 
     except Exception as e:
         logger.error(f"Error clearing files: {str(e)}")
-
-def extract_lead_data(company_props: Dict, lead_props: Dict) -> Dict:
-    """Extract and organize lead and company data."""
-    return {
-        "company_data": {
-            "name": company_props.get("name", ""),
-            "city": company_props.get("city", ""),
-            "state": company_props.get("state", ""),
-            "club_type": company_props.get("club_type", ""),
-            "facility_complexity": company_props.get("facility_complexity", ""),
-            "has_pool": company_props.get("has_pool", ""),
-            "has_tennis_courts": company_props.get("has_tennis_courts", ""),
-            "number_of_holes": company_props.get("number_of_holes", ""),
-            "public_private_flag": company_props.get("public_private_flag", ""),
-            "geographic_seasonality": company_props.get("geographic_seasonality", ""),
-            "club_info": company_props.get("club_info", ""),
-            "peak_season_start_month": company_props.get("peak_season_start_month", ""),
-            "peak_season_end_month": company_props.get("peak_season_end_month", ""),
-            "start_month": company_props.get("start_month", ""),
-            "end_month": company_props.get("end_month", "")
-        },
-        "lead_data": {
-            "firstname": lead_props.get("firstname", ""),
-            "lastname": lead_props.get("lastname", ""),
-            "email": lead_props.get("email", ""),
-            "jobtitle": lead_props.get("jobtitle", "")
-        }
-    }
 
 def gather_personalization_data(company_name: str, city: str, state: str) -> Dict:
     """Gather additional personalization data for the company."""
@@ -487,7 +460,7 @@ def calculate_send_date(geography, persona, state_code, season_data=None):
             microsecond=0
         )
         
-        final_send_date = adjust_send_time(send_date, state_code)
+        final_send_date = send_date
         return final_send_date
         
     except Exception as e:

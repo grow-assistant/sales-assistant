@@ -1,4 +1,5 @@
 # tests/test_followup_for_hubspot_leads.py
+# This script is used to test the follow-up email generation for HubSpot leads.
 
 import sys
 import random
@@ -15,7 +16,10 @@ from services.gmail_service import GmailService
 from utils.gmail_integration import create_followup_draft
 from scheduling.extended_lead_storage import store_lead_email_info
 from utils.logging_setup import logger
-
+from services.data_gatherer_service import DataGathererService
+from services.hubspot_service import HubspotService
+from services.leads_service import LeadsService
+from config.settings import HUBSPOT_API_KEY
 
 def generate_followup_email_with_injection(lead_id: int, original_email: dict) -> dict:
     """
@@ -46,6 +50,12 @@ def create_followup_for_unreplied_leads():
     try:
         conn = get_db_connection()
         cursor = conn.cursor()
+
+        # Initialize services
+        data_gatherer = DataGathererService()
+        hubspot_service = HubspotService(HUBSPOT_API_KEY)
+        data_gatherer.hubspot_service = hubspot_service
+        leads_service = LeadsService(data_gatherer)
 
         # Fetch leads that have a first-sequence email with valid Gmail info
         cursor.execute("""
@@ -80,6 +90,12 @@ def create_followup_for_unreplied_leads():
 
             logger.info(f"[{idx}] Checking Lead ID: {lead_id} | Email: {email}")
 
+            # Get lead summary from LeadsService (includes company state)
+            lead_info = leads_service.get_lead_summary(lead_id)
+            if lead_info.get('error'):
+                logger.error(f"[{idx}] Failed to get lead info for Lead ID: {lead_id}")
+                continue
+
             # 1) Check if there's a reply in the thread
             replies = gmail_service.search_replies(gmail_id)
             if replies:
@@ -93,7 +109,8 @@ def create_followup_for_unreplied_leads():
                 'gmail_id': gmail_id,
                 'scheduled_send_date': scheduled_date,
                 'company_short_name': company_short_name,
-                'body': body
+                'body': body,
+                'state': lead_info.get('company_state')  # Get state from lead_info
             }
 
             # 3) Generate the follow-up with your injection in the middle

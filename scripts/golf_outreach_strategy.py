@@ -11,6 +11,19 @@ import random
 
 logger = logging.getLogger(__name__)
 
+# Update the logging configuration
+logging.basicConfig(
+    level=logging.DEBUG,  # Set to DEBUG to see all logs
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('app.log'),  # Log to file
+        logging.StreamHandler()          # Log to console
+    ]
+)
+
+# Add a debug message to verify logging is working
+logger.debug("Golf outreach strategy logging initialized")
+
 def load_state_offsets():
     """Load state hour offsets from CSV file."""
     offsets = {}
@@ -29,29 +42,6 @@ def load_state_offsets():
 
 STATE_OFFSETS = load_state_offsets()
 
-def adjust_send_time(send_time: datetime, state_code: str) -> datetime:
-    """Adjust send time based on state's hour offset."""
-    if not state_code:
-        logger.warning("No state code provided, using original time")
-        return send_time
-        
-    offsets = STATE_OFFSETS.get(state_code.upper())
-    if not offsets:
-        logger.warning(f"No offset data for state {state_code}, using original time")
-        return send_time
-    
-    # Determine if we're in DST
-    # In US, DST is from second Sunday in March to first Sunday in November
-    dt = datetime.now()
-    is_dst = 3 <= dt.month <= 11  # True if between March and November
-    
-    # Get the offset relative to Arizona time
-    offset_hours = offsets['dst'] if is_dst else offsets['std']
-    
-    # Apply offset from Arizona time
-    adjusted_time = send_time + timedelta(hours=offset_hours)
-    logger.debug(f"Adjusted time from {send_time} to {adjusted_time} for state {state_code} (offset: {offset_hours}h, DST: {is_dst})")
-    return adjusted_time
 
 def get_best_month(geography: str, club_type: str = None, season_data: dict = None) -> list:
     """
@@ -103,88 +93,96 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
     logger.debug(f"Using geography matrix fallback for {geography}, selected months: {result}")
     return result
 
-def get_best_time(persona: str, sequence_num: int) -> dict:
+def get_best_time(persona: str, sequence_num: int, timezone_offset: int = 0) -> dict:
     """
     Determine best time of day based on persona and email sequence number.
-    Returns a dict with start and end hours/minutes in 24-hour format.
-    Times are aligned to 30-minute windows.
-    """
-    logger.debug(f"Getting best time for persona: {persona}, sequence_num: {sequence_num}")
+    Returns a dict with start time in MST.
     
+    Args:
+        persona: The recipient's role/persona
+        sequence_num: Email sequence number (1 or 2)
+        timezone_offset: Hours offset from MST (e.g., 2 for EST)
+    """
+    logger.debug(f"\n=== Time Window Selection ===")
+    logger.debug(f"Input - Persona: {persona}, Sequence: {sequence_num}, Timezone offset: {timezone_offset}")
+    
+    # Default to General Manager if persona is None or invalid
+    if not persona:
+        logger.warning("No persona provided, defaulting to General Manager")
+        persona = "General Manager"
+    
+    # Normalize persona string
+    try:
+        persona = " ".join(word.capitalize() for word in persona.split("_"))
+        if persona.lower() in ["general manager", "gm", "club manager", "general_manager"]:
+            persona = "General Manager"
+        elif persona.lower() in ["f&b manager", "food & beverage manager", "food and beverage manager", "fb_manager"]:
+            persona = "Food & Beverage Director"
+    except Exception as e:
+        logger.error(f"Error normalizing persona: {str(e)}")
+        persona = "General Manager"
+    
+    # Define windows in LOCAL time
     time_windows = {
         "General Manager": {
-            2: [  # Sequence 2: Morning or afternoon hours
-                {
-                    "start_hour": 8, "start_minute": 30,
-                    "end_hour": 10, "end_minute": 30
-                },
-                {
-                    "start_hour": 15, "start_minute": 0,
-                    "end_hour": 16, "end_minute": 30
-                }
-            ],
-            1: [  # Sequence 1: Afternoon hours only
-                {
-                    "start_hour": 15, "start_minute": 0,
-                    "end_hour": 16, "end_minute": 30
-                }
-            ]
+            # 2: {  # Sequence 2: Morning window only
+            #     "start_hour": 8, "start_minute": 30,  # 8:30 AM LOCAL
+            #     "end_hour": 10, "end_minute": 30      # 10:30 AM LOCAL
+            # },
+            1: {  # Sequence 1: Afternoon window only
+                "start_hour": 13, "start_minute": 30,  # 1:30 PM LOCAL
+                "end_hour": 16, "end_minute": 00      # 4:00 PM LOCAL
+            }
         },
         "Food & Beverage Director": {
-            2: [  # Sequence 2: Morning or afternoon hours
-                {
-                    "start_hour": 9, "start_minute": 30,
-                    "end_hour": 11, "end_minute": 30
-                },
-                {
-                    "start_hour": 15, "start_minute": 0,
-                    "end_hour": 16, "end_minute": 30
-                }
-            ],
-            1: [  # Sequence 1: Afternoon hours only
-                {
-                    "start_hour": 15, "start_minute": 0,
-                    "end_hour": 16, "end_minute": 30
-                }
-            ]
+            # 2: {  # Sequence 2: Morning window only
+            #     "start_hour": 9, "start_minute": 30,  # 9:30 AM LOCAL
+            #     "end_hour": 11, "end_minute": 30      # 11:30 AM LOCAL
+            # },
+            1: {  # Sequence 1: Afternoon window only
+                "start_hour": 13, "start_minute": 30,  # 1:30 PM LOCAL
+                "end_hour": 16, "end_minute": 00      # 4:00 PM LOCAL
+            }
         }
     }
     
-    # Convert persona to title case to handle different formats
-    persona = " ".join(word.capitalize() for word in persona.split("_"))
-    logger.debug(f"Normalized persona: {persona}")
+    # Get time window for the persona and sequence number, defaulting to GM times if not found
+    window = time_windows.get(persona, time_windows["General Manager"]).get(sequence_num, time_windows["General Manager"][1])
     
-    # Get time windows for the persona and sequence number, defaulting to GM times if not found
-    windows = time_windows.get(persona, time_windows["General Manager"]).get(sequence_num, time_windows["General Manager"][1])
-    if persona not in time_windows or sequence_num not in time_windows[persona]:
-        logger.debug(f"No specific time window for {persona} with sequence {sequence_num}, using General Manager defaults")
+    # Convert LOCAL time to MST by subtracting timezone offset
+    start_time = window["start_hour"] + window["start_minute"] / 60
+    mst_start = start_time - timezone_offset
     
-    # For sequence 2, randomly choose between morning and afternoon windows
-    if sequence_num == 2:
-        selected_window = random.choice(windows)
-        logger.debug(f"Sequence 2: Randomly selected window: {selected_window['start_hour']}:{selected_window['start_minute']} - {selected_window['end_hour']}:{selected_window['end_minute']}")
-    else:
-        selected_window = windows[0]  # For sequence 1, use the single defined window
+    logger.debug(f"Selected window (LOCAL): {window['start_hour']}:{window['start_minute']:02d}")
+    logger.debug(f"Converted to MST (offset: {timezone_offset}): {int(mst_start)}:{int((mst_start % 1) * 60):02d}")
     
-    logger.debug(f"Selected time window: {selected_window['start_hour']}:{selected_window['start_minute']} - {selected_window['end_hour']}:{selected_window['end_minute']}")
-    
-    # Update calculate_send_date function expects start/end format
     return {
-        "start": selected_window["start_hour"] + selected_window["start_minute"] / 60,
-        "end": selected_window["end_hour"] + selected_window["end_minute"] / 60
+        "start": mst_start,
+        "end": mst_start  # Since we're only using start time, just duplicate it
     }
 
-def get_best_outreach_window(persona: str, geography: str, club_type: str = None, season_data: dict = None) -> Dict[str, Any]:
-    """Get the optimal outreach window based on persona and geography."""
-    logger.debug(f"Getting outreach window for persona: {persona}, geography: {geography}, club_type: {club_type}")
+def get_best_outreach_window(
+    persona: str, 
+    geography: str, 
+    sequence_num: int = 1,
+    club_type: str = None, 
+    season_data: dict = None,
+    timezone_offset: int = 0  # Add timezone_offset parameter
+) -> Dict[str, Any]:
+    """
+    Get the optimal outreach window based on persona and geography.
+    """
+    logger.debug(f"Getting outreach window for persona: {persona}, geography: {geography}, sequence: {sequence_num}, timezone_offset: {timezone_offset}")
     
     best_months = get_best_month(geography, club_type, season_data)
-    best_time = get_best_time(persona, 1)
-    best_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday (0 = Monday, 6 = Sunday)
+    best_time = get_best_time(persona, sequence_num, timezone_offset)  # Pass timezone_offset
+    best_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
     
     logger.debug(f"Calculated base outreach window", extra={
         "persona": persona,
         "geography": geography,
+        "sequence": sequence_num,
+        "timezone_offset": timezone_offset,
         "best_months": best_months,
         "best_time": best_time,
         "best_days": best_days
@@ -196,43 +194,57 @@ def get_best_outreach_window(persona: str, geography: str, club_type: str = None
         "Best Day": best_days
     }
 
-def calculate_send_date(geography: str, persona: str, state: str, sequence_num: int, season_data: dict = None) -> datetime:
-    """Calculate the next appropriate send date based on outreach window."""
-    logger.debug(f"Calculating send date for: geography={geography}, persona={persona}, state={state}, sequence_num={sequence_num}")
-    
-    outreach_window = get_best_outreach_window(geography, persona, season_data=season_data)
-    best_months = outreach_window["Best Month"]
-    preferred_time = get_best_time(persona, sequence_num)
-    preferred_days = [1, 2, 3]  # Tuesday, Wednesday, Thursday
-    
-    # Get current time and adjust it for target state's timezone first
-    now = datetime.now()
-    state_now = adjust_send_time(now, state)
-    
-    # Calculate target time for today
-    start_hour = int(preferred_time["start"])
-    start_minutes = int((preferred_time["start"] % 1) * 60)
-    target_time = state_now.replace(hour=start_hour, minute=start_minutes, second=0, microsecond=0)
-    
-    # If target time is in the past, move to next available time slot
-    if target_time <= state_now:
-        # If we're past today's target time, try tomorrow at the same time
-        target_time += timedelta(days=1)
-    
-    # Find next available preferred day
-    while target_time.weekday() not in preferred_days:
-        target_time += timedelta(days=1)
-    
-    # Final timezone adjustment back from state time
-    final_date = adjust_send_time(target_time, state)
-    logger.debug(f"Final scheduled date after timezone adjustment: {final_date}")
-    
-    # Verify final date is in the future
-    if final_date <= datetime.now():
-        logger.warning("Final date was not in future, adding one day")
-        final_date += timedelta(days=1)
-        while final_date.weekday() not in preferred_days:
-            final_date += timedelta(days=1)
-    
-    logger.info(f"Scheduled send date and time: {final_date}")
-    return final_date
+def calculate_send_date(geography: str, persona: str, state: str, sequence_num: int = 1, season_data: dict = None, day_offset: int = 0) -> datetime:
+    try:
+        logger.debug(f"\n=== Starting Send Date Calculation ===")
+        logger.debug(f"Inputs: geography={geography}, persona={persona}, state={state}, sequence={sequence_num}, day_offset={day_offset}")
+        
+        # Get timezone offset from MST for this state
+        offsets = STATE_OFFSETS.get(state.upper() if state else None)
+        logger.debug(f"Found offsets for {state}: {offsets}")
+        
+        if not offsets:
+            logger.warning(f"No offset data for state {state}, using MST")
+            timezone_offset = 0
+        else:
+            # Determine if we're in DST
+            dt = datetime.now()
+            is_dst = 3 <= dt.month <= 11
+            # Invert the offset since we want LOCAL = MST + offset
+            timezone_offset = -(offsets['dst'] if is_dst else offsets['std'])
+            logger.debug(f"Using timezone offset of {timezone_offset} hours for {state} (DST: {is_dst})")
+        
+        # Get best outreach window (returns times in MST)
+        outreach_window = get_best_outreach_window(
+            geography=geography,
+            persona=persona,
+            sequence_num=sequence_num,
+            season_data=season_data,
+            timezone_offset=timezone_offset
+        )
+        
+        logger.debug(f"Outreach window result: {outreach_window}")
+        
+        preferred_time = outreach_window["Best Time"]  # Already in MST
+        
+        # Use start of window
+        start_hour = int(preferred_time["start"])
+        start_minutes = int((preferred_time["start"] % 1) * 60)
+        
+        logger.debug(f"Using MST time: {start_hour}:{start_minutes:02d}")
+        
+        # Start with today + day_offset
+        target_date = datetime.now() + timedelta(days=day_offset)
+        target_time = target_date.replace(hour=start_hour, minute=start_minutes, second=0, microsecond=0)
+        
+        # Find next available preferred day (Tuesday, Wednesday, Thursday)
+        while target_time.weekday() not in [1, 2, 3]:  # Tuesday, Wednesday, Thursday
+            target_time += timedelta(days=1)
+            logger.debug(f"Moved to next preferred day: {target_time}")
+        
+        logger.debug(f"Final scheduled date (MST): {target_time}")
+        return target_time
+
+    except Exception as e:
+        logger.error(f"Error calculating send date: {str(e)}", exc_info=True)
+        return datetime.now() + timedelta(days=1, hours=10)

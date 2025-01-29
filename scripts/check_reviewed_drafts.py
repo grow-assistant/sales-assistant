@@ -14,7 +14,7 @@ from utils.logging_setup import logger
 from services.data_gatherer_service import DataGathererService
 from scheduling.followup_generation import generate_followup_email_xai
 from utils.gmail_integration import store_draft_info
-from scripts.golf_outreach_strategy import get_best_outreach_window, adjust_send_time
+from scripts.golf_outreach_strategy import get_best_outreach_window
 from datetime import datetime
 from typing import Optional
 import random

@@ -14,7 +14,6 @@ from utils.gmail_integration import create_draft, get_gmail_service, get_gmail_t
 from utils.logging_setup import logger
 from scripts.golf_outreach_strategy import (
     get_best_outreach_window,
-    adjust_send_time,
     calculate_send_date
 )
 from datetime import datetime, timedelta
@@ -138,7 +137,7 @@ def generate_followup_email_xai(
         followup_content = (
             f"<div dir='ltr'>"
             f"<p>I wanted to quickly follow up on my previous email about Swoop. "
-            f"We’ve made setup incredibly easy—just send us a menu, and {venue_name} could be up and running in as little as 24-48 hours to try out.</p>"
+            f"We've made setup incredibly easy—just send us a menu, and {venue_name} could be up and running in as little as 24-48 hours to try out.</p>"
             f"<p>Would you have 10 minutes next week for a brief call?</p>"
             f"<p>Ty</p>"
             f"</div>"
@@ -180,12 +179,13 @@ def generate_followup_email_xai(
 
         # Calculate send date using golf_outreach_strategy logic
         send_date = calculate_send_date(
-            geography="Year-Round Golf",
-            persona="General Manager",
-            state="AZ",
-            sequence_num=sequence_num or 2,  # Pass sequence_num to determine time window
+            geography=original_email.get('geographic_seasonality', 'Year-Round Golf'),
+            persona="General Manager",  # Could be made dynamic based on contact data
+            state=original_email.get('state'),  # Now properly using state from original_email
+            sequence_num=sequence_num or 2,
             season_data=None
         )
+        logger.debug(f"Using state from lead info: {original_email.get('state')}")
         logger.debug(f"Calculated send date: {send_date}")
 
         # Ensure minimum 3-day gap from original send date

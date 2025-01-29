@@ -128,6 +128,7 @@ class LeadsService:
                 - lifecycle_stage: Current lifecycle stage
                 - company_short_name: Short name of associated company
                 - company_name: Full name of associated company
+                - company_state: State of associated company
                 - error: Error message if any
         """
         try:
@@ -138,6 +139,7 @@ class LeadsService:
                 'lifecycle_stage': None,
                 'company_short_name': None,
                 'company_name': None,
+                'company_state': None,
                 'error': None
             }
             
@@ -152,6 +154,7 @@ class LeadsService:
                 if company_props:
                     result['company_name'] = company_props.get('name')
                     result['company_short_name'] = company_props.get('company_short_name')
+                    result['company_state'] = company_props.get('state')
             
             return result
             
