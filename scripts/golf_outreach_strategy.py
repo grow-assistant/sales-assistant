@@ -1,7 +1,20 @@
 # scripts/golf_outreach_strategy.py
-# """
-# Scripts for determining optimal outreach timing based on club and contact attributes.
-# """
+"""
+Purpose: Determines optimal email outreach timing for golf club contacts.
+
+Key functions:
+- load_state_offsets(): Loads timezone data by state
+- get_best_month(): Finds optimal months based on geography/season
+- get_best_time(): Calculates ideal time based on contact role
+- get_best_outreach_window(): Determines optimal outreach window
+- calculate_send_date(): Generates send datetime
+
+Considers multiple factors:
+- Contact role and club geography
+- State timezones and seasonal patterns  
+- Campaign sequence and peak/off-peak seasons
+- Preferred days (Tue-Thu) and role-specific times
+"""
 from typing import Dict, Any
 import csv
 import logging

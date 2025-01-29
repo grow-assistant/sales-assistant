@@ -1,3 +1,16 @@
+# File: scripts/build_template.py
+"""
+Purpose: Builds email templates by combining various components and applying customizations.
+
+Logical steps:
+1. Define subject line templates and selection logic
+2. Apply seasonal variations to email content
+3. Generate personalized icebreakers based on news/context
+4. Build complete outreach email by combining components
+5. Handle template validation and fallback options
+6. Process placeholders and customize content
+"""
+
 import os
 import random
 from utils.doc_reader import DocReader

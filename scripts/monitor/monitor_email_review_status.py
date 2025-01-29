@@ -198,20 +198,27 @@ def delete_orphaned_draft_records():
             logger.info("No orphaned draft records found.")
             return
 
-        # Delete orphaned records
+        # Instead of deleting, print what would be deleted
+        print(f"\nWould delete the following orphaned records:")
+        print(f"Email IDs: {orphaned_records}")
+        print(f"Total records that would be deleted: {len(orphaned_records)}")
+        
+        # Comment out the deletion code
+        """
         try:
             with get_db_connection() as conn:
                 cursor = conn.cursor()
                 placeholders = ','.join('?' * len(orphaned_records))
-                cursor.execute(f"""
+                cursor.execute(f
                     DELETE FROM emails
                      WHERE email_id IN ({placeholders})
                        AND status = ?
-                """, (*orphaned_records, SQL_DRAFT_STATUS))
+                , (*orphaned_records, SQL_DRAFT_STATUS))
                 conn.commit()
                 logger.info(f"Deleted {cursor.rowcount} orphaned draft records")
         except Exception as e:
             logger.error(f"Error deleting orphaned records: {str(e)}", exc_info=True)
+        """
 
     except Exception as e:
         logger.error(f"Error in delete_orphaned_draft_records: {str(e)}", exc_info=True)

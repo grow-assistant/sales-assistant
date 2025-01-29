@@ -252,7 +252,7 @@ def create_message(to: str, subject: str, body: str) -> Dict[str, str]:
         logger.exception(f"Error creating email message: {str(e)}")
         return {}
 
-def get_or_create_label(service, label_name: str = "to_review") -> str:
+def get_or_create_label(service, label_name: str = "reviewed") -> str:
     """
     Retrieve or create a Gmail label and return its labelId.
     """
@@ -300,7 +300,7 @@ def create_draft(
     sequence_num: int = None,
 ) -> Dict[str, Any]:
     """
-    Create a Gmail draft email, add the 'to_review' label, and optionally store in DB.
+    Create a Gmail draft email, add the 'reviewed' label, and optionally store in DB.
     """
     try:
         logger.debug(
@@ -347,8 +347,8 @@ def create_draft(
         else:
             logger.info("Follow-up draft creation is disabled via CREATE_FOLLOWUP_DRAFT setting")
 
-        # 4) Add the "to_review" label to the underlying draft message
-        label_id = get_or_create_label(service, "to_review")
+        # 4) Add the "reviewed" label to the underlying draft message
+        label_id = get_or_create_label(service, "reviewed")
         if label_id:
             try:
                 service.users().messages().modify(
@@ -360,7 +360,7 @@ def create_draft(
             except Exception as e:
                 logger.error(f"Failed to add label to draft: {str(e)}")
         else:
-            logger.warning("Could not get/create 'to_review' label - draft remains unlabeled")
+            logger.warning("Could not get/create 'reviewed' label - draft remains unlabeled")
 
         return {
             "status": "ok",
@@ -574,8 +574,8 @@ def create_followup_draft(
 
         draft_id = draft["id"]
         
-        # Add 'to_review' label
-        label_id = get_or_create_label(service, "to_review")
+        # Add 'reviewed' label
+        label_id = get_or_create_label(service, "reviewed")
         if label_id:
             service.users().messages().modify(
                 userId="me",

@@ -1,3 +1,19 @@
+"""
+Purpose: Categorizes job titles into standardized roles for golf club staff.
+
+Key functions:
+- categorize_job_title(): Maps job titles to standard categories based on keyword matching
+
+Categories:
+- fb_manager: Food & Beverage related roles
+- membership_director: Membership and sales related positions
+- golf_operations: Golf pro shop and operations staff
+- general_manager: Default category for other positions
+
+When imported, provides consistent job role categorization across the application
+for segmentation, reporting, and targeted outreach.
+"""
+
 # scripts/job_title_categories.py
 
 def categorize_job_title(title: str) -> str:

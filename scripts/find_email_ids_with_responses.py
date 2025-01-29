@@ -1,4 +1,18 @@
-# test_hubspot_leads_service.py
+"""
+Purpose: Analyzes email interactions and responses in HubSpot.
+
+Key functions:
+- get_random_lead_id(): Gets random test lead ID from database
+- get_lead_id_for_email(): Looks up lead ID by email address  
+- get_all_leads(): Retrieves all lead records
+- test_lead_info(): Tests HubSpot data retrieval for random lead
+- test_specific_lead(): Tests data retrieval for specific test email
+- test_recent_replies(): Finds leads with replies in last 30 days
+
+When run directly, checks all leads for recent replies and generates 
+interaction report using HubSpot and data gathering services.
+"""
+
 import sys
 import os
 from datetime import datetime, timedelta

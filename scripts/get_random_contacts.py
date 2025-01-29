@@ -1,3 +1,14 @@
+"""
+Purpose: Retrieves random contact samples from HubSpot for testing/verification.
+
+Key functions:
+- main(): Fetches and displays 3 random contacts from HubSpot with their basic info
+         (email, name, company)
+
+When run directly, pulls 3 random contacts from HubSpot and prints their details,
+useful for spot-checking contact data quality and API functionality.
+"""
+
 import sys
 from pathlib import Path
 

@@ -1,5 +1,15 @@
 # File: scripts/check_reviewed_drafts.py
+"""
+Purpose: Monitors Gmail drafts for review status and generates follow-up emails when appropriate.
 
+Logical steps:
+1. Check all draft emails in SQL with sequence_num = 1
+2. Verify Gmail labels for each draft
+3. If labeled as 'reviewed', generate follow-up draft (sequence_num = 2)
+4. Store new drafts with 'to_review' label
+5. Skip drafts already labeled 'to_review'
+6. Update database records accordingly
+"""
 import os
 import sys
 
