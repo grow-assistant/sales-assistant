@@ -6,14 +6,21 @@ from utils.xai_integration import (
     xai_club_segmentation_search,
     get_club_summary
 )
-from utils.logging_setup import logger
+from utils.logging_setup import logger, setup_logging
 from scripts.golf_outreach_strategy import get_best_outreach_window
 from utils.web_fetch import fetch_website_html
 
+# Create dedicated logger for company enrichment
+enrichment_logger = setup_logging(
+    log_name='company_enrichment',
+    console_level='WARNING',
+    file_level='DEBUG',
+    max_bytes=5242880  # 5MB
+)
 
 class CompanyEnrichmentService:
     def __init__(self, api_key: str = HUBSPOT_API_KEY):
-        logger.debug("Initializing CompanyEnrichmentService")
+        enrichment_logger.debug("Initializing CompanyEnrichmentService")
         self.hubspot = HubspotService(api_key=api_key)
 
     def enrich_company(self, company_id: str, additional_data: Dict[str, Any] = None) -> Dict[str, bool]:
@@ -22,15 +29,18 @@ class CompanyEnrichmentService:
             # Get current company info
             current_info = self._get_facility_info(company_id)
             if not current_info:
+                enrichment_logger.error(f"Failed to get company info for ID: {company_id}")
                 return {"success": False, "error": "Failed to get company info"}
 
             # Get company name and location
             company_name = current_info.get('name', '')
             location = f"{current_info.get('city', '')}, {current_info.get('state', '')}"
             
+            enrichment_logger.debug(f"Processing company: {company_name} in {location}")
+            
             # IMPORTANT: Save the competitor value found in _get_facility_info
             competitor = current_info.get('competitor', 'Unknown')
-            logger.debug(f"Competitor found in _get_facility_info: {competitor}")
+            enrichment_logger.debug(f"Competitor found in _get_facility_info: {competitor}")
 
             # Determine facility type
             facility_info = self._determine_facility_type(company_name, location)
@@ -50,13 +60,13 @@ class CompanyEnrichmentService:
                 new_info.update(additional_data)
                 
             # Log the competitor value before preparing updates
-            logger.debug(f"Competitor value before _prepare_updates: {new_info.get('competitor', 'Unknown')}")
+            enrichment_logger.debug(f"Competitor value before _prepare_updates: {new_info.get('competitor', 'Unknown')}")
             
             # Prepare the final updates
             updates = self._prepare_updates(current_info, new_info)
             
             # Log the final competitor value
-            logger.debug(f"Final competitor value in updates: {updates.get('competitor', 'Unknown')}")
+            enrichment_logger.debug(f"Final competitor value in updates: {updates.get('competitor', 'Unknown')}")
             
             # Update the company in HubSpot
             if updates:
@@ -67,7 +77,7 @@ class CompanyEnrichmentService:
             return {"success": False, "error": "Failed to update company"}
             
         except Exception as e:
-            logger.error(f"Error enriching company {company_id}: {str(e)}")
+            enrichment_logger.error(f"Error enriching company {company_id}: {str(e)}")
             return {"success": False, "error": str(e)}
 
     def _get_facility_info(self, company_id: str) -> Dict[str, Any]:
@@ -121,7 +131,7 @@ class CompanyEnrichmentService:
                             for mention in clubessential_mentions:
                                 if mention in html_lower:
                                     competitor = "Club Essentials"
-                                    logger.debug(f"Found Club Essentials on {url}")
+                                    enrichment_logger.debug(f"Found Club Essentials on {url}")
                                     break
                                     
                             # Check for Jonas mentions if not Club Essentials
@@ -130,7 +140,7 @@ class CompanyEnrichmentService:
                                 for mention in jonas_mentions:
                                     if mention in html_lower:
                                         competitor = "Jonas"
-                                        logger.debug(f"Found Jonas on {url}")
+                                        enrichment_logger.debug(f"Found Jonas on {url}")
                                         break
                             
                             # Check for Northstar mentions if still Unknown
@@ -144,13 +154,13 @@ class CompanyEnrichmentService:
                                 for mention in northstar_mentions:
                                     if mention in html_lower:
                                         competitor = "Northstar"
-                                        logger.debug(f"Found Northstar on {url}")
+                                        enrichment_logger.debug(f"Found Northstar on {url}")
                                         break
                             
                             if competitor != "Unknown":
                                 break
                     except Exception as e:
-                        logger.debug(f"Failed to fetch {url}: {str(e)}")
+                        enrichment_logger.debug(f"Failed to fetch {url}: {str(e)}")
                         continue
             
             return {
@@ -173,7 +183,7 @@ class CompanyEnrichmentService:
                 'competitor': competitor
             }
         except Exception as e:
-            logger.error(f"Error fetching company data: {e}")
+            enrichment_logger.error(f"Error fetching company data: {e}")
             return {}
 
     def _determine_facility_type(self, company_name: str, location: str) -> Dict[str, Any]:
@@ -263,7 +273,7 @@ class CompanyEnrichmentService:
         try:
             # Get competitor value with explicit logging
             competitor = new_info.get('competitor', current_info.get('competitor', 'Unknown'))
-            logger.debug(f"Processing competitor value in _prepare_updates: {competitor}")
+            enrichment_logger.debug(f"Processing competitor value in _prepare_updates: {competitor}")
 
             # Initialize updates with default values for required fields
             updates = {
@@ -292,12 +302,12 @@ class CompanyEnrichmentService:
                 # If still empty, use full name
                 if not updates["company_short_name"]:
                     updates["company_short_name"] = updates["name"]
-                    logger.debug(f"Using full name as company_short_name: {updates['company_short_name']}")
+                    enrichment_logger.debug(f"Using full name as company_short_name: {updates['company_short_name']}")
 
             # Ensure company_short_name is not truncated inappropriately
             if updates["company_short_name"]:
                 updates["company_short_name"] = str(updates["company_short_name"])[:100]
-                logger.debug(f"Final company_short_name: {updates['company_short_name']}")
+                enrichment_logger.debug(f"Final company_short_name: {updates['company_short_name']}")
 
             # Handle pool information
             club_info = new_info.get("club_info", "").lower()
@@ -322,9 +332,9 @@ class CompanyEnrichmentService:
             valid_competitors = ["Club Essentials", "Jonas", "Unknown"]
             if competitor in valid_competitors:
                 updates["competitor"] = competitor
-                logger.debug(f"Set competitor to valid value: {competitor}")
+                enrichment_logger.debug(f"Set competitor to valid value: {competitor}")
             else:
-                logger.debug(f"Invalid competitor value ({competitor}), defaulting to Unknown")
+                enrichment_logger.debug(f"Invalid competitor value ({competitor}), defaulting to Unknown")
                 updates["competitor"] = "Unknown"
 
             # Map values to HubSpot-accepted values
@@ -361,13 +371,13 @@ class CompanyEnrichmentService:
                 if key in updates:
                     updates[key] = mapping.get(str(updates[key]), updates[key])
 
-            logger.debug(f"Final prepared updates: {updates}")
+            enrichment_logger.debug(f"Final prepared updates: {updates}")
             return updates
 
         except Exception as e:
-            logger.error(f"Error preparing updates: {str(e)}")
-            logger.debug(f"Current info: {current_info}")
-            logger.debug(f"New info: {new_info}")
+            enrichment_logger.error(f"Error preparing updates: {str(e)}")
+            enrichment_logger.debug(f"Current info: {current_info}")
+            enrichment_logger.debug(f"New info: {new_info}")
             return {}
 
     def _update_company_properties(self, company_id: str, updates: Dict[str, Any]) -> bool:
@@ -429,12 +439,13 @@ class CompanyEnrichmentService:
             try:
                 response = self.hubspot._make_hubspot_patch(url, payload)
                 if response:
+                    enrichment_logger.debug(f"Successfully updated HubSpot with company_short_name: {updates.get('company_short_name')}")
                     return True
                 return False
             except HubSpotError as api_error:
-                logger.error(f"HubSpot API Error: {str(api_error)}")
+                enrichment_logger.error(f"HubSpot API Error: {str(api_error)}")
                 raise
             
         except Exception as e:
-            logger.error(f"Error updating company properties: {str(e)}")
+            enrichment_logger.error(f"Error updating company properties: {str(e)}")
             return False 

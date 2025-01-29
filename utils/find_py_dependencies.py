@@ -1,23 +1,26 @@
 """
 Purpose:
-Recursively analyzes Python files to find every local file that main.py depends on,
-including those imported via dotted module names (e.g., services.hubspot_service).
+1. Recursively finds every Python file in the project (including subdirectories).
+2. Recursively analyzes imports starting from main.py (handling dotted imports like "services.hubspot_service").
+3. Prints all files that main.py depends on, and identifies which files are not used by main.py.
 
 Key functions:
-- find_python_file(): Locates a Python file in the directory and subdirectories
-- extract_imports(): Parses a Python file to find import statements, preserving dotted paths
-- get_recursive_dependencies(): Builds a dependency tree recursively from main.py
-- print_dependency_chain(): Prints all files in the dependency chain of main.py
+- find_python_file(filename, start_path): Searches for a Python file by name under the start_path.
+- find_all_python_files(start_path): Gathers all *.py files in the project.
+- extract_imports(file_path): Parses a Python file's AST to extract imports (preserving dotted paths).
+- get_recursive_dependencies(file_path, start_path): Recursively builds a dependency tree from a given file.
+- print_analysis(dependency_map, all_files): Prints which files are used vs. which are unused.
 
 Usage:
-1. Place this script anywhere within your project's directory structure.
-2. Adjust `project_root` in main() if your project layout differs.
-3. Run the script directly to see a list of Python files that main.py depends on.
+1. Adjust project_root in main() if needed.
+2. Run this script directly. It prints the dependency chain from main.py,
+   then lists all .py files not used by main.py.
 """
 
 import os
 import ast
-from typing import Set, Dict
+from typing import Set, Dict, List
+import sys
 
 def find_python_file(filename: str, start_path: str = '.') -> str:
     """
@@ -29,57 +32,69 @@ def find_python_file(filename: str, start_path: str = '.') -> str:
             return os.path.join(root, filename)
     return None
 
+def find_all_python_files(start_path: str = '.') -> Set[str]:
+    """
+    Recursively locate every .py file in the given directory tree.
+    Returns a set of paths, each relative to start_path.
+    """
+    python_files = set()
+    for root, _, files in os.walk(start_path):
+        for file in files:
+            if file.endswith('.py'):
+                full_path = os.path.join(root, file)
+                rel_path = os.path.relpath(full_path, start_path)
+                python_files.add(rel_path)
+    return python_files
+
 def extract_imports(file_path: str) -> Set[str]:
-    """
-    Extract all import statements from a Python file, preserving the full dotted module path.
-    For example: 'from services.hubspot_service import HubspotService'
-    will yield "services.hubspot_service" rather than just "services".
-    """
+    """Extract all imports from a Python file."""
     imports = set()
+    
     try:
         with open(file_path, 'r', encoding='utf-8') as file:
-            content = file.read()
-            tree = ast.parse(content)
+            tree = ast.parse(file.read())
             
-            for node in ast.walk(tree):
-                if isinstance(node, ast.Import):
-                    # 'import x' statements (x can be dotted, e.g., something.more)
-                    for name in node.names:
-                        imports.add(name.name)
-                
-                elif isinstance(node, ast.ImportFrom):
-                    # 'from x.y.z import A, B, C' statements
-                    if node.module:
-                        imports.add(node.module)
+        for node in ast.walk(tree):
+            # Handle regular imports
+            if isinstance(node, ast.Import):
+                for name in node.names:
+                    imports.add(name.name.split('.')[0])
+            
+            # Handle from ... import ...
+            elif isinstance(node, ast.ImportFrom):
+                if node.module:
+                    imports.add(node.module.split('.')[0])
+                for name in node.names:
+                    if name.name != '*':
+                        imports.add(name.name.split('.')[0])
     except Exception as e:
-        print(f"Error processing {file_path}: {e}")
+        print(f"Error processing {file_path}: {str(e)}")
     
     return imports
 
 def get_recursive_dependencies(file_path: str, start_path: str = '.', processed_files: Set[str] = None) -> Dict[str, Set[str]]:
     """
-    Recursively builds a dependency mapping from the given file.
-    The dictionary looks like: {relative_file_path: {set_of_imported_modules_as_strings}}.
+    Recursively build a dependency map starting from a given file.
+    Returns {relative_file_path: {dotted_import_strings}}.
     """
     if processed_files is None:
         processed_files = set()
     
     dependency_map = {}
     
-    # If we've already processed this file, skip to avoid cycles
+    # Avoid re-processing the same file
     if file_path in processed_files:
         return dependency_map
     
     processed_files.add(file_path)
     
-    # Extract direct imports from this file
+    # Get direct imports
     dependencies = extract_imports(file_path)
     relative_path = os.path.relpath(file_path, start_path)
     dependency_map[relative_path] = dependencies
     
-    # For each import, see if it maps to a local file
+    # Convert dotted imports to local file paths and recurse
     for dep in dependencies:
-        # Convert dotted module path to a relative file path (services.hubspot_service -> services/hubspot_service.py)
         dep_filename = dep.replace('.', os.sep) + ".py"
         dep_path = find_python_file(dep_filename, start_path)
         
@@ -89,36 +104,124 @@ def get_recursive_dependencies(file_path: str, start_path: str = '.', processed_
     
     return dependency_map
 
-def print_dependency_chain(dependency_map: Dict[str, Set[str]]) -> None:
-    """
-    Prints all files in the dependency chain (including main.py),
-    along with the modules each file directly imports.
-    """
-    print("\nDependency Chain (from main.py):")
+def print_analysis(dependency_map: Dict[str, Set[str]], all_files: Set[str], project_root: str) -> None:
+    """Print the complete dependency analysis, showing what files main.py depends on."""
+    # Find main.py's entry in the dependency map
+    main_file = next((f for f in dependency_map.keys() if f.endswith('main.py')), None)
+    if not main_file:
+        print("Error: main.py not found in dependency map")
+        return
+
+    # Get direct imports from main.py
+    try:
+        with open(os.path.join(project_root, main_file), 'r', encoding='utf-8') as file:
+            content = file.read()
+            tree = ast.parse(content)
+            
+            direct_imports = {
+                'standard_lib': set(),
+                'third_party': set(),
+                'project': set()
+            }
+            
+            project_prefixes = {'scripts.', 'utils.', 'services.', 'models.', 'config.', 'scheduling.'}
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for name in node.names:
+                        module_name = name.name.split('.')[0]
+                        if any(name.name.startswith(prefix) for prefix in project_prefixes):
+                            direct_imports['project'].add(name.name)
+                        elif module_name in sys.stdlib_module_names:
+                            direct_imports['standard_lib'].add(name.name)
+                        else:
+                            direct_imports['third_party'].add(name.name)
+                
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module:
+                        module_name = node.module.split('.')[0]
+                        if any(node.module.startswith(prefix) for prefix in project_prefixes):
+                            direct_imports['project'].add(node.module)
+                        elif module_name in sys.stdlib_module_names:
+                            direct_imports['standard_lib'].add(node.module)
+                        else:
+                            direct_imports['third_party'].add(node.module)
+    
+    except Exception as e:
+        print(f"Error analyzing main.py imports: {e}")
+        return
+
+    print("\nDirect Imports in main.py:")
     print("-" * 50)
-    for file_path in sorted(dependency_map.keys()):
-        print(f"- {file_path}")
-        for dep in sorted(dependency_map[file_path]):
-            print(f"    └─ {dep}")
+    
+    print("\nStandard Library Imports:")
+    for imp in sorted(direct_imports['standard_lib']):
+        print(f" - {imp}")
+    
+    print("\nThird-Party Library Imports:")
+    for imp in sorted(direct_imports['third_party']):
+        print(f" - {imp}")
+    
+    print("\nProject-Specific Imports:")
+    for imp in sorted(direct_imports['project']):
+        print(f" - {imp}")
+
+    # Rest of the dependency analysis...
+    # Files used are the keys in the dependency_map
+    used_files = set(dependency_map.keys())
+    unused_files = all_files - used_files
+
+    print("\nUnused Python Files:")
+    print("-" * 50)
+    for f in sorted(unused_files):
+        print(f"- {f}")
+    
+    print(f"\nSummary:\n  Total Python files: {len(all_files)}")
+    print(f"  Used (dependency chain): {len(used_files)}")
+    print(f"  Unused: {len(unused_files)}")
+
+def analyze_files(file_paths: List[str]) -> Set[str]:
+    """Analyze multiple Python files and return unique dependencies."""
+    all_imports = set()
+    
+    for file_path in file_paths:
+        if os.path.exists(file_path):
+            file_imports = extract_imports(file_path)
+            all_imports.update(file_imports)
+        else:
+            print(f"File not found: {file_path}")
+    
+    # Use sys.stdlib_module_names instead of stdlib_list
+    std_libs = set(sys.stdlib_module_names)
+    external_imports = {imp for imp in all_imports if imp not in std_libs}
+    
+    return external_imports
 
 def main():
-    """
-    Main function to run the dependency analysis:
-    1. Determine the project root and find main.py.
-    2. Build the recursive dependency map starting from main.py.
-    3. Print the chain of files in which main.py depends.
-    """
-    # Adjust this logic if your project layout differs
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    project_root = os.path.dirname(current_dir)  # E.g., main.py might be one level up
+    """Main function to analyze file usage."""
+    # Get all Python files in project
+    all_files = find_all_python_files('.')
     
-    main_path = find_python_file("main.py", project_root)
-    if not main_path:
-        print("Error: main.py not found in the project.")
-        return
-        
-    dependency_map = get_recursive_dependencies(main_path, project_root)
-    print_dependency_chain(dependency_map)
+    # Look for imports of ping_hubspot_for_gm
+    target_file = "ping_hubspot_for_gm"
+    files_using_target = []
+    
+    for file_path in all_files:
+        try:
+            with open(file_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+                if target_file in content:
+                    files_using_target.append(file_path)
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+
+    print(f"\nFiles importing or using {target_file}:")
+    print("-" * 50)
+    if files_using_target:
+        for file in files_using_target:
+            print(f"- {file}")
+    else:
+        print("No files found using this module")
 
 if __name__ == "__main__":
     main()

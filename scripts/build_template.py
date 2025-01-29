@@ -13,8 +13,9 @@ Logical steps:
 
 import os
 import random
+import traceback
 from utils.doc_reader import DocReader
-from utils.logging_setup import logger
+from utils.logging_setup import logger, setup_logging
 from utils.season_snippet import get_season_variation_key, pick_season_snippet
 from pathlib import Path
 from config.settings import PROJECT_ROOT
@@ -37,6 +38,13 @@ SUBJECT_TEMPLATES = [
     "Question about 2025"
 ]
 
+# Create a dedicated logger for template building
+template_logger = setup_logging(
+    log_name='template_builder',
+    console_level='WARNING',  # Only show warnings and errors in console
+    file_level='DEBUG',       # Log all details to file
+    max_bytes=5242880        # 5MB
+)
 
 ###############################################################################
 # 2) PICK SUBJECT LINE BASED ON LEAD ROLE & LAST INTERACTION
@@ -167,11 +175,16 @@ def build_outreach_email(
     try:
         placeholders = placeholders or {}
         
-        logger.info(f"Building email for {profile_type}")
+        template_logger.info(f"Building email for {profile_type}")
+        template_logger.debug(f"Received placeholders: {placeholders}")
         
         if template_path and Path(template_path).exists():
             with open(template_path, 'r', encoding='utf-8') as f:
                 body = f.read().strip()
+            
+            # Log the initial template content
+            template_logger.debug(f"Template content length: {len(body)}")
+            template_logger.debug(f"Template preview: {body[:200]}...")
             
             # 1. Replace standard placeholders first
             standard_replacements = {
@@ -183,9 +196,15 @@ def build_outreach_email(
                 "[clubname]": placeholders.get("companyname", "")
             }
             
+            # Log the replacements being made
+            template_logger.debug("Standard replacements:")
+            for key, value in standard_replacements.items():
+                template_logger.debug(f"  {key}: '{value}'")
+            
             for key, value in standard_replacements.items():
                 if value:
                     body = body.replace(key, str(value))
+                    template_logger.debug(f"Replaced {key} with '{value}'")
 
             # 1. Handle season variation first
             if "[SEASON_VARIATION]" in body:
@@ -196,6 +215,7 @@ def build_outreach_email(
                 )
                 season_snippet = pick_season_snippet(season_key)
                 body = body.replace("[SEASON_VARIATION]", season_snippet)
+                template_logger.debug(f"Applied season variation: {season_snippet}")
             
             # 2. Handle icebreaker
             try:
@@ -203,20 +223,25 @@ def build_outreach_email(
                 news_result = placeholders.get('news_text', '')
                 club_name = placeholders.get('clubname', '')
                 
+                template_logger.debug(f"Icebreaker params - has_news: {has_news}, club_name: {club_name}")
+                
                 if has_news and news_result and "has not been in the news" not in news_result.lower():
                     icebreaker = _build_icebreaker_from_news(club_name, news_result)
                     if icebreaker:
                         body = body.replace("[ICEBREAKER]", icebreaker)
+                        template_logger.debug(f"Added news-based icebreaker: {icebreaker}")
                     else:
                         body = body.replace("[ICEBREAKER]\n\n", "")
                         body = body.replace("[ICEBREAKER]\n", "")
                         body = body.replace("[ICEBREAKER]", "")
+                        template_logger.debug("Removed icebreaker placeholder (no content)")
                 else:
                     body = body.replace("[ICEBREAKER]\n\n", "")
                     body = body.replace("[ICEBREAKER]\n", "")
                     body = body.replace("[ICEBREAKER]", "")
+                    template_logger.debug("Removed icebreaker placeholder (no news)")
             except Exception as e:
-                logger.error(f"Icebreaker generation error: {e}")
+                template_logger.error(f"Icebreaker generation error: {e}")
                 body = body.replace("[ICEBREAKER]\n\n", "")
                 body = body.replace("[ICEBREAKER]\n", "")
                 body = body.replace("[ICEBREAKER]", "")
@@ -228,7 +253,10 @@ def build_outreach_email(
             # 4. Replace remaining placeholders
             for key, value in placeholders.items():
                 if value:
-                    body = body.replace(f"[{key}]", str(value))
+                    placeholder = f"[{key}]"
+                    if placeholder in body:
+                        body = body.replace(placeholder, str(value))
+                        template_logger.debug(f"Replaced additional placeholder {placeholder} with {value}")
             
             # Add Byrdi to Swoop replacement
             body = body.replace("Byrdi", "Swoop")
@@ -239,20 +267,22 @@ def build_outreach_email(
             
             # Get subject
             subject = pick_subject_line_based_on_lead(profile_type, placeholders)
+            template_logger.debug(f"Selected subject: {subject}")
             
             # Remove signature as it's in the HTML template
             body = body.split("\n\nCheers,")[0].strip()
             
             if body:
-                logger.info("Successfully built email template")
+                template_logger.info("Successfully built email template")
+                template_logger.debug(f"Final email preview: {body[:200]}...")
             else:
-                logger.error("Failed to build email template")
+                template_logger.error("Failed to build email template")
                 
             return subject, body
             
     except Exception as e:
-        logger.error(f"Error building email: {str(e)}")
-        logger.error("Full traceback:", exc_info=True)
+        template_logger.error(f"Error building email: {str(e)}")
+        template_logger.error("Full traceback:", exc_info=True)
         return "", ""
 
 def get_fallback_template() -> str:
@@ -473,20 +503,36 @@ def get_template_path(club_type: str, role: str) -> str:
 def replace_placeholders(text: str, data: Dict[str, Any]) -> str:
     """Replace placeholders in template with actual values."""
     try:
-        # Log incoming data structure
-        logger.debug(f"replace_placeholders received data structure: {json.dumps(data, indent=2)}")
+        # Detailed logging of input text
+        logger.debug("=" * 80)
+        logger.debug("STARTING PLACEHOLDER REPLACEMENT")
+        logger.debug(f"Original text length: {len(text)}")
+        logger.debug(f"First 100 chars of text: {text[:100]}")
+        logger.debug("=" * 80)
         
-        # Normalize data structure to handle both nested and flat dictionaries
+        # Log full data structure
+        logger.debug("Input data structure:")
+        logger.debug(json.dumps(data, indent=2, default=str))
+        
+        # Normalize data structure with detailed logging
         lead_data = data.get("lead_data", {}) if isinstance(data.get("lead_data"), dict) else data
         company_data = data.get("company_data", {}) if isinstance(data.get("company_data"), dict) else data
         
-        # Get company short name with explicit logging
+        logger.debug("Normalized data structures:")
+        logger.debug(f"Lead data: {json.dumps(lead_data, indent=2, default=str)}")
+        logger.debug(f"Company data: {json.dumps(company_data, indent=2, default=str)}")
+        
+        # Detailed company name logging
         company_short_name = company_data.get("company_short_name", "")
         company_full_name = company_data.get("name", "")
-        logger.debug(f"Found company_short_name: '{company_short_name}'")
-        logger.debug(f"Found company_full_name: '{company_full_name}'")
+        logger.debug("=" * 80)
+        logger.debug("COMPANY NAME DETAILS")
+        logger.debug(f"company_short_name from company_data: '{company_short_name}'")
+        logger.debug(f"company_short_name direct from data: '{data.get('company_short_name', '')}'")
+        logger.debug(f"company_full_name: '{company_full_name}'")
+        logger.debug("=" * 80)
         
-        # Build replacements dict with flexible data structure handling
+        # Build replacements dict with detailed logging
         replacements = {
             "[firstname]": (lead_data.get("firstname", "") or 
                           lead_data.get("first_name", "") or 
@@ -501,32 +547,45 @@ def replace_placeholders(text: str, data: Dict[str, Any]) -> str:
                              company_full_name),
             
             "[company_short_name]": (company_short_name or 
-                                  data.get("company_short_name", "") or 
-                                  company_full_name),
+                                   data.get("company_short_name", "") or 
+                                   company_full_name),
             
             "[City]": company_data.get("city", ""),
             "[State]": company_data.get("state", "")
         }
         
-        logger.debug(f"Built replacements dictionary: {json.dumps(replacements, indent=2)}")
+        logger.debug("=" * 80)
+        logger.debug("REPLACEMENT DICTIONARY")
+        for key, value in replacements.items():
+            logger.debug(f"{key}: '{value}'")
+        logger.debug("=" * 80)
         
-        # Do the replacements with logging
+        # Do the replacements with detailed logging
         result = text
         for placeholder, value in replacements.items():
             if placeholder in result:
-                logger.debug(f"Replacing '{placeholder}' with '{value}'")
+                logger.debug(f"Found '{placeholder}' in text, replacing with '{value}'")
+                before_count = result.count(placeholder)
                 result = result.replace(placeholder, value)
+                after_count = result.count(placeholder)
+                logger.debug(f"Replaced {before_count - after_count} instances")
             else:
                 logger.debug(f"Placeholder '{placeholder}' not found in text")
         
         # Check for any remaining placeholders
         remaining = re.findall(r'\[([^\]]+)\]', result)
         if remaining:
-            logger.warning(f"Unreplaced placeholders found: {remaining}")
+            logger.warning(f"WARNING: Unreplaced placeholders found: {remaining}")
         
-        logger.debug(f"Final text preview: {result[:200]}...")
+        logger.debug("=" * 80)
+        logger.debug("FINAL RESULT")
+        logger.debug(f"Final text length: {len(result)}")
+        logger.debug(f"First 100 chars: {result[:100]}")
+        logger.debug("=" * 80)
+        
         return result
         
     except Exception as e:
         logger.error(f"Error in replace_placeholders: {str(e)}")
+        logger.error(f"Stack trace: {traceback.format_exc()}")
         return text

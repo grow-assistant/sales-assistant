@@ -23,6 +23,8 @@ from utils.gmail_integration import search_messages
 import json
 import time
 from utils.data_extraction import extract_lead_data
+import logging.handlers
+from utils.logging_setup import setup_logging
 
 # -----------------------------------------------------------------------------
 # PROJECT IMPORTS (Adjust paths/names as needed)
@@ -49,7 +51,6 @@ from config.settings import (
 )
 from utils.exceptions import LeadContextError
 from utils.gmail_integration import create_draft, store_draft_info
-from utils.logging_setup import logger, setup_logging
 from services.conversation_analysis_service import ConversationAnalysisService
 
 # -----------------------------------------------------------------------------
@@ -60,7 +61,28 @@ LEADS_TO_PROCESS = 200  # This is just a processing limit, not a filter.
 # -----------------------------------------------------------------------------
 # INIT SERVICES & LOGGING
 # -----------------------------------------------------------------------------
-setup_logging()
+
+# Create different loggers for different purposes
+logger = setup_logging(
+    log_name='app',  # Main application logs
+    console_level='INFO',
+    file_level='INFO'
+)
+
+debug_logger = setup_logging(
+    log_name='debug_service',  # Detailed debug logs
+    console_level='DEBUG',
+    file_level='DEBUG',
+    max_bytes=20971520  # 20MB
+)
+
+data_logger = setup_logging(
+    log_name='data_processing',  # Data processing specific logs
+    console_level='WARNING',  # Only show warnings and errors in console
+    file_level='INFO',
+    include_console=True
+)
+
 data_gatherer = DataGathererService()
 conversation_analyzer = ConversationAnalysisService()
 
@@ -92,23 +114,23 @@ def clear_files_on_start():
     try:
         logs_dir = Path(PROJECT_ROOT) / "logs"
         if logs_dir.exists():
-            for file in logs_dir.glob("*"):
+            for file in logs_dir.glob("*.log"):
                 if file.is_file():
                     try:
                         file.unlink()
                     except PermissionError:
-                        logger.debug(f"Skipping locked file: {file}")
+                        debug_logger.debug(f"Skipping locked file: {file}")
                         continue
-            logger.debug("Cleared logs directory")
+            logger.info("Cleared logs directory")
 
         temp_dir = Path(PROJECT_ROOT) / "temp"
         if temp_dir.exists():
             try:
                 shutil.rmtree(temp_dir)
                 temp_dir.mkdir()
-                logger.debug("Cleared temp directory")
+                logger.info("Cleared temp directory")
             except PermissionError:
-                logger.debug("Skipping locked temp directory")
+                debug_logger.debug("Skipping locked temp directory")
 
     except Exception as e:
         logger.error(f"Error clearing files: {str(e)}")
@@ -116,11 +138,19 @@ def clear_files_on_start():
 def gather_personalization_data(company_name: str, city: str, state: str) -> Dict:
     """Gather additional personalization data for the company."""
     try:
+        # Use debug_logger for detailed debugging info
+        debug_logger.debug(f"Starting personalization gathering for {company_name}")
+        
+        # Use data_logger for data processing info
+        data_logger.info(f"Processing data for {company_name} in {city}, {state}")
+        
         news_result = data_gatherer.gather_club_news(company_name)
         
         has_news = False
         news_text = ""
         if news_result:
+            # Use main logger for important application events
+            logger.info(f"Found news for {company_name}")
             if isinstance(news_result, tuple):
                 news_text = news_result[0]
             else:
@@ -133,6 +163,7 @@ def gather_personalization_data(company_name: str, city: str, state: str) -> Dic
         }
         
     except Exception as e:
+        # Use main logger for errors
         logger.error(f"Error gathering personalization data: {str(e)}")
         return {
             "has_news": False,
@@ -709,6 +740,7 @@ def main_list_workflow():
                     company_data = get_company_by_id(hubspot, associated_company_id)
                     if company_data and company_data.get("id"):
                         company_props = company_data.get("properties", {})
+                        logger.debug(f"Retrieved company properties from HubSpot: {json.dumps(company_props, indent=2)}")
                         
                         # Optionally check competitor from website, etc.
                         website = company_props.get("website")
@@ -729,14 +761,20 @@ def main_list_workflow():
                         # Enrich the company data
                         enrichment_result = company_enricher.enrich_company(company_data["id"])
                         if enrichment_result.get("success", False):
+                            # Update company_props with enrichment data
                             company_props.update(enrichment_result.get("data", {}))
+                            # Ensure company_short_name is explicitly copied if present
+                            if "company_short_name" in enrichment_result.get("data", {}):
+                                company_props["company_short_name"] = enrichment_result["data"]["company_short_name"]
                 
                 # 2) Extract lead + company data into our unified structure
                 lead_data_full = extract_lead_data(company_props, {
                     "firstname": props.get("firstname", ""),
                     "lastname": props.get("lastname", ""),
                     "email": email,
-                    "jobtitle": props.get("jobtitle", "")
+                    "jobtitle": props.get("jobtitle", ""),
+                    # Add company_short_name here if not already included in extract_lead_data
+                    "company_short_name": company_props.get("company_short_name", "")
                 })
 
                 # 3) Gather personalization data
@@ -771,7 +809,10 @@ def main_list_workflow():
                         "firstname": lead_data_full["lead_data"]["firstname"],
                         "LastName": lead_data_full["lead_data"]["lastname"],
                         "companyname": lead_data_full["company_data"]["name"],
-                        "company_short_name": lead_data_full["company_data"].get("company_short_name", ""),
+                        "company_short_name": (
+                            lead_data_full["company_data"].get("company_short_name") or 
+                            company_props.get("company_short_name", "")
+                        ),
                         "JobTitle": lead_data_full["lead_data"]["jobtitle"],
                         "company_info": lead_data_full["company_data"].get("club_info", ""),
                         "has_news": personalization.get("has_news", False),
@@ -917,3 +958,12 @@ def main():
 # -----------------------------------------------------------------------------
 if __name__ == "__main__":
     main()
+
+# General application logging
+logger.info("General application message")
+logger.error("Application error")
+
+# Data processing specific logging
+data_logger.debug("Detailed data processing info")
+data_logger.info("Data processing status")
+data_logger.error("Data processing error")
