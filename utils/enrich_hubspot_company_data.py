@@ -7,6 +7,8 @@ from typing import List, Dict, Any
 import os
 import csv
 import re
+import asyncio
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Add project root to path
 project_root = str(Path(__file__).parent.parent)
@@ -361,26 +363,137 @@ def _get_default_seasonality() -> dict:
     }
 
 
-def process_company(company_id: str) -> None:
-    """Process a single company for enrichment."""
+def process_company(company_id: str) -> bool:
+    """
+    Process a single company using the enrichment service
+    and return True if successful, False otherwise.
+    """
     try:
-        print(f"\n=== Processing Company ID: {company_id} ===")
+        logger.info(f"=== Starting processing for Company ID: {company_id} ===")
         company_enricher = CompanyEnrichmentService(api_key=HUBSPOT_API_KEY)
-
-        # Use the enrichment service to process the company
-        enrichment_result = company_enricher.enrich_company(company_id)
-        if enrichment_result.get("success", False):
-            print("✓ Successfully updated HubSpot properties")
-            print(f"Updated properties: {enrichment_result.get('data', {})}")
+        result = company_enricher.enrich_company(company_id)
+        
+        if result.get("success", False):
+            # Use [SUCCESS] instead of ✓ to avoid unicode issues
+            logger.info(f"[SUCCESS] Processed company ID: {company_id}")
+            return True
         else:
-            print("✗ Failed to update HubSpot properties")
-            if "error" in enrichment_result:
-                print(f"Error: {enrichment_result['error']}")
-
+            # Use [FAILED] instead of ✗
+            logger.error(f"[FAILED] Processing company ID: {company_id}: {result.get('error')}")
+            return False
+            
     except Exception as e:
-        logger.error(f"Error processing company {company_id}: {str(e)}")
-        logger.exception("Full error details:")
+        logger.error(f"[ERROR] Processing company {company_id}: {str(e)}")
+        return False
+    finally:
+        logger.info(f"=== Completed processing for Company ID: {company_id} ===")
 
+def process_companies_in_parallel(company_ids: list[str], max_workers: int = 3, timeout: int = 300) -> dict:
+    """
+    Process companies in parallel using a ThreadPoolExecutor.
+    
+    Args:
+        company_ids: List of company IDs to process
+        max_workers: Maximum number of concurrent workers (default: 3)
+        timeout: Maximum time in seconds to wait for each company (default: 300)
+    
+    Returns:
+        Dictionary with successful and failed company IDs
+    """
+    results = {"successful": [], "failed": []}
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_to_company = {
+            executor.submit(process_company, cid): cid 
+            for cid in company_ids
+        }
+        
+        # Process results as they complete
+        for future in as_completed(future_to_company):
+            company_id = future_to_company[future]
+            try:
+                # Add timeout to prevent hanging
+                success = future.result(timeout=timeout)
+                if success:
+                    results["successful"].append(company_id)
+                    logger.info(f"[SUCCESS] Company {company_id} completed successfully")
+                else:
+                    results["failed"].append(company_id)
+                    logger.error(f"[FAILED] Company {company_id} failed to process")
+            except TimeoutError:
+                results["failed"].append(company_id)
+                logger.error(f"[TIMEOUT] Company {company_id} processing timed out after {timeout} seconds")
+            except Exception as exc:
+                results["failed"].append(company_id)
+                logger.error(f"[ERROR] Company {company_id} generated an exception: {exc}")
+    
+    # Log summary
+    logger.info(f"\nProcessing Summary:")
+    logger.info(f"Successful: {len(results['successful'])} companies")
+    logger.info(f"Failed: {len(results['failed'])} companies")
+    if results['failed']:
+        logger.info("\nFailed company IDs:")
+        for cid in results['failed']:
+            logger.info(f"- {cid}")
+    
+    return results
+
+async def process_company_async(company_id: str) -> bool:
+    """
+    Asynchronous wrapper for the process_company function.
+    """
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, process_company, company_id)
+    return result
+
+async def process_companies_async(company_ids: list[str], max_concurrent: int = 3, timeout: int = 300) -> dict:
+    """
+    Process companies asynchronously while limiting concurrency.
+    
+    Args:
+        company_ids: List of company IDs to process
+        max_concurrent: Maximum number of concurrent operations (default: 3)
+        timeout: Maximum time in seconds to wait for each company (default: 300)
+    
+    Returns:
+        Dictionary with successful and failed company IDs
+    """
+    results = {"successful": [], "failed": []}
+    semaphore = asyncio.Semaphore(max_concurrent)
+
+    async def sem_task(cid):
+        async with semaphore:
+            try:
+                # Add timeout to prevent hanging
+                async with asyncio.timeout(timeout):
+                    success = await process_company_async(cid)
+                    if success:
+                        results["successful"].append(cid)
+                        logger.info(f"[SUCCESS] Company {cid} completed successfully")
+                    else:
+                        results["failed"].append(cid)
+                        logger.error(f"[FAILED] Company {cid} failed to process")
+            except asyncio.TimeoutError:
+                results["failed"].append(cid)
+                logger.error(f"[TIMEOUT] Company {cid} processing timed out after {timeout} seconds")
+            except Exception as e:
+                results["failed"].append(cid)
+                logger.error(f"[ERROR] Company {cid} generated an exception: {str(e)}")
+
+    # Process all companies
+    tasks = [sem_task(cid) for cid in company_ids]
+    await asyncio.gather(*tasks)
+    
+    # Log summary
+    logger.info(f"\nProcessing Summary:")
+    logger.info(f"Successful: {len(results['successful'])} companies")
+    logger.info(f"Failed: {len(results['failed'])} companies")
+    if results['failed']:
+        logger.info("\nFailed company IDs:")
+        for cid in results['failed']:
+            logger.info(f"- {cid}")
+    
+    return results
 
 def _search_companies_with_filters(hubspot: HubspotService, batch_size=100) -> List[Dict[str, Any]]:
     """
@@ -490,14 +603,11 @@ def main():
                 
             print(f"\n=== Processing batch of {len(companies_batch)} companies ===\n")
             
-            for i, company in enumerate(companies_batch, 1):
-                company_id = company.get("id")
-                if not company_id:
-                    continue
-                    
-                overall_count = processed_count + i
-                print(f"\nProcessing company {overall_count} of {TOTAL_COMPANIES}")
-                process_company(company_id)
+            # Extract company IDs from the batch
+            company_ids = [company.get("id") for company in companies_batch if company.get("id")]
+            
+            # Process companies in parallel (you can change this to async if preferred)
+            process_companies_in_parallel(company_ids)
             
             processed_count += len(companies_batch)
             print(f"\nCompleted batch. Total processed: {processed_count}/{TOTAL_COMPANIES}")
@@ -509,6 +619,30 @@ def main():
         print(f"Error in main: {str(e)}")
         logger.exception("Full error details:")
 
-
 if __name__ == "__main__":
-    main()
+    # If company IDs are provided as arguments, use those
+    company_ids = sys.argv[1:]
+    if company_ids:
+        mode = input("Enter processing mode (async/parallel): ").strip().lower()
+        timeout = int(input("Enter timeout in seconds (default 300): ") or "300")
+        max_concurrent = int(input("Enter max concurrent processes (default 3): ") or "3")
+        
+        print(f"\nProcessing {len(company_ids)} companies in {mode} mode...")
+        print(f"Timeout: {timeout} seconds")
+        print(f"Max concurrent: {max_concurrent}")
+        
+        if mode == "async":
+            results = asyncio.run(process_companies_async(
+                company_ids, 
+                max_concurrent=max_concurrent,
+                timeout=timeout
+            ))
+        else:
+            results = process_companies_in_parallel(
+                company_ids,
+                max_workers=max_concurrent,
+                timeout=timeout
+            )
+    else:
+        # Otherwise run the main function which processes companies from HubSpot
+        main()
