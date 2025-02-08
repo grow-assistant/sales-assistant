@@ -27,6 +27,15 @@ def sanitize_url(url: str) -> str:
         parsed = parsed._replace(netloc=f"www.{parsed.netloc}")
     return urlunparse(parsed)
 
+def fetch_website_html(url: str, timeout: int = 5) -> str:
+    """Fetch HTML content from a URL with timeout."""
+    try:
+        response = requests.get(url, timeout=timeout)
+        response.raise_for_status()
+        return response.text
+    except Exception as e:
+        return ""
+
 def fetch_website_html(url: str, timeout: int = 10, retries: int = 3) -> str:
     """
     Fetch HTML content from a website with retries and better error handling.

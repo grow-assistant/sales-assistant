@@ -6,8 +6,17 @@ from typing import List, Dict, Optional, Any
 import openai
 from dateutil.parser import parse as parse_date
 import pytz
+import sys
+import os
+from pathlib import Path
 
+# Add project root to Python path
+project_root = str(Path(__file__).parent.parent)
+sys.path.append(project_root)
+
+# Now we can import from services
 from services.data_gatherer_service import DataGathererService
+from services.hubspot_service import HubspotService
 from config.settings import HUBSPOT_API_KEY, OPENAI_API_KEY
 from utils.logging_setup import logger
 from services.gmail_service import GmailService

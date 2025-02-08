@@ -823,13 +823,17 @@ def build_context_block(interaction_history=None, objection_handling=None, origi
         }
     
     if company_data:
-        # Use short name from segmentation if it exists, otherwise use full name
-        short_name = company_data.get("company_short_name") or company_data.get("name", "")
-        logger.debug(f"Using company_short_name: {short_name}")
+        # Explicitly get company_short_name, fallback to name if not available
+        company_short_name = company_data.get("company_short_name")
+        if not company_short_name:
+            # If no short name, try to create one from the full name
+            full_name = company_data.get("name", "")
+            # Take first 100 chars, strip trailing spaces and common suffixes
+            company_short_name = re.sub(r'\s*(Golf Club|Country Club|Golf Course|Club|GC)\s*$', '', full_name[:100], flags=re.IGNORECASE)
         
         context["company_data"] = {
             "name": company_data.get("name", ""),
-            "company_short_name": short_name,
+            "company_short_name": company_short_name,
             "city": company_data.get("city", ""),
             "state": company_data.get("state", ""),
             "has_pool": company_data.get("has_pool", "No"),
@@ -837,10 +841,7 @@ def build_context_block(interaction_history=None, objection_handling=None, origi
             "club_info": company_data.get("club_info", "")
         }
         
-        # Debug logging for company data
-        logger.debug(f"Building context block with company data:")
-        logger.debug(f"Input company_data: {json.dumps(company_data, indent=2)}")
-        logger.debug(f"Processed context: {json.dumps(context['company_data'], indent=2)}")
+        logger.debug(f"Company short name used: {company_short_name}")
     
     return context
 

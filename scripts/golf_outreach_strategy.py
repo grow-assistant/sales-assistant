@@ -64,46 +64,55 @@ def get_best_month(geography: str, club_type: str = None, season_data: dict = No
     logger.debug(f"Determining best month for geography: {geography}, club_type: {club_type}, current month: {current_month}")
     
     # If we have season data, use it as primary decision factor
-    if season_data:
-        peak_start = season_data.get('peak_season_start', '')
-        peak_end = season_data.get('peak_season_end', '')
+    if season_data and season_data.get('peak_season_start_month') and season_data.get('peak_season_end_month'):
+        peak_start = season_data.get('peak_season_start_month')
+        peak_end = season_data.get('peak_season_end_month')
         logger.debug(f"Using season data - peak start: {peak_start}, peak end: {peak_end}")
         
         if peak_start and peak_end:
-            peak_start_month = int(peak_start.split('-')[0])
-            peak_end_month = int(peak_end.split('-')[0])
-            
+            try:  # Add error handling in case of non-integer months
+                peak_start_month = int(str(peak_start).split('-')[0])
+                peak_end_month = int(str(peak_end).split('-')[0])
+            except (ValueError, IndexError):
+                logger.error(f"Invalid peak season data: start={peak_start}, end={peak_end}")
+                peak_start_month = None
+                peak_end_month = None
+
             logger.debug(f"Peak season: {peak_start_month} to {peak_end_month}")
             
-            # For winter peak season (crossing year boundary)
-            if peak_start_month > peak_end_month:
-                if current_month >= peak_start_month or current_month <= peak_end_month:
-                    logger.debug("In winter peak season, targeting September shoulder season")
-                    return [9]  # September (before peak starts)
+            if peak_start_month is not None and peak_end_month is not None:
+                # For winter peak season (crossing year boundary)
+                if peak_start_month > peak_end_month:
+                    if current_month >= peak_start_month or current_month <= peak_end_month:
+                        logger.debug("In winter peak season, targeting September shoulder season")
+                        return [9]  # September (before peak starts)
+                    else:
+                        logger.debug("In winter shoulder season, targeting January")
+                        return [1]  # January
+                # For summer peak season
                 else:
-                    logger.debug("In winter shoulder season, targeting January")
-                    return [1]  # January
-            # For summer peak season
-            else:
-                if peak_start_month <= current_month <= peak_end_month:
-                    target = [peak_start_month - 1] if peak_start_month > 1 else [12]
-                    logger.debug(f"In summer peak season, targeting month {target}")
-                    return target
-                else:
-                    logger.debug("In summer shoulder season, targeting January")
-                    return [1]  # January
-    
+                    if peak_start_month <= current_month <= peak_end_month:
+                        target = [peak_start_month - 1] if peak_start_month > 1 else [12]
+                        logger.debug(f"In summer peak season, targeting month {target}")
+                        return target
+                    else:
+                        logger.debug("In summer shoulder season, targeting January")
+                        return [1]  # January
+
     # Fallback to geography-based matrix
     month_matrix = {
         "Year-Round Golf": [1, 9],      # January or September
         "Peak Winter Season": [9],       # September
         "Peak Summer Season": [2],       # February
         "Short Summer Season": [1],      # January
-        "Shoulder Season Focus": [2, 10]  # February or October
+        "Shoulder Season Focus": [2, 10],  # February or October
+        "Unknown": [1,9] # Default
     }
     
-    result = month_matrix.get(geography, [1, 9])
+    # Use "Unknown" as default if geography is missing or invalid
+    result = month_matrix.get(geography, month_matrix["Unknown"])
     logger.debug(f"Using geography matrix fallback for {geography}, selected months: {result}")
+    
     return result
 
 def get_best_time(persona: str, sequence_num: int, timezone_offset: int = 0) -> dict:

@@ -113,8 +113,9 @@ class HubspotService:
                 "filterGroups": [{
                     "filters": [{
                         "propertyName": "club_type",
-                        "operator": "EQ",
-                        "value": "Country Club"
+                        "operator": "NOT_HAS_PROPERTY",
+                        "value": None
+
                     }]
                 }]
             }
@@ -141,9 +142,6 @@ class HubspotService:
 
     def update_company_properties(self, company_id: str, properties: Dict[str, Any]) -> bool:
         """Update company properties in HubSpot."""
-        logger.debug(f"Starting update_company_properties for company_id: {company_id}")
-        logger.debug(f"Input properties: {properties}")
-        
         try:
             mapped_updates = {}
             
@@ -155,13 +153,20 @@ class HubspotService:
                     logger.debug(f"Skipping empty value for key: {internal_key}")
                     continue
 
+                # Get the HubSpot property name from mapping
                 hubspot_key = self.hubspot_property_mapping.get(internal_key)
                 if not hubspot_key:
                     logger.warning(f"No HubSpot mapping for property: {internal_key}")
                     continue
 
-                logger.debug(f"Pre-transform - Key: {internal_key}, Value: {value}, Type: {type(value)}")
+                # Special handling for company_short_name
+                if internal_key == "company_short_name":
+                    value = str(value).strip()[:100]  # Ensure it's a string and within length limit
+                    mapped_updates[hubspot_key] = value  # Add directly to mapped_updates
+                    logger.debug(f"Processed company_short_name: {value}")
+                    continue  # Skip the rest of the processing for this field
 
+                # Rest of the property processing...
                 try:
                     # Apply enum value transformations
                     if internal_key in self.property_value_mapping:
@@ -182,12 +187,9 @@ class HubspotService:
                     elif internal_key == "club_info":
                         logger.debug(f"Truncating club_info from length {len(str(value))}")
                         value = str(value)[:5000]
-                    elif internal_key == "company_short_name":
-                        logger.debug(f"Processing company_short_name: {value}")
-                        value = str(value)[:100]
 
                 except Exception as e:
-                    logger.error(f"Error transforming {internal_key}: {str(e)}", exc_info=True)
+                    logger.error(f"Error transforming {internal_key}: {str(e)}")
                     continue
 
                 mapped_updates[hubspot_key] = value
@@ -211,7 +213,7 @@ class HubspotService:
             return success
             
         except Exception as e:
-            logger.error(f"Error updating company {company_id}: {str(e)}", exc_info=True)
+            logger.error(f"Error updating company {company_id}: {str(e)}")
             return False
 
     def get_contact_by_email(self, email: str) -> Optional[Dict[str, Any]]:
